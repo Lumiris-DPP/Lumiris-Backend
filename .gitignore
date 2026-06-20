@@ -36,3 +36,7 @@ build/
 .env.local
 .env
 
+# Misc
+Lumiris-Front
+CLAUDE.md
+.claude

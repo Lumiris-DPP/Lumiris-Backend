@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.time.Instant;
 import java.util.UUID;
 
 @Entity
@@ -22,16 +23,22 @@ public class User extends Auditable {
     @Column(name = "password_hash", nullable = false)
     private String passwordHash;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private String role;
+    private UserRole role;
 
-    @Column(name = "plan_tier")
-    private String planTier;
+    @Column
+    private String name;
 
-    @Column(name = "subscription_status")
-    private String subscriptionStatus;
+    @Column(name = "avatar_url")
+    private String avatarUrl;
+
+    @Column(name = "last_seen_at")
+    private Instant lastSeenAt;
 
     @Column(name = "is_verified", nullable = false)
-    private boolean isVerified = false;
+    private boolean verified = false;
 
+    @OneToOne(mappedBy = "user", fetch = FetchType.LAZY, cascade = CascadeType.ALL)
+    private ArtisanProfile artisanProfile;
 }

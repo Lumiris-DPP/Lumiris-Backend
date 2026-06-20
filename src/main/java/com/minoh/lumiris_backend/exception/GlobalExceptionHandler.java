@@ -32,6 +32,12 @@ public class GlobalExceptionHandler {
         return new ErrorResponse(400, "Validation failed", errors);
     }
 
+    @ExceptionHandler(ConflictException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    ErrorResponse handleConflict(ConflictException ex) {
+        return new ErrorResponse(409, ex.getMessage());
+    }
+
     @ExceptionHandler({BadCredentialsException.class, UsernameNotFoundException.class})
     @ResponseStatus(HttpStatus.UNAUTHORIZED)
     ErrorResponse handleUnauthorized(RuntimeException ex) {

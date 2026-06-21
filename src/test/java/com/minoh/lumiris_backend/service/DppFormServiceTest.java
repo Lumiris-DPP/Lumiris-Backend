@@ -3,6 +3,7 @@ package com.minoh.lumiris_backend.service;
 import com.minoh.lumiris_backend.dto.in.DppFormRequest;
 import com.minoh.lumiris_backend.dto.out.DppFormResponse;
 import com.minoh.lumiris_backend.entity.DppForm;
+import com.minoh.lumiris_backend.exception.ResourceNotFoundException;
 import com.minoh.lumiris_backend.mapper.DppFormMapper;
 import com.minoh.lumiris_backend.repository.DppFormRepository;
 import org.junit.jupiter.api.Test;
@@ -11,10 +12,13 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.math.BigDecimal;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -29,49 +33,80 @@ class DppFormServiceTest {
     @InjectMocks
     private DppFormService dppFormService;
 
+    private DppFormResponse sampleResponse(UUID id) {
+        return new DppFormResponse(id, "Pull Merino", "sweater", "CHE-001", BigDecimal.valueOf(180), "EUR", "Draft", null, null);
+    }
+
     @Test
     void create_shouldSaveAndReturnResponse() {
-        // given
-        DppFormRequest request = new DppFormRequest("Fairphone 5");
+        DppFormRequest request = new DppFormRequest("Pull Merino", "sweater", "CHE-001", BigDecimal.valueOf(180), "EUR", null);
         DppForm entity = new DppForm();
-        DppForm savedEntity = new DppForm();
-        savedEntity.setId(UUID.randomUUID());
-        savedEntity.setProductName("Fairphone 5");
-        DppFormResponse expected = new DppFormResponse(savedEntity.getId(), "Fairphone 5", null);
+        DppForm saved = new DppForm();
+        UUID id = UUID.randomUUID();
+        saved.setId(id);
+        DppFormResponse expected = sampleResponse(id);
 
         when(dppFormMapper.toEntity(request)).thenReturn(entity);
-        when(dppFormRepository.save(entity)).thenReturn(savedEntity);
-        when(dppFormMapper.toResponse(savedEntity)).thenReturn(expected);
+        when(dppFormRepository.save(entity)).thenReturn(saved);
+        when(dppFormMapper.toResponse(saved)).thenReturn(expected);
 
-        // when
         DppFormResponse result = dppFormService.create(request);
 
-        // then
-        assertThat(result.id()).isEqualTo(expected.id());
-        assertThat(result.productName()).isEqualTo("Fairphone 5");
+        assertThat(result.id()).isEqualTo(id);
         verify(dppFormMapper).toEntity(request);
         verify(dppFormRepository).save(entity);
-        verify(dppFormMapper).toResponse(savedEntity);
+    }
+
+    @Test
+    void findById_shouldReturnResponse_whenExists() {
+        UUID id = UUID.randomUUID();
+        DppForm entity = new DppForm();
+        entity.setId(id);
+        when(dppFormRepository.findById(id)).thenReturn(Optional.of(entity));
+        when(dppFormMapper.toResponse(entity)).thenReturn(sampleResponse(id));
+
+        DppFormResponse result = dppFormService.findById(id);
+
+        assertThat(result.id()).isEqualTo(id);
+    }
+
+    @Test
+    void findById_shouldThrow_whenNotFound() {
+        UUID id = UUID.randomUUID();
+        when(dppFormRepository.findById(id)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> dppFormService.findById(id))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    void patch_shouldUpdateAndReturnResponse() {
+        UUID id = UUID.randomUUID();
+        DppFormRequest patch = new DppFormRequest(null, null, "CHE-002", null, null, null);
+        DppForm entity = new DppForm();
+        entity.setId(id);
+        when(dppFormRepository.findById(id)).thenReturn(Optional.of(entity));
+        when(dppFormRepository.save(entity)).thenReturn(entity);
+        when(dppFormMapper.toResponse(entity)).thenReturn(sampleResponse(id));
+
+        DppFormResponse result = dppFormService.patch(id, patch);
+
+        assertThat(result).isNotNull();
+        verify(dppFormMapper).applyPatch(patch, entity);
+        verify(dppFormRepository).save(entity);
     }
 
     @Test
     void findAll_shouldReturnMappedResponses() {
-        // given
         DppForm entity = new DppForm();
-        entity.setId(UUID.randomUUID());
-        entity.setProductName("Fairphone 5");
-        DppFormResponse expected = new DppFormResponse(entity.getId(), "Fairphone 5", null);
-
+        UUID id = UUID.randomUUID();
+        entity.setId(id);
         when(dppFormRepository.findAll()).thenReturn(List.of(entity));
-        when(dppFormMapper.toResponse(entity)).thenReturn(expected);
+        when(dppFormMapper.toResponse(entity)).thenReturn(sampleResponse(id));
 
-        // when
         List<DppFormResponse> result = dppFormService.findAll();
 
-        // then
         assertThat(result).hasSize(1);
-        assertThat(result.getFirst().productName()).isEqualTo("Fairphone 5");
         verify(dppFormRepository).findAll();
-        verify(dppFormMapper).toResponse(entity);
     }
 }

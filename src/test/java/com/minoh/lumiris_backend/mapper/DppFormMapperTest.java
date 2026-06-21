@@ -6,6 +6,7 @@ import com.minoh.lumiris_backend.entity.DppForm;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.math.BigDecimal;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -20,32 +21,49 @@ class DppFormMapperTest {
     }
 
     @Test
-    void toEntity_shouldMapProductName() {
-        // given
-        DppFormRequest request = new DppFormRequest("Fairphone 5");
+    void toEntity_shouldMapAllProvidedFields() {
+        DppFormRequest request = new DppFormRequest("Pull Merino", "sweater", "CHE-001", BigDecimal.valueOf(180), "EUR", null);
 
-        // when
         DppForm result = mapper.toEntity(request);
 
-        // then
-        assertThat(result.getProductName()).isEqualTo("Fairphone 5");
+        assertThat(result.getProductName()).isEqualTo("Pull Merino");
+        assertThat(result.getProductType()).isEqualTo("sweater");
+        assertThat(result.getInternalReference()).isEqualTo("CHE-001");
+        assertThat(result.getRetailPrice()).isEqualByComparingTo(BigDecimal.valueOf(180));
         assertThat(result.getId()).isNull();
     }
 
     @Test
+    void applyPatch_shouldOnlyUpdateNonNullFields() {
+        DppForm form = new DppForm();
+        form.setProductName("Ancien nom");
+        form.setProductType("shirt");
+
+        DppFormRequest patch = new DppFormRequest(null, "sweater", "CHE-002", null, null, null);
+        mapper.applyPatch(patch, form);
+
+        assertThat(form.getProductName()).isEqualTo("Ancien nom"); // non modifié
+        assertThat(form.getProductType()).isEqualTo("sweater");
+        assertThat(form.getInternalReference()).isEqualTo("CHE-002");
+    }
+
+    @Test
     void toResponse_shouldMapAllFields() {
-        // given
         DppForm entity = new DppForm();
         UUID id = UUID.randomUUID();
         entity.setId(id);
-        entity.setProductName("Fairphone 5");
+        entity.setProductName("Pull Merino");
+        entity.setProductType("sweater");
+        entity.setInternalReference("CHE-001");
+        entity.setRetailPrice(BigDecimal.valueOf(180));
 
-        // when
         DppFormResponse result = mapper.toResponse(entity);
 
-        // then
         assertThat(result.id()).isEqualTo(id);
-        assertThat(result.productName()).isEqualTo("Fairphone 5");
+        assertThat(result.productName()).isEqualTo("Pull Merino");
+        assertThat(result.productType()).isEqualTo("sweater");
+        assertThat(result.internalReference()).isEqualTo("CHE-001");
+        assertThat(result.retailPrice()).isEqualByComparingTo(BigDecimal.valueOf(180));
         assertThat(result.createdAt()).isNull();
     }
 }

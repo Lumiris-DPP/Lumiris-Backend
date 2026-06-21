@@ -1,7 +1,12 @@
 package com.minoh.lumiris_backend.dto.in;
 
-import jakarta.validation.constraints.NotBlank;
+import java.math.BigDecimal;
 
 public record DppFormRequest(
-        @NotBlank String productName
+        String productName,
+        String productType,
+        String internalReference,
+        BigDecimal retailPrice,
+        String currency,
+        String status
 ) {}

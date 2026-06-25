@@ -1,6 +1,7 @@
 package com.minoh.lumiris_backend.exception;
 
 import com.minoh.lumiris_backend.dto.out.ErrorResponse;
+import org.springframework.core.env.Environment;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
@@ -15,6 +16,12 @@ import java.util.stream.Collectors;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    private final Environment environment;
+
+    public GlobalExceptionHandler(Environment environment) {
+        this.environment = environment;
+    }
 
     @ExceptionHandler(ResourceNotFoundException.class)
     @ResponseStatus(HttpStatus.NOT_FOUND)
@@ -47,6 +54,9 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(Exception.class)
     @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
     ErrorResponse handleGeneric(Exception ex) {
-        return new ErrorResponse(500, "An unexpected error occurred");
+        String message = environment.matchesProfiles("local")
+                ? ex.getClass().getSimpleName() + ": " + ex.getMessage()
+                : "An unexpected error occurred";
+        return new ErrorResponse(500, message);
     }
 }

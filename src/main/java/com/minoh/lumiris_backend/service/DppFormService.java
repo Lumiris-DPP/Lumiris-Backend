@@ -2,6 +2,7 @@ package com.minoh.lumiris_backend.service;
 
 import com.minoh.lumiris_backend.dto.in.DppFormRequest;
 import com.minoh.lumiris_backend.dto.out.DppFormResponse;
+import com.minoh.lumiris_backend.dto.out.DppFormSummaryResponse;
 import com.minoh.lumiris_backend.entity.DppForm;
 import com.minoh.lumiris_backend.entity.User;
 import com.minoh.lumiris_backend.exception.ResourceNotFoundException;
@@ -9,8 +10,12 @@ import com.minoh.lumiris_backend.mapper.DppFormMapper;
 import com.minoh.lumiris_backend.repository.DppFormRepository;
 import com.minoh.lumiris_backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.hibernate.Hibernate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -29,6 +34,30 @@ public class DppFormService {
         DppForm form = dppFormMapper.toEntity(r, user);
         DppForm saved = dppFormRepository.save(form);
         return dppFormMapper.toResponse(saved);
+    }
+
+    @Transactional(readOnly = true)
+    public List<DppFormSummaryResponse> findAllByUser(String userEmail) {
+        User user = userRepository.findByEmail(userEmail)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        return dppFormRepository.findByUserId(user.getId()).stream()
+                .map(dppFormMapper::toSummaryResponse)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public DppFormResponse findById(UUID id, String userEmail) {
+        User user = userRepository.findByEmail(userEmail)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        DppForm form = dppFormRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("DPP not found"));
+        if (!form.getUser().getId().equals(user.getId())) {
+            throw new ResourceNotFoundException("DPP not found");
+        }
+        Hibernate.initialize(form.getMaterials());
+        Hibernate.initialize(form.getCareInstructions());
+        Hibernate.initialize(form.getCertifications());
+        return dppFormMapper.toResponse(form);
     }
 
     private static DppFormRequest emptyRequest() {

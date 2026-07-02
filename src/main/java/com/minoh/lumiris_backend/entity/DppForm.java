@@ -43,9 +43,6 @@ public class DppForm extends Auditable {
     @Column(name = "origin_country")
     private String originCountry;
 
-    @Column(name = "main_photo_url")
-    private String mainPhotoUrl;
-
     @Column(name = "manufactured_at")
     private String manufacturedAt;
 

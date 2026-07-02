@@ -1,6 +1,7 @@
 package com.minoh.lumiris_backend.service;
 
 import com.minoh.lumiris_backend.dto.in.DppFormRequest;
+import com.minoh.lumiris_backend.dto.out.DppFormCreatedResponse;
 import com.minoh.lumiris_backend.dto.out.DppFormDocumentResponse;
 import com.minoh.lumiris_backend.dto.out.DppFormResponse;
 import com.minoh.lumiris_backend.dto.out.DppFormSummaryResponse;
@@ -31,7 +32,7 @@ public class DppFormService {
     private final DppFormMapper dppFormMapper;
 
     @Transactional
-    public DppFormResponse create(DppFormRequest request, Map<String, MultipartFile> files, String userEmail) {
+    public DppFormCreatedResponse create(DppFormRequest request, Map<String, MultipartFile> files, String userEmail) {
         User user = userRepository.findByEmail(userEmail)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
@@ -59,8 +60,7 @@ public class DppFormService {
             });
         });
 
-        DppForm saved = dppFormRepository.save(form);
-        return buildResponse(saved);
+        return new DppFormCreatedResponse(dppFormRepository.save(form).getId());
     }
 
     @Transactional(readOnly = true)
@@ -88,12 +88,9 @@ public class DppFormService {
     }
 
     private DppFormResponse buildResponse(DppForm form) {
-        String mainPhotoUrl = null;
-        if (form.getMainPhotoFile() != null) {
-            mainPhotoUrl = storageService.getPresignedUrl(form.getMainPhotoFile().getId());
-        } else {
-            mainPhotoUrl = form.getMainPhotoUrl();
-        }
+        String mainPhotoUrl = form.getMainPhotoFile() != null
+                ? storageService.getPresignedUrl(form.getMainPhotoFile().getId())
+                : null;
 
         List<DppFormDocumentResponse> documents = form.getDocuments().stream()
                 .map(d -> new DppFormDocumentResponse(

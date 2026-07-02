@@ -1,7 +1,8 @@
 package com.minoh.lumiris_backend.service;
 
 import com.minoh.lumiris_backend.dto.in.DppFormRequest;
-import com.minoh.lumiris_backend.dto.out.DppFormResponse;
+import com.minoh.lumiris_backend.dto.out.DppFormCreatedResponse;
+import com.minoh.lumiris_backend.entity.DppForm;
 import com.minoh.lumiris_backend.entity.User;
 import com.minoh.lumiris_backend.exception.ResourceNotFoundException;
 import com.minoh.lumiris_backend.mapper.DppFormMapper;
@@ -59,11 +60,15 @@ class DppFormServiceTest {
         user.setEmail(USER_EMAIL);
 
         lenient().when(userRepository.findByEmail(USER_EMAIL)).thenReturn(Optional.of(user));
-        lenient().when(dppFormRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        lenient().when(dppFormRepository.save(any())).thenAnswer(inv -> {
+            DppForm f = inv.getArgument(0);
+            if (f.getId() == null) f.setId(UUID.randomUUID());
+            return f;
+        });
     }
 
     @Test
-    void create_shouldPersistAndReturnResponse() {
+    void create_shouldPersistAndReturnId() {
         DppFormRequest request = new DppFormRequest(
                 "Pull Merino", "Un pull doux", "top", "FR",
                 List.of("S", "M"), List.of("Écru"),
@@ -72,21 +77,18 @@ class DppFormServiceTest {
                 30, "2 ans", true, "Rapporter en boutique"
         );
 
-        DppFormResponse response = service.create(request, Collections.emptyMap(), USER_EMAIL);
+        DppFormCreatedResponse response = service.create(request, Collections.emptyMap(), USER_EMAIL);
 
         verify(dppFormRepository).save(any());
-        assertThat(response.productName()).isEqualTo("Pull Merino");
-        assertThat(response.productCategory()).isEqualTo("top");
-        assertThat(response.reachCompliant()).isTrue();
-        assertThat(response.recycledPct()).isEqualTo(30);
+        assertThat(response.id()).isNotNull();
     }
 
     @Test
     void create_shouldHandleNullRequest() {
-        DppFormResponse response = service.create(null, Collections.emptyMap(), USER_EMAIL);
+        DppFormCreatedResponse response = service.create(null, Collections.emptyMap(), USER_EMAIL);
 
         verify(dppFormRepository).save(any());
-        assertThat(response.productName()).isNull();
+        assertThat(response.id()).isNotNull();
     }
 
     @Test
@@ -99,14 +101,10 @@ class DppFormServiceTest {
                 null, null, false, null
         );
 
-        DppFormResponse response = service.create(request, Collections.emptyMap(), USER_EMAIL);
+        DppFormCreatedResponse response = service.create(request, Collections.emptyMap(), USER_EMAIL);
 
-        assertThat(response.originCountry()).isEqualTo("IT");
-        assertThat(response.availableSizes()).containsExactly("M", "L", "XL");
-        assertThat(response.careInstructions()).containsExactly("wash-30");
-        assertThat(response.gtin()).isEqualTo("1234567890123");
-        assertThat(response.reachCompliant()).isFalse();
-        assertThat(response.isRepairable()).isFalse();
+        verify(dppFormRepository).save(any());
+        assertThat(response.id()).isNotNull();
     }
 
     @Test

@@ -3,8 +3,7 @@ package com.minoh.lumiris_backend.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.minoh.lumiris_backend.dto.in.DppFormRequest;
-import com.minoh.lumiris_backend.dto.out.DppFormResponse;
-import com.minoh.lumiris_backend.entity.DppStatus;
+import com.minoh.lumiris_backend.dto.out.DppFormCreatedResponse;
 import com.minoh.lumiris_backend.service.DppFormService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -24,7 +23,6 @@ import org.springframework.security.web.method.annotation.AuthenticationPrincipa
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
-import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -70,22 +68,10 @@ class DppFormControllerTest {
         SecurityContextHolder.clearContext();
     }
 
-    private DppFormResponse sampleResponse(UUID id) {
-        return new DppFormResponse(
-                id, Instant.now(), DppStatus.VALID,
-                "Pull Merino", "Un pull doux", "top", "FR",
-                List.of("S", "M", "L"), List.of("Écru"),
-                null, List.of(), List.of(), null,
-                "2026-01-01", "LOT-001", null, "SKU-001", true,
-                30, "2 ans", true, "Rapporter en boutique",
-                List.of()
-        );
-    }
-
     @Test
     void create_shouldReturn201_withBody() throws Exception {
         UUID id = UUID.randomUUID();
-        when(dppFormService.create(any(), anyMap(), eq(USER_EMAIL))).thenReturn(sampleResponse(id));
+        when(dppFormService.create(any(), anyMap(), eq(USER_EMAIL))).thenReturn(new DppFormCreatedResponse(id));
 
         DppFormRequest request = new DppFormRequest(
                 "Pull Merino", "Un pull doux", "top", "FR",
@@ -102,15 +88,14 @@ class DppFormControllerTest {
 
         mockMvc.perform(multipart("/api/dpp-forms").file(dataPart))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.productName").value("Pull Merino"))
-                .andExpect(jsonPath("$.id").isNotEmpty());
+                .andExpect(jsonPath("$.id").value(id.toString()));
 
         verify(dppFormService).create(any(), anyMap(), eq(USER_EMAIL));
     }
 
     @Test
     void create_shouldReturn201_withEmptyBody() throws Exception {
-        when(dppFormService.create(any(), anyMap(), eq(USER_EMAIL))).thenReturn(sampleResponse(UUID.randomUUID()));
+        when(dppFormService.create(any(), anyMap(), eq(USER_EMAIL))).thenReturn(new DppFormCreatedResponse(UUID.randomUUID()));
 
         mockMvc.perform(multipart("/api/dpp-forms"))
                 .andExpect(status().isCreated());

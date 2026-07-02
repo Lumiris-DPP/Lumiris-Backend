@@ -1,6 +1,7 @@
 package com.minoh.lumiris_backend.controller;
 
 import com.minoh.lumiris_backend.dto.in.DppFormRequest;
+import com.minoh.lumiris_backend.dto.out.DppFormCreatedResponse;
 import com.minoh.lumiris_backend.dto.out.DppFormResponse;
 import com.minoh.lumiris_backend.dto.out.DppFormSummaryResponse;
 import com.minoh.lumiris_backend.service.DppFormService;
@@ -26,7 +27,7 @@ public class DppFormController {
     private final DppFormService dppFormService;
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    ResponseEntity<DppFormResponse> create(
+    ResponseEntity<DppFormCreatedResponse> create(
             @RequestPart(value = "data", required = false) DppFormRequest request,
             @RequestPart(value = "productPhoto",      required = false) MultipartFile productPhoto,
             @RequestPart(value = "reachCompliance",   required = false) MultipartFile reachCompliance,

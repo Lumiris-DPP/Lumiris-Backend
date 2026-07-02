@@ -15,6 +15,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.MediaType;
 import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.User;
@@ -28,10 +29,11 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -73,42 +75,44 @@ class DppFormControllerTest {
                 id, Instant.now(), DppStatus.VALID,
                 "Pull Merino", "Un pull doux", "top", "FR",
                 List.of("S", "M", "L"), List.of("Écru"),
-                null, List.of(), List.of(), List.of(),
+                null, List.of(), List.of(), null,
                 "2026-01-01", "LOT-001", null, "SKU-001", true,
-                30, "2 ans", true, "Rapporter en boutique"
+                30, "2 ans", true, "Rapporter en boutique",
+                List.of()
         );
     }
 
     @Test
     void create_shouldReturn201_withBody() throws Exception {
         UUID id = UUID.randomUUID();
-        when(dppFormService.create(any(), eq(USER_EMAIL))).thenReturn(sampleResponse(id));
+        when(dppFormService.create(any(), anyMap(), eq(USER_EMAIL))).thenReturn(sampleResponse(id));
 
         DppFormRequest request = new DppFormRequest(
                 "Pull Merino", "Un pull doux", "top", "FR",
-                List.of("S", "M"), List.of("Écru"), null,
-                List.of(), List.of(), List.of(),
+                List.of("S", "M"), List.of("Écru"),
+                List.of(), List.of(), null,
                 "2026-01-01", null, null, null, true,
                 null, null, null, null
         );
 
-        mockMvc.perform(post("/api/dpp-forms")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
+        MockMultipartFile dataPart = new MockMultipartFile(
+                "data", "", MediaType.APPLICATION_JSON_VALUE,
+                objectMapper.writeValueAsBytes(request)
+        );
+
+        mockMvc.perform(multipart("/api/dpp-forms").file(dataPart))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.productName").value("Pull Merino"))
                 .andExpect(jsonPath("$.id").isNotEmpty());
 
-        verify(dppFormService).create(any(), eq(USER_EMAIL));
+        verify(dppFormService).create(any(), anyMap(), eq(USER_EMAIL));
     }
 
     @Test
     void create_shouldReturn201_withEmptyBody() throws Exception {
-        when(dppFormService.create(any(), eq(USER_EMAIL))).thenReturn(sampleResponse(UUID.randomUUID()));
+        when(dppFormService.create(any(), anyMap(), eq(USER_EMAIL))).thenReturn(sampleResponse(UUID.randomUUID()));
 
-        mockMvc.perform(post("/api/dpp-forms")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{}"))
+        mockMvc.perform(multipart("/api/dpp-forms"))
                 .andExpect(status().isCreated());
     }
 }

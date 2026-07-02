@@ -6,6 +6,7 @@ import com.minoh.lumiris_backend.entity.User;
 import com.minoh.lumiris_backend.exception.ResourceNotFoundException;
 import com.minoh.lumiris_backend.mapper.DppFormMapper;
 import com.minoh.lumiris_backend.repository.DppFormRepository;
+import com.minoh.lumiris_backend.repository.StoredFileRepository;
 import com.minoh.lumiris_backend.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -15,6 +16,7 @@ import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -34,6 +36,12 @@ class DppFormServiceTest {
 
     @Mock
     private UserRepository userRepository;
+
+    @Mock
+    private StoredFileRepository storedFileRepository;
+
+    @Mock
+    private StorageService storageService;
 
     @Spy
     private DppFormMapper dppFormMapper;
@@ -58,13 +66,13 @@ class DppFormServiceTest {
     void create_shouldPersistAndReturnResponse() {
         DppFormRequest request = new DppFormRequest(
                 "Pull Merino", "Un pull doux", "top", "FR",
-                List.of("S", "M"), List.of("Écru"), null,
-                List.of(), List.of(), List.of(),
+                List.of("S", "M"), List.of("Écru"),
+                List.of(), List.of(), null,
                 "2026-01-01", "LOT-001", null, "SKU-001", true,
                 30, "2 ans", true, "Rapporter en boutique"
         );
 
-        DppFormResponse response = service.create(request, USER_EMAIL);
+        DppFormResponse response = service.create(request, Collections.emptyMap(), USER_EMAIL);
 
         verify(dppFormRepository).save(any());
         assertThat(response.productName()).isEqualTo("Pull Merino");
@@ -75,7 +83,7 @@ class DppFormServiceTest {
 
     @Test
     void create_shouldHandleNullRequest() {
-        DppFormResponse response = service.create(null, USER_EMAIL);
+        DppFormResponse response = service.create(null, Collections.emptyMap(), USER_EMAIL);
 
         verify(dppFormRepository).save(any());
         assertThat(response.productName()).isNull();
@@ -85,13 +93,13 @@ class DppFormServiceTest {
     void create_shouldPersistAllFields() {
         DppFormRequest request = new DppFormRequest(
                 "Veste Lin", "Description", "outerwear", "IT",
-                List.of("M", "L", "XL"), List.of("Beige", "Noir"), "photo.jpg",
-                List.of(), List.of("wash-30"), List.of(),
+                List.of("M", "L", "XL"), List.of("Beige", "Noir"),
+                List.of(), List.of("wash-30"), null,
                 "2026-03-15", "LOT-002", "1234567890123", "SKU-002", false,
                 null, null, false, null
         );
 
-        DppFormResponse response = service.create(request, USER_EMAIL);
+        DppFormResponse response = service.create(request, Collections.emptyMap(), USER_EMAIL);
 
         assertThat(response.originCountry()).isEqualTo("IT");
         assertThat(response.availableSizes()).containsExactly("M", "L", "XL");
@@ -105,7 +113,7 @@ class DppFormServiceTest {
     void create_shouldThrowWhenUserNotFound() {
         when(userRepository.findByEmail("unknown@test.com")).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.create(null, "unknown@test.com"))
+        assertThatThrownBy(() -> service.create(null, Collections.emptyMap(), "unknown@test.com"))
                 .isInstanceOf(ResourceNotFoundException.class);
     }
 }

@@ -1,6 +1,5 @@
 package com.minoh.lumiris_backend.dto.out;
 
-import com.minoh.lumiris_backend.dto.in.CertificationRequest;
 import com.minoh.lumiris_backend.dto.in.MaterialRequest;
 import com.minoh.lumiris_backend.entity.DppStatus;
 
@@ -23,7 +22,7 @@ public record DppFormResponse(
 
         List<MaterialRequest> materials,
         List<String> careInstructions,
-        List<CertificationRequest> certifications,
+        String careNotes,
 
         String manufacturedAt,
         String batchNumber,
@@ -34,5 +33,7 @@ public record DppFormResponse(
         Integer recycledPct,
         String warrantyDescription,
         Boolean isRepairable,
-        String endOfLifeInstructions
+        String endOfLifeInstructions,
+
+        List<DppFormDocumentResponse> documents
 ) {}

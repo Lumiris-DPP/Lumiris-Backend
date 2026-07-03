@@ -192,7 +192,7 @@ The database is pre-seeded with one account per role for local development:
 To get a JWT token:
 
 ```bash
-curl -X POST http://localhost:8081/api/auth/login \
+curl -X POST http://localhost:8081/api/auth/sign-in \
   -H "Content-Type: application/json" \
   -d '{"email":"admin@lumiris.com","password":"admin123"}'
 ```

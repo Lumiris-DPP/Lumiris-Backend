@@ -1,6 +1,7 @@
 package com.minoh.lumiris_backend.controller;
 
 import com.minoh.lumiris_backend.dto.in.LoginRequest;
+import com.minoh.lumiris_backend.dto.in.RefreshRequest;
 import com.minoh.lumiris_backend.dto.in.RegisterRequest;
 import com.minoh.lumiris_backend.dto.out.AuthResponse;
 import com.minoh.lumiris_backend.dto.out.UserResponse;
@@ -20,14 +21,19 @@ public class AuthController {
 
     private final AuthService authService;
 
-    @PostMapping("/login")
-    ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
+    @PostMapping("/sign-in")
+    ResponseEntity<AuthResponse> signIn(@Valid @RequestBody LoginRequest request) {
         return ResponseEntity.ok(authService.login(request));
     }
 
-    @PostMapping("/register")
-    ResponseEntity<AuthResponse> register(@Valid @RequestBody RegisterRequest request) {
+    @PostMapping("/sign-up")
+    ResponseEntity<AuthResponse> signUp(@Valid @RequestBody RegisterRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(authService.register(request));
+    }
+
+    @PostMapping("/refresh")
+    ResponseEntity<AuthResponse> refresh(@Valid @RequestBody RefreshRequest request) {
+        return ResponseEntity.ok(authService.refresh(request));
     }
 
     @GetMapping("/me")

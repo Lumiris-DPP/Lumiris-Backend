@@ -5,6 +5,7 @@ import com.minoh.lumiris_backend.dto.out.DppFormCreatedResponse;
 import com.minoh.lumiris_backend.dto.out.DppFormDocumentResponse;
 import com.minoh.lumiris_backend.dto.out.DppFormResponse;
 import com.minoh.lumiris_backend.dto.out.DppFormSummaryResponse;
+import com.minoh.lumiris_backend.dto.out.IrisScoreResponse;
 import com.minoh.lumiris_backend.entity.*;
 import com.minoh.lumiris_backend.exception.ResourceNotFoundException;
 import com.minoh.lumiris_backend.mapper.DppFormMapper;
@@ -103,6 +104,22 @@ public class DppFormService {
                 .toList();
 
         return dppFormMapper.toResponse(form, mainPhotoUrl, documents);
+    }
+
+    @Transactional(readOnly = true)
+    public IrisScoreResponse getIrisScore(UUID id, String userEmail) {
+        User user = userRepository.findByEmail(userEmail)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        DppForm form = dppFormRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("DPP not found"));
+        if (!form.getUser().getId().equals(user.getId())) {
+            throw new ResourceNotFoundException("DPP not found");
+        }
+        return IrisScoreResponse.hardcoded();
+    }
+
+    public IrisScoreResponse computeIrisScore() {
+        return IrisScoreResponse.random();
     }
 
     private static DppFormRequest emptyRequest() {

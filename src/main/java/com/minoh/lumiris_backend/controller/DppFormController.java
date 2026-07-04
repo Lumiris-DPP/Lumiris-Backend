@@ -4,6 +4,7 @@ import com.minoh.lumiris_backend.dto.in.DppFormRequest;
 import com.minoh.lumiris_backend.dto.out.DppFormCreatedResponse;
 import com.minoh.lumiris_backend.dto.out.DppFormResponse;
 import com.minoh.lumiris_backend.dto.out.DppFormSummaryResponse;
+import com.minoh.lumiris_backend.dto.out.IrisScoreResponse;
 import com.minoh.lumiris_backend.service.DppFormService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -72,5 +73,18 @@ public class DppFormController {
             @AuthenticationPrincipal UserDetails principal
     ) {
         return ResponseEntity.ok(dppFormService.findById(id, principal.getUsername()));
+    }
+
+    @GetMapping("/{id}/iris_score")
+    ResponseEntity<IrisScoreResponse> getIrisScore(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal UserDetails principal
+    ) {
+        return ResponseEntity.ok(dppFormService.getIrisScore(id, principal.getUsername()));
+    }
+
+    @PostMapping("/compute_iris_score")
+    ResponseEntity<IrisScoreResponse> computeIrisScore() {
+        return ResponseEntity.ok(dppFormService.computeIrisScore());
     }
 }

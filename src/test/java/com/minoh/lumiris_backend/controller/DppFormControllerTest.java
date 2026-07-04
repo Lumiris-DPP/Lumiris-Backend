@@ -92,12 +92,4 @@ class DppFormControllerTest {
 
         verify(dppFormService).create(any(), anyMap(), eq(USER_EMAIL));
     }
-
-    @Test
-    void create_shouldReturn201_withEmptyBody() throws Exception {
-        when(dppFormService.create(any(), anyMap(), eq(USER_EMAIL))).thenReturn(new DppFormCreatedResponse(UUID.randomUUID()));
-
-        mockMvc.perform(multipart("/api/dpp-forms"))
-                .andExpect(status().isCreated());
-    }
 }

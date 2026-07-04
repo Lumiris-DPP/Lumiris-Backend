@@ -1,6 +1,7 @@
 package com.minoh.lumiris_backend.controller;
 
 import com.minoh.lumiris_backend.dto.in.DppFormRequest;
+import com.minoh.lumiris_backend.dto.in.DppScoreInput;
 import com.minoh.lumiris_backend.dto.out.DppFormCreatedResponse;
 import com.minoh.lumiris_backend.dto.out.DppFormResponse;
 import com.minoh.lumiris_backend.dto.out.DppFormSummaryResponse;
@@ -29,7 +30,7 @@ public class DppFormController {
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     ResponseEntity<DppFormCreatedResponse> create(
-            @RequestPart(value = "data", required = false) DppFormRequest request,
+            @RequestPart(value = "data") DppFormRequest request,
             @RequestPart(value = "productPhoto",      required = false) MultipartFile productPhoto,
             @RequestPart(value = "reachCompliance",   required = false) MultipartFile reachCompliance,
             @RequestPart(value = "euDeclaration",     required = false) MultipartFile euDeclaration,
@@ -84,7 +85,7 @@ public class DppFormController {
     }
 
     @PostMapping("/compute_iris_score")
-    ResponseEntity<IrisScoreResponse> computeIrisScore() {
-        return ResponseEntity.ok(dppFormService.computeIrisScore());
+    ResponseEntity<IrisScoreResponse> computeIrisScore(@RequestBody DppScoreInput input) {
+        return ResponseEntity.ok(dppFormService.computeIrisScore(input));
     }
 }

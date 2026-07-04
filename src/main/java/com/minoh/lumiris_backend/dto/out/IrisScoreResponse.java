@@ -12,14 +12,7 @@ public record IrisScoreResponse(
     public record Breakdown(double transparency, double craftsmanship, double impact, double repairability) {}
     public record Weights(double transparency, double craftsmanship, double impact, double repairability) {}
 
-    private static final Weights FIXED_WEIGHTS = new Weights(0.4, 0.25, 0.25, 0.1);
-
-    public static IrisScoreResponse hardcoded() {
-        return new IrisScoreResponse(32, "D",
-                new Breakdown(18, 10, 0, 4),
-                FIXED_WEIGHTS,
-                List.of());
-    }
+    public static final Weights FIXED_WEIGHTS = new Weights(0.4, 0.25, 0.25, 0.1);
 
     public static IrisScoreResponse random() {
         java.util.Random rng = new java.util.Random();

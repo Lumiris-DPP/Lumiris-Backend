@@ -1,6 +1,7 @@
 package com.minoh.lumiris_backend.service;
 
 import com.minoh.lumiris_backend.dto.in.DppFormRequest;
+import com.minoh.lumiris_backend.dto.in.DppScoreInput;
 import com.minoh.lumiris_backend.dto.out.DppFormCreatedResponse;
 import com.minoh.lumiris_backend.dto.out.DppFormDocumentResponse;
 import com.minoh.lumiris_backend.dto.out.DppFormResponse;
@@ -10,17 +11,24 @@ import com.minoh.lumiris_backend.entity.*;
 import com.minoh.lumiris_backend.exception.ResourceNotFoundException;
 import com.minoh.lumiris_backend.mapper.DppFormMapper;
 import com.minoh.lumiris_backend.repository.DppFormRepository;
+import com.minoh.lumiris_backend.repository.IrisScoreRepository;
 import com.minoh.lumiris_backend.repository.StoredFileRepository;
 import com.minoh.lumiris_backend.repository.UserRepository;
+import com.minoh.lumiris_backend.service.scoring.IrisScoreCalculator;
 import lombok.RequiredArgsConstructor;
 import org.hibernate.Hibernate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -29,39 +37,61 @@ public class DppFormService {
     private final DppFormRepository dppFormRepository;
     private final UserRepository userRepository;
     private final StoredFileRepository storedFileRepository;
+    private final IrisScoreRepository irisScoreRepository;
     private final StorageService storageService;
     private final DppFormMapper dppFormMapper;
+    private final IrisScoreCalculator irisScoreCalculator;
+    private final TransactionTemplate transactionTemplate;
 
-    @Transactional
     public DppFormCreatedResponse create(DppFormRequest request, Map<String, MultipartFile> files, String userEmail) {
-        User user = userRepository.findByEmail(userEmail)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
-
-        DppFormRequest r = request != null ? request : emptyRequest();
-        DppForm form = dppFormMapper.toEntity(r, user);
-
+        Map<String, UUID> uploadedIds = new LinkedHashMap<>();
         files.forEach((partName, file) -> {
-            if (file == null || file.isEmpty()) return;
-
-            var uploaded = storageService.upload(file, userEmail);
-            StoredFile storedFile = storedFileRepository.getReferenceById(uploaded.id());
-
-            if ("productPhoto".equals(partName)) {
-                form.setMainPhotoFile(storedFile);
-                return;
+            if (file != null && !file.isEmpty()) {
+                uploadedIds.put(partName, storageService.upload(file, userEmail).id());
             }
-
-            DocumentType.fromPartName(partName).ifPresent(docType -> {
-                DppFormDocument doc = new DppFormDocument();
-                doc.setDppForm(form);
-                doc.setFile(storedFile);
-                doc.setDocumentType(docType);
-                doc.setVisibility(docType.defaultVisibility());
-                form.getDocuments().add(doc);
-            });
         });
 
-        return new DppFormCreatedResponse(dppFormRepository.save(form).getId());
+        return Objects.requireNonNull(transactionTemplate.execute(status -> {
+            User user = userRepository.findByEmail(userEmail)
+                    .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+            DppForm form = dppFormMapper.toEntity(request, user);
+
+            uploadedIds.forEach((partName, fileId) -> {
+                StoredFile storedFile = storedFileRepository.getReferenceById(fileId);
+                if ("productPhoto".equals(partName)) {
+                    form.setMainPhotoFile(storedFile);
+                    return;
+                }
+                DocumentType.fromPartName(partName).ifPresent(docType -> {
+                    DppFormDocument doc = new DppFormDocument();
+                    doc.setDppForm(form);
+                    doc.setFile(storedFile);
+                    doc.setDocumentType(docType);
+                    doc.setVisibility(docType.defaultVisibility());
+                    form.getDocuments().add(doc);
+                });
+            });
+
+            DppForm savedForm = dppFormRepository.save(form);
+
+            Set<DocumentType> uploadedDocTypes = uploadedIds.keySet().stream()
+                    .flatMap(partName -> DocumentType.fromPartName(partName).stream())
+                    .collect(Collectors.toSet());
+
+            IrisScoreResponse scoreResponse = irisScoreCalculator.compute(DppScoreInput.from(savedForm, uploadedDocTypes));
+            irisScoreRepository.save(new IrisScore(
+                    savedForm,
+                    scoreResponse.breakdown().transparency(),
+                    scoreResponse.breakdown().craftsmanship(),
+                    scoreResponse.breakdown().repairability(),
+                    scoreResponse.breakdown().impact(),
+                    scoreResponse.total(),
+                    scoreResponse.grade()
+            ));
+
+            return new DppFormCreatedResponse(savedForm.getId());
+        }));
     }
 
     @Transactional(readOnly = true)
@@ -85,10 +115,7 @@ public class DppFormService {
         Hibernate.initialize(form.getMaterials());
         Hibernate.initialize(form.getCareInstructions());
         Hibernate.initialize(form.getDocuments());
-        return buildResponse(form);
-    }
 
-    private DppFormResponse buildResponse(DppForm form) {
         String mainPhotoUrl = form.getMainPhotoFile() != null
                 ? storageService.getPresignedUrl(form.getMainPhotoFile().getId())
                 : null;
@@ -115,19 +142,24 @@ public class DppFormService {
         if (!form.getUser().getId().equals(user.getId())) {
             throw new ResourceNotFoundException("DPP not found");
         }
-        return IrisScoreResponse.hardcoded();
-    }
+        IrisScore score = irisScoreRepository.findByDppFormId(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Score not found"));
 
-    public IrisScoreResponse computeIrisScore() {
-        return IrisScoreResponse.random();
-    }
-
-    private static DppFormRequest emptyRequest() {
-        return new DppFormRequest(
-                null, null, null, null, null, null,
-                null, null, null,
-                null, null, null, null, null,
-                null, null, null, null
+        return new IrisScoreResponse(
+                score.getTotal(),
+                score.getGrade(),
+                new IrisScoreResponse.Breakdown(
+                        score.getTransparency(),
+                        score.getCraftsmanship(),
+                        score.getImpact(),
+                        score.getRepairability()
+                ),
+                new IrisScoreResponse.Weights(0.4, 0.25, 0.25, 0.1),
+                List.of()
         );
+    }
+
+    public IrisScoreResponse computeIrisScore(DppScoreInput input) {
+        return irisScoreCalculator.compute(input);
     }
 }

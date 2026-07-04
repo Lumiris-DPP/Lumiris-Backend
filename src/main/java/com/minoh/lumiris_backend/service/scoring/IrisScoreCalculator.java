@@ -20,14 +20,20 @@ public class IrisScoreCalculator {
         double transparency   = transparencyScoreService.compute(input);
         double craftsmanship  = craftsmanshipScoreService.compute(input);
         double repairability  = repairabilityScoreService.compute(input);
-        double impact         = impactScoreService.compute();
+        double impact         = impactScoreService.compute(input);
         double total          = transparency + craftsmanship + repairability + impact;
 
+        var weights = IrisScoreResponse.FIXED_WEIGHTS;
         return new IrisScoreResponse(
                 round(total),
                 grade(total),
-                new IrisScoreResponse.Breakdown(round(transparency), round(craftsmanship), round(impact), round(repairability)),
-                IrisScoreResponse.FIXED_WEIGHTS,
+                new IrisScoreResponse.Breakdown(
+                        round(transparency / weights.transparency()),
+                        round(craftsmanship / weights.craftsmanship()),
+                        round(impact / weights.impact()),
+                        round(repairability / weights.repairability())
+                ),
+                weights,
                 List.of()
         );
     }

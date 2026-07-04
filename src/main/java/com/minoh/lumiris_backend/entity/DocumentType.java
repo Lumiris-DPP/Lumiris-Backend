@@ -1,5 +1,7 @@
 package com.minoh.lumiris_backend.entity;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -42,5 +44,10 @@ public enum DocumentType {
 
     public static Optional<DocumentType> fromPartName(String partName) {
         return Optional.ofNullable(BY_PART_NAME.get(partName));
+    }
+
+    @JsonCreator
+    public static DocumentType fromJson(String value) {
+        return fromPartName(value).orElseGet(() -> DocumentType.valueOf(value));
     }
 }

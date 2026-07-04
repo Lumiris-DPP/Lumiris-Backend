@@ -10,8 +10,7 @@ public class CraftsmanshipScoreService {
     public double compute(DppScoreInput input) {
         double score = 0;
         if ("france".equalsIgnoreCase(input.originCountry())) score += 10;
-        if (input.manufacturedAt() != null && !input.manufacturedAt().isBlank()) score += 5;
-        if (input.presentDocuments().contains(DocumentType.CREATION_PASSPORT)) score += 10;
+        if (input.presentDocuments().contains(DocumentType.CREATION_PASSPORT)) score += 15;
         return score;
     }
 }

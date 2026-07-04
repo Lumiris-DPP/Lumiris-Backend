@@ -9,8 +9,7 @@ import java.util.Set;
 
 public record DppScoreInput(
         String originCountry,
-        String manufacturedAt,
-        Boolean isRepairable,
+        Boolean repairable,
         Boolean reachCompliant,
         String endOfLifeInstructions,
         List<String> materialOriginCountries,
@@ -22,7 +21,6 @@ public record DppScoreInput(
                 .toList();
         return new DppScoreInput(
                 form.getOriginCountry(),
-                form.getManufacturedAt(),
                 form.getIsRepairable(),
                 form.getReachCompliant(),
                 form.getEndOfLifeInstructions(),
@@ -36,7 +34,6 @@ public record DppScoreInput(
                 req.materials().stream().map(MaterialRequest::originCountry).toList();
         return new DppScoreInput(
                 req.originCountry(),
-                req.manufacturedAt(),
                 req.isRepairable(),
                 req.reachCompliant(),
                 req.endOfLifeInstructions(),

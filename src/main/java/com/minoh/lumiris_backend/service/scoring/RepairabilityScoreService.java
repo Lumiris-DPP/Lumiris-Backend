@@ -9,7 +9,7 @@ public class RepairabilityScoreService {
 
     public double compute(DppScoreInput input) {
         double score = 0;
-        if (Boolean.TRUE.equals(input.isRepairable())) score += 5;
+        if (Boolean.TRUE.equals(input.repairable())) score += 5;
         if (input.presentDocuments().contains(DocumentType.REPAIR_MANUAL)) score += 3;
         if (input.endOfLifeInstructions() != null && !input.endOfLifeInstructions().isBlank()) score += 2;
         return score;

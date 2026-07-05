@@ -1,6 +1,6 @@
 package com.minoh.lumiris_backend.controller;
 
-import com.minoh.lumiris_backend.dto.out.DppFormResponse;
+import com.minoh.lumiris_backend.dto.out.DppFormPublicResponse;
 import com.minoh.lumiris_backend.service.DppFormService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -17,7 +17,7 @@ public class PublicDppController {
     private final DppFormService dppFormService;
 
     @GetMapping("/{code}")
-    public ResponseEntity<DppFormResponse> findByPublicCode(@PathVariable String code) {
+    public ResponseEntity<DppFormPublicResponse> findByPublicCode(@PathVariable String code) {
         return ResponseEntity.ok(dppFormService.findByPublicCode(code));
     }
 }

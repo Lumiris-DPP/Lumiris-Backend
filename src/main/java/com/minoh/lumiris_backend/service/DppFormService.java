@@ -4,6 +4,7 @@ import com.minoh.lumiris_backend.dto.in.DppFormRequest;
 import com.minoh.lumiris_backend.dto.in.DppScoreInput;
 import com.minoh.lumiris_backend.dto.out.DppFormCreatedResponse;
 import com.minoh.lumiris_backend.dto.out.DppFormDocumentResponse;
+import com.minoh.lumiris_backend.dto.out.DppFormPublicResponse;
 import com.minoh.lumiris_backend.dto.out.DppFormResponse;
 import com.minoh.lumiris_backend.dto.out.DppFormSummaryResponse;
 import com.minoh.lumiris_backend.dto.out.IrisScoreResponse;
@@ -170,7 +171,7 @@ public class DppFormService {
     }
 
     @Transactional(readOnly = true)
-    public DppFormResponse findByPublicCode(String publicCode) {
+    public DppFormPublicResponse findByPublicCode(String publicCode) {
         DppForm form = dppFormRepository.findByPublicCode(publicCode)
                 .orElseThrow(() -> new ResourceNotFoundException("DPP not found"));
 
@@ -192,7 +193,24 @@ public class DppFormService {
                 ))
                 .toList();
 
-        return dppFormMapper.toResponse(form, mainPhotoUrl, documents);
+        DppFormResponse dppResponse = dppFormMapper.toResponse(form, mainPhotoUrl, documents);
+
+        IrisScoreResponse scoreResponse = irisScoreRepository.findByDppFormId(form.getId())
+                .map(score -> new IrisScoreResponse(
+                        score.getTotal(),
+                        score.getGrade(),
+                        new IrisScoreResponse.Breakdown(
+                                score.getTransparency(),
+                                score.getCraftsmanship(),
+                                score.getImpact(),
+                                score.getRepairability()
+                        ),
+                        IrisScoreResponse.FIXED_WEIGHTS,
+                        List.of()
+                ))
+                .orElse(null);
+
+        return new DppFormPublicResponse(dppResponse, scoreResponse);
     }
 
     private String generateUniquePublicCode() {

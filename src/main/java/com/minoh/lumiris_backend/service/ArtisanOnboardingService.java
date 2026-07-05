@@ -26,6 +26,14 @@ public class ArtisanOnboardingService {
     private final SireneService sireneService;
     private final MailService mailService;
 
+    @Transactional(readOnly = true)
+    public ArtisanProfileResponse findByUserEmail(String userEmail) {
+        User user = findUser(userEmail);
+        return artisanRepo.findByUser(user)
+                .map(this::toResponse)
+                .orElseThrow(() -> new ResourceNotFoundException("Profil artisan introuvable"));
+    }
+
     @Transactional
     public ArtisanProfileResponse register(String userEmail, ArtisanRegisterRequest request) {
         User user = findUser(userEmail);

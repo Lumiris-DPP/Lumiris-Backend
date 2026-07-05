@@ -22,6 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.security.SecureRandom;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -33,6 +34,10 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class DppFormService {
+
+    private static final String PUBLIC_CODE_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    private static final int PUBLIC_CODE_LENGTH = 8;
+    private static final SecureRandom RANDOM = new SecureRandom();
 
     private final DppFormRepository dppFormRepository;
     private final UserRepository userRepository;
@@ -56,6 +61,7 @@ public class DppFormService {
                     .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
             DppForm form = dppFormMapper.toEntity(request, user);
+            form.setPublicCode(generateUniquePublicCode());
 
             uploadedIds.forEach((partName, fileId) -> {
                 StoredFile storedFile = storedFileRepository.getReferenceById(fileId);
@@ -161,5 +167,43 @@ public class DppFormService {
 
     public IrisScoreResponse computeIrisScore(DppScoreInput input) {
         return irisScoreCalculator.compute(input);
+    }
+
+    @Transactional(readOnly = true)
+    public DppFormResponse findByPublicCode(String publicCode) {
+        DppForm form = dppFormRepository.findByPublicCode(publicCode)
+                .orElseThrow(() -> new ResourceNotFoundException("DPP not found"));
+
+        Hibernate.initialize(form.getMaterials());
+        Hibernate.initialize(form.getCareInstructions());
+        Hibernate.initialize(form.getDocuments());
+
+        String mainPhotoUrl = form.getMainPhotoFile() != null
+                ? storageService.getPresignedUrl(form.getMainPhotoFile().getId())
+                : null;
+
+        List<DppFormDocumentResponse> documents = form.getDocuments().stream()
+                .map(d -> new DppFormDocumentResponse(
+                        d.getFile().getId(),
+                        d.getDocumentType().name(),
+                        d.getVisibility().name(),
+                        d.getFile().getOriginalFilename(),
+                        storageService.getPresignedUrl(d.getFile().getId())
+                ))
+                .toList();
+
+        return dppFormMapper.toResponse(form, mainPhotoUrl, documents);
+    }
+
+    private String generateUniquePublicCode() {
+        String code;
+        do {
+            StringBuilder sb = new StringBuilder(PUBLIC_CODE_LENGTH);
+            for (int i = 0; i < PUBLIC_CODE_LENGTH; i++) {
+                sb.append(PUBLIC_CODE_CHARS.charAt(RANDOM.nextInt(PUBLIC_CODE_CHARS.length())));
+            }
+            code = sb.toString();
+        } while (dppFormRepository.existsByPublicCode(code));
+        return code;
     }
 }

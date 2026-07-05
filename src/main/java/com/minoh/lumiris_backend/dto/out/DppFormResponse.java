@@ -9,6 +9,7 @@ import java.util.UUID;
 
 public record DppFormResponse(
         UUID id,
+        String publicCode,
         Instant createdAt,
         DppStatus status,
 

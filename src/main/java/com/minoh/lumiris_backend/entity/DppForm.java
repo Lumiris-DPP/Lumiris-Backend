@@ -49,6 +49,9 @@ public class DppForm extends Auditable {
     @Column(name = "batch_number")
     private String batchNumber;
 
+    @Column(name = "public_code", unique = true, nullable = false, length = 8)
+    private String publicCode;
+
     @Column(unique = true)
     private String gtin;
 

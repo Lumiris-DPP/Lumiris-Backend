@@ -78,6 +78,7 @@ public class DppFormMapper {
 
         return new DppFormResponse(
                 form.getId(),
+                form.getPublicCode(),
                 form.getCreatedAt(),
                 form.getStatus(),
                 form.getProductName(),

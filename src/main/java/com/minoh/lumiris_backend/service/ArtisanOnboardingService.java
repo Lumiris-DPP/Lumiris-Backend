@@ -30,9 +30,19 @@ public class ArtisanOnboardingService {
     @Transactional
     public ArtisanProfileResponse register(String userEmail, ArtisanRegisterRequest request) {
         User user = findUser(userEmail);
+        ArtisanProfile profile = verifySiret(user, request.siret());
+        return toResponse(artisanRepo.save(profile));
+    }
 
-        SireneService.SireneData sirene = sireneService.validate(request.siret());
-        if (!cmaService.isRegisteredArtisan(request.siret())) {
+    @Transactional
+    public void verifySiretOnSignup(User user, String siret) {
+        ArtisanProfile profile = verifySiret(user, siret);
+        artisanRepo.save(profile);
+    }
+
+    private ArtisanProfile verifySiret(User user, String siret) {
+        SireneService.SireneData sirene = sireneService.validate(siret);
+        if (!cmaService.isRegisteredArtisan(siret)) {
             throw new IllegalArgumentException("SIRET non enregistré à la CMA");
         }
 
@@ -43,13 +53,12 @@ public class ArtisanOnboardingService {
             return p;
         });
 
-        profile.setSiret(request.siret());
+        profile.setSiret(siret);
         profile.setStatus(ArtisanStatus.PENDING);
         profile.setCompanyName(sirene.companyName());
         profile.setNafCode(sirene.nafCode());
         profile.setSireneRawData(sirene.rawJson());
-
-        return toResponse(artisanRepo.save(profile));
+        return profile;
     }
 
     @Transactional

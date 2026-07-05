@@ -42,6 +42,7 @@ public class AuthService {
     private final AuthenticationManager authenticationManager;
     private final JwtService jwtService;
     private final UserDetailsService userDetailsService;
+    private final ArtisanOnboardingService artisanOnboardingService;
 
     @Transactional
     public AuthResponse login(LoginRequest req) {
@@ -80,6 +81,10 @@ public class AuthService {
             profile.setJoinedAt(Instant.now());
             artisanProfileRepository.save(profile);
             user.setArtisanProfile(profile);
+
+            if (req.siret() != null && !req.siret().isBlank()) {
+                artisanOnboardingService.verifySiretOnSignup(user, req.siret());
+            }
         }
 
         return buildAuthResponse(user);

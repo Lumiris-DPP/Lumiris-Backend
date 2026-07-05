@@ -24,7 +24,6 @@ public class ArtisanOnboardingService {
     private final ArtisanProfileRepository artisanRepo;
     private final UserRepository userRepo;
     private final SireneService sireneService;
-    private final CmaService cmaService;
     private final MailService mailService;
 
     @Transactional
@@ -42,9 +41,6 @@ public class ArtisanOnboardingService {
 
     private ArtisanProfile verifySiret(User user, String siret) {
         SireneService.SireneData sirene = sireneService.validate(siret);
-        if (!cmaService.isRegisteredArtisan(siret)) {
-            throw new IllegalArgumentException("SIRET non enregistré à la CMA");
-        }
 
         ArtisanProfile profile = artisanRepo.findByUser(user).orElseGet(() -> {
             ArtisanProfile p = new ArtisanProfile();

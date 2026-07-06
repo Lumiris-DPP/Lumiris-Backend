@@ -33,6 +33,9 @@ public class User extends Auditable {
     @Column(name = "avatar_url")
     private String avatarUrl;
 
+    @Column(name = "stripe_customer_id", unique = true)
+    private String stripeCustomerId;
+
     @Column(name = "last_seen_at")
     private Instant lastSeenAt;
 

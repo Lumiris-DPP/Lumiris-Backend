@@ -1,6 +1,7 @@
 package com.minoh.lumiris_backend.config.security;
 
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
@@ -14,18 +15,23 @@ import java.util.Date;
 @Service
 public class JwtService {
 
-    @Value("${security.jwt.secret}")
-    private String secret;
+    private final SecretKey signingKey;
+    private final long expirationMillis;
 
-    @Value("${security.jwt.expiration}")
-    private long expiration;
+    public JwtService(
+            @Value("${security.jwt.secret}") String secret,
+            @Value("${security.jwt.expiration}") long expirationMillis) {
+        this.signingKey = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+        this.expirationMillis = expirationMillis;
+    }
 
     public String generateToken(UserDetails userDetails) {
+        Date now = new Date();
         return Jwts.builder()
                 .subject(userDetails.getUsername())
-                .issuedAt(new Date())
-                .expiration(new Date(System.currentTimeMillis() + expiration))
-                .signWith(getSigningKey())
+                .issuedAt(now)
+                .expiration(new Date(now.getTime() + expirationMillis))
+                .signWith(signingKey)
                 .compact();
     }
 
@@ -34,19 +40,20 @@ public class JwtService {
     }
 
     public boolean isTokenValid(String token, UserDetails userDetails) {
-        return extractUsername(token).equals(userDetails.getUsername())
-                && !extractClaims(token).getExpiration().before(new Date());
+        try {
+            Claims claims = extractClaims(token);
+            return claims.getSubject().equals(userDetails.getUsername())
+                    && claims.getExpiration().after(new Date());
+        } catch (JwtException | IllegalArgumentException e) {
+            return false;
+        }
     }
 
     private Claims extractClaims(String token) {
         return Jwts.parser()
-                .verifyWith(getSigningKey())
+                .verifyWith(signingKey)
                 .build()
                 .parseSignedClaims(token)
                 .getPayload();
-    }
-
-    private SecretKey getSigningKey() {
-        return Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
     }
 }

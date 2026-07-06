@@ -4,13 +4,12 @@ import com.minoh.lumiris_backend.dto.in.LoginRequest;
 import com.minoh.lumiris_backend.dto.in.RegisterRequest;
 import com.minoh.lumiris_backend.dto.out.AuthResponse;
 import com.minoh.lumiris_backend.dto.out.UserResponse;
+import com.minoh.lumiris_backend.config.security.CurrentUserEmail;
 import com.minoh.lumiris_backend.service.AuthService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -31,7 +30,7 @@ public class AuthController {
     }
 
     @GetMapping("/me")
-    ResponseEntity<UserResponse> me(@AuthenticationPrincipal UserDetails userDetails) {
-        return ResponseEntity.ok(authService.me(userDetails.getUsername()));
+    ResponseEntity<UserResponse> me(@CurrentUserEmail String email) {
+        return ResponseEntity.ok(authService.me(email));
     }
 }

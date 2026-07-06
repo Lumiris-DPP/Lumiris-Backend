@@ -1,402 +1,217 @@
-
 # Lumiris Backend API
 
-[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.4.5-6DB33F.svg?style=flat&logo=springboot)](https://spring.io/projects/spring-boot)
+[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.0.6-6DB33F.svg?style=flat&logo=springboot)](https://spring.io/projects/spring-boot)
 [![Java](https://img.shields.io/badge/Java-21-ED8B00.svg?style=flat&logo=openjdk)](https://openjdk.org)
-[![Docker](https://img.shields.io/badge/Docker-ready-2496ED.svg?style=flat&logo=docker)](https://www.docker.com)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17-336791.svg?style=flat&logo=postgresql)](https://www.postgresql.org)
+[![Stripe](https://img.shields.io/badge/Stripe-billing-635BFF.svg?style=flat&logo=stripe)](https://stripe.com)
 
-> Backend API of **LUMIRIS** — Digital Product Passport platform for French textile artisans. Built with Java 21, Spring Boot 3, PostgreSQL & DPP/ESPR compliance.
-
----
-
-## 📖 Table of Contents
-
-- [What is Lumiris?](#-what-is-lumiris)
-- [Architecture Overview](#-architecture-overview)
-- [Tech Stack](#-tech-stack)
-- [Getting Started](#-getting-started)
-- [Project Structure](#-project-structure)
-- [Development Workflow](#-development-workflow)
-- [Contributing](#-contributing)
+> API backend de **LUMIRIS** — plateforme de Passeport Numérique Produit (DPP)
+> pour les artisans textiles français. Java 21 · Spring Boot 4 · PostgreSQL 17 ·
+> auth JWT · facturation Stripe · stockage MinIO · ancrage blockchain (Sepolia) ·
+> conformité DPP/ESPR.
 
 ---
 
-## 🎯 What is Lumiris?
+## 🚀 Démarrer
 
-**Lumiris** is a Digital Product Passport (DPP) platform designed for French textile artisans, enabling full traceability and transparency of textile products in compliance with the **European ESPR regulation** (Ecodesign for Sustainable Products Regulation).
+### Option A — toute la stack (recommandé)
 
-### What is a Digital Product Passport?
-
-A **DPP** is a digital record attached to a physical product that contains all information about its lifecycle:
-
-- **Origin**: Where the raw materials come from
-- **Manufacturing**: Who made it, where, and how
-- **Composition**: Materials, certifications, environmental impact
-- **Repairability**: Instructions and spare parts availability
-- **End of life**: Recycling and disposal guidelines
-
-### Who uses Lumiris?
-
-- **Textile artisans**: Create and manage their product passports
-- **Consumers**: Scan a QR code to access full product traceability
-- **Regulators**: Verify ESPR compliance for products sold in the EU
-
-### Key Features:
-
-- **DPP Management**: Create, update and publish product passports
-- **ESPR Compliance**: Built to meet EU regulation requirements
-- **QR Code Generation**: Each product gets a scannable passport
-- **OAuth2 Authentication**: Secure login for artisans
-- **AI Document Analysis**: Extract product data from PDF documents via Spring AI + OpenAI
-- **Session Management**: Redis-backed persistent sessions
-- **API Documentation**: Full Swagger / OpenAPI spec
-
----
-
-## 🏗️ Architecture Overview
-
-### Request Flow:
-
-```
-Client (Artisan Dashboard / Consumer Scan)
-                ↓
-    Spring Security (OAuth2 / Session)
-                ↓
-        REST Controller
-                ↓
-        Service Layer
-                ↓
-        ├→ PostgreSQL (JPA / Hibernate + Flyway)
-        ├→ Redis (Session store)
-        └→ OpenAI API (Spring AI — PDF & document analysis)
-```
-
-### Key Architectural Decisions:
-
-1. **Spring Security + OAuth2**: Authentication via external providers (Google, etc.)
-   - **Why?** No password management, secure by default for artisans
-
-2. **Flyway Migrations**: Versioned database schema
-   - **Why?** DPP data models evolve with ESPR regulation — migrations must be auditable
-
-3. **Redis Sessions**: Persistent sessions across restarts
-   - **Why?** Stateless app, sessions survive container restarts in production
-
-4. **Spring AI + OpenAI**: PDF document reading and data extraction
-   - **Why?** Artisans can upload existing product documents and auto-fill passport fields
-
-5. **ESPR Compliance Layer**: Business rules enforcing regulation requirements
-   - **Why?** The EU ESPR regulation mandates specific data fields and formats for DPPs
-
----
-
-## 🛠️ Tech Stack
-
-### Backend
-- **Spring Boot 3.4.5**: Main framework
-- **Java 21**: LTS version
-- **Spring Security + OAuth2**: Authentication & authorization
-- **Spring AI 1.0.0**: OpenAI integration & PDF document reader
-- **Spring Validation**: Input validation
-
-### Database
-- **PostgreSQL 17**: Primary database
-- **Flyway**: Schema migrations
-- **Hibernate / JPA**: ORM
-
-### Infrastructure
-- **Redis 7**: Session storage
-- **Docker + Docker Compose**: Containerization
-- **pgAdmin 4**: Database management UI
-
-### Development Tools
-- **Spring DevTools**: Hot reload
-- **Swagger / SpringDoc 2**: API documentation
-- **Testcontainers**: Integration testing with real containers
-- **Lombok**: Boilerplate reduction
-
----
-
-## 🚀 Getting Started
-
-### Prerequisites
-
-- Docker Desktop ([Download](https://www.docker.com/products/docker-desktop))
-- Java 21+
-- Maven (or use `./mvnw`)
-
-### Step 1: Clone the Repository
+Le backend fait partie de l'écosystème Lumiris (front + infra). Le plus simple
+est de tout lancer depuis **Lumiris-Infra** :
 
 ```bash
-git clone <repo-url>
-cd lumiris-backend
+cd ../Lumiris-Infra && make dev      # infra (Postgres…) + backend + front + stripe
 ```
 
-### Step 2: Configure Environment
+Puis, **au premier lancement uniquement**, appliquer migrations + seeds (voir la
+section **Base de données** ci-dessous). Détails : [`../Lumiris-Infra/README.md`](../Lumiris-Infra/README.md).
+
+### Option B — backend seul
+
+**Pré-requis :** Java 21, Docker (Postgres), Maven (`./mvnw` fourni).
 
 ```bash
-cp .env.example .env
+cp .env.example .env          # puis renseigner les valeurs (DB, JWT_SECRET, Stripe…)
+
+make start                    # Postgres via docker compose
+# première fois : migrer + seed (cf. section Base de données)
+make run                      # = ./mvnw spring-boot:run  → http://localhost:8080
 ```
 
-Edit `.env` with your values:
-
-```env
-# Database
-SPRING_DATASOURCE_USERNAME=kader
-SPRING_DATASOURCE_PASSWORD=
-
-# Redis
-SPRING_DATA_REDIS_HOST=localhost
-
-# OpenAI (for PDF document analysis)
-OPENAI_API_KEY=sk-your-key-here
-
-# CORS (your frontend URL)
-CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
-```
-
-### Step 3: Start Development Environment
-
-```bash
-make dev
-```
-
-This will:
-- Start PostgreSQL, Redis and pgAdmin in Docker
-- Launch Spring Boot locally with **hot reload**
-- Run Flyway migrations automatically
-
-### Step 4: Verify Everything Works
-
-| URL | Service |
-|-----|---------|
-| `http://localhost:8081/swagger-ui/index.html` | Swagger UI (dev + hot reload) |
-| `http://localhost:8080/swagger-ui/index.html` | Swagger UI (prod Docker) |
-| `http://localhost:5050` | pgAdmin (admin@lumiris.com / admin) |
-| `http://localhost:8081/actuator/health` | Health check |
+Le backend écoute sur **`http://localhost:8080`**. Il attend Postgres sur
+`localhost:5433` (cf. `SPRING_DATASOURCE_URL` dans `.env`).
 
 ---
 
-## 🔐 Seed Accounts
+## 🗄️ Base de données
 
-The database is pre-seeded with one account per role for local development:
+Migrations **Flyway** dans `src/main/resources/db/`. ⚠️ Elles **ne s'exécutent
+pas automatiquement** au démarrage (Spring Boot 4) : il faut les appliquer via
+le plugin Maven. Les **seeds** (`V2__seed_users`, `V6__seed_artisan_profiles`)
+vivent dans `db/seed`, **séparés** de `db/migration`.
 
-| Role | Email | Password |
-|------|-------|----------|
-| `ADMIN` | `admin@lumiris.com` | `admin123` |
-| `ARTISAN` | `artisan@lumiris.com` | `artisan123` |
-| `CLIENT` | `client@lumiris.com` | `client123` |
+```bash
+set -a && . ./.env && set +a
+# migrations + seeds (indispensable pour avoir des comptes de connexion) :
+./mvnw flyway:migrate \
+  -Dflyway.locations=filesystem:src/main/resources/db/migration,filesystem:src/main/resources/db/seed
+
+./mvnw flyway:info            # statut des migrations
+```
+
+> Sans les deux `flyway.locations`, seul le schéma est créé (aucun utilisateur →
+> connexion impossible). La commande est idempotente.
+
+---
+
+## 🔐 Authentification & comptes de démo
+
+Auth **JWT** (email/mot de passe → jeton Bearer). Endpoints publics :
+`/api/auth/**`, `/api/stripe/webhook`, `/swagger-ui/**`, `/v3/api-docs/**`,
+`/actuator/**`. Tout le reste exige `Authorization: Bearer <token>`.
+
+Un compte par rôle est seedé (mot de passe = `<rôle>123`) :
+
+| Rôle       | Email                  | Mot de passe  |
+| ---------- | ---------------------- | ------------- |
+| `ADMIN`    | `admin@lumiris.com`    | `admin123`    |
+| `ARTISAN`  | `artisan@lumiris.com`  | `artisan123`  |
+| `CONSUMER` | `client@lumiris.com`   | `client123`   |
 | `REPAIRER` | `repairer@lumiris.com` | `repairer123` |
 
-To get a JWT token:
+```bash
+# retourne { token, user }
+curl -s http://localhost:8080/api/auth/login \
+  -H 'content-type: application/json' \
+  -d '{"email":"artisan@lumiris.com","password":"artisan123"}'
+
+make postman   # raccourci : login admin, réponse formatée
+```
+
+---
+
+## 🔌 API principale
+
+- **Auth** (`/api/auth`) — `POST login`, `POST register`, `GET me`
+- **DPP** (`/api/dpp-forms`) — `POST` (**multipart** : part `data` JSON + fichiers `productPhoto`/documents), `GET` (liste), `GET /{id}`, `GET /{id}/iris_score`, `GET /{id}/verify` (ancrage blockchain)
+- **Abonnement** (`/api/subscription`) — `GET` (état), `GET plans`, `POST setup-intent`, `POST confirm`, `POST change` (changement de plan), `POST portal`
+- **Stripe** — `POST /api/stripe/webhook` (signé HMAC, non authentifié)
+- **Public** (`/public/**`) — endpoints consommateur (scan / vérification DPP), non authentifiés
+
+Docs & observabilité :
+
+- **Swagger UI** : `http://localhost:8080/swagger-ui/index.html`
+- **OpenAPI JSON** : `http://localhost:8080/v3/api-docs`
+- **Health** : `http://localhost:8080/actuator/health` · **Métriques** : `/actuator/prometheus`
+
+---
+
+## 💳 Facturation Stripe
+
+Paliers ATELIER en **mode test** : SetupIntent (carte uniquement) → confirmation →
+abonnement, quotas de passeports, changement de plan in-app (`POST /api/subscription/change`,
+proration), et portail client. Les webhooks (`/api/stripe/webhook`) synchronisent
+l'état ; en local, le CLI Stripe les forwarde (lancé par `make dev`, ou manuellement —
+voir [`../Lumiris-Infra/README.md#stripe-webhooks-locaux`](../Lumiris-Infra/README.md)).
+
+Clés attendues dans `.env` : `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`,
+`STRIPE_WEBHOOK_SECRET`, `STRIPE_PRODUCT_*` (ids produits).
+
+---
+
+## 📦 Stockage (MinIO) & ⛓️ Blockchain (Ethereum Sepolia)
+
+- **Stockage fichiers** : les photos produit et documents DPP sont uploadés sur
+  **MinIO** (S3). En local, MinIO tourne dans la stack infra (`localhost:9000`) et
+  le bucket est créé au démarrage. Défauts locaux dans `application.yaml` → aucune
+  config requise pour `make dev`.
+- **Ancrage blockchain** : à chaque création de DPP, le hash SHA-256 des données est
+  ancré de façon **asynchrone** sur **Ethereum Sepolia** (calldata), vérifiable via
+  `GET /api/dpp-forms/{id}/verify` (`PENDING` → `ANCHORED`/`FAILED`).
+
+> **En local, aucune config blockchain n'est nécessaire** : `application.yaml` fournit
+> une RPC Sepolia publique + une clé de test jetable, donc l'app démarre out-of-the-box.
+> L'ancrage échoue silencieusement (clé non financée) — c'est attendu. Pour un ancrage
+> réel, renseigne `BLOCKCHAIN_RPC_URL` (Alchemy) + `BLOCKCHAIN_WALLET_PRIVATE_KEY`
+> (wallet Sepolia financé, sans le préfixe `0x`) dans `.env`.
+
+Variables `.env` : `MINIO_*` (stockage) · `BLOCKCHAIN_RPC_URL` / `BLOCKCHAIN_WALLET_PRIVATE_KEY`.
+
+---
+
+## 🛠️ Tech stack
+
+- **Spring Boot 4.0.6** / **Java 21** — web, validation, security, data-jpa, actuator, devtools
+- **PostgreSQL 17** + **Flyway** (migrations versionnées)
+- **JWT** via `jjwt` (`JwtService`, `JwtAuthFilter`) — sessions stateless, mots de passe BCrypt
+- **Stripe** (`stripe-java`) — abonnements, quotas, webhooks
+- **MinIO** (S3) — stockage des photos & documents DPP
+- **web3j** — ancrage du hash DPP sur Ethereum Sepolia
+- **springdoc-openapi** — Swagger UI / OpenAPI
+- **Micrometer + Prometheus** — `/actuator/prometheus`
+- **Testcontainers** + JUnit 5 — tests d'intégration sur un vrai Postgres
+
+---
+
+## 📁 Structure
+
+```text
+src/main/java/com/minoh/lumiris_backend/
+├── config/          # SecurityConfig (JWT), CorsConfig, config Stripe
+│   └── security/    # JwtAuthFilter, JwtService, @CurrentUserEmail
+├── controller/      # AuthController, DppFormController, SubscriptionController, StripeWebhookController
+├── service/         # logique métier
+│   └── stripe/      # SubscriptionService, catalogue, sync, webhooks
+├── entity/          # User, DppForm, DppMaterial, ArtisanProfile, UserSubscription…
+├── repository/      # Spring Data JPA
+├── domain/          # PlanTier, BillingCycle, statuts…
+├── dto/{in,out}/    # DTOs requêtes / réponses
+└── exception/       # GlobalExceptionHandler + exceptions métier
+src/main/resources/
+├── application.yaml
+└── db/{migration,seed}/   # Flyway
+```
+
+---
+
+## 💻 Commandes (Makefile)
 
 ```bash
-curl -X POST http://localhost:8081/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"admin@lumiris.com","password":"admin123"}'
+make help        # liste des commandes
+
+# Docker (Postgres)
+make start       # up -d
+make stop        # stop (garde les containers)
+make down        # down
+make fresh       # down -v + up -d  (⚠️ efface les volumes → base vide, re-seed nécessaire)
+make logs        # logs Postgres
+
+# App
+make run                 # ./mvnw spring-boot:run  (hot reload via devtools)
+make mvn <args>          # n'importe quelle commande Maven avec .env chargé
+                         #   ex: make mvn flyway:info · make mvn clean package -DskipTests
+
+# Aide-mémoire (affichent les commandes à lancer)
+make maven · make flyway · make test · make info
 ```
 
 ---
 
-## 📁 Project Structure
-
-```
-lumiris-backend/
-├── src/
-│   ├── main/
-│   │   ├── java/com/minoh/lumiris_backend/
-│   │   │   ├── config/          # Security, CORS configuration
-│   │   │   ├── controller/      # REST endpoints (DPP, artisan, product)
-│   │   │   ├── service/         # Business logic & ESPR compliance rules
-│   │   │   ├── entity/          # JPA entities (Product, Passport, Artisan...)
-│   │   │   ├── repository/      # Spring Data repositories
-│   │   │   └── dto/             # Data Transfer Objects
-│   │   └── resources/
-│   │       ├── application.yaml      # App configuration
-│   │       └── db/migration/         # Flyway migrations (V1__*.sql)
-│   └── test/                         # Tests (JUnit 5 + Testcontainers)
-├── docker-compose.yaml               # Docker services
-├── Dockerfile                        # Multi-stage production build
-├── Makefile                          # Developer commands
-├── .env                              # Local environment variables
-└── .env.example                      # Environment template
-```
-
----
-
-## 💻 Development Workflow
-
-### Common Commands
+## 🧪 Tests
 
 ```bash
-make help               # Show all available commands
-
-# Docker
-make dev                # Start full dev environment (hot reload)
-make up                 # Build and start production containers
-make down               # Stop all containers
-make logs               # Follow app logs
-make ps                 # Show running containers
-
-# Database
-make db-info            # Show Flyway migration status
-make db-migrate         # Run pending migrations
-make db-validate        # Validate migrations
-make db-reset           # Reset database (clean + migrate)
-
-# Testing
-make test               # Run all tests
-make test-unit          # Run unit tests only
-make test-integration   # Run integration tests (Testcontainers)
-make test-coverage      # Run tests with HTML coverage report
-
-# Redis
-make redis-cli          # Open Redis CLI
-make redis-flush        # Flush all Redis data
-make redis-keys         # Show all Redis keys
-
-# Utilities
-make ssh                # SSH into app container
-make clean              # Remove containers + volumes + build artifacts
-```
-
-### Adding a New DPP Field (ESPR Compliance)
-
-1. **Create a Flyway migration** in `src/main/resources/db/migration/`:
-
-```sql
--- V2__add_espr_repairability_score.sql
-ALTER TABLE product_passport
-ADD COLUMN repairability_score DECIMAL(3,1),
-ADD COLUMN repairability_index VARCHAR(10);
-```
-
-2. **Update the Entity**:
-
-```java
-@Entity
-public class ProductPassport {
-    @Column
-    private BigDecimal repairabilityScore;
-
-    @Column
-    private String repairabilityIndex;
-}
-```
-
-3. **Add validation** (ESPR requires score between 0 and 10):
-
-```java
-@DecimalMin("0.0") @DecimalMax("10.0")
-private BigDecimal repairabilityScore;
+./mvnw test                          # tous les tests (Testcontainers démarre un Postgres)
+./mvnw test -Dtest=DppFormServiceTest
+./mvnw test jacoco:report            # couverture → target/site/jacoco/index.html
 ```
 
 ---
 
-## 🧪 Testing
+## 🤝 Contribution
 
-```bash
-make test               # Run all tests
-make test-unit          # Unit tests only
-make test-integration   # Integration tests (uses Testcontainers)
-make test-coverage      # HTML report → target/site/jacoco/index.html
-```
-
-Integration tests use **Testcontainers** — a real PostgreSQL instance spins up automatically, no manual setup needed.
+Branche de feature → tests verts → [Conventional Commits](https://www.conventionalcommits.org/)
+(`feat(billing): …`, `fix(dpp): …`) → Pull Request.
 
 ---
 
-## 📚 API Documentation
-
-- **Swagger UI** (dev): `http://localhost:8081/swagger-ui/index.html`
-- **Swagger UI** (prod): `http://localhost:8080/swagger-ui/index.html`
-- **OpenAPI JSON**: `http://localhost:8081/v3/api-docs`
-
----
-
-## 🤝 Contributing
-
-1. **Create a feature branch**: `git checkout -b feature/your-feature`
-2. **Make your changes**
-3. **Run tests**: `make test`
-4. **Commit** following [Conventional Commits](https://www.conventionalcommits.org/):
-   ```
-   feat: add repairability score to product passport
-   fix: correct Flyway migration order for ESPR fields
-   docs: update DPP compliance requirements
-   ```
-5. **Push and open a Pull Request**
-
----
-
-## 🚀 Quick Reference
-
-| Task | Command |
-|------|---------|
-| Start dev (hot reload) | `make dev` |
-| Start production | `make up` |
-| Run tests | `make test` |
-| View API docs | `http://localhost:8081/swagger-ui/index.html` |
-| Open database UI | `http://localhost:5050` |
-| SSH into container | `make ssh` |
-| View logs | `make logs` |
-| Reset database | `make db-reset` |
-| Stop everything | `make down` |
-
----
-
-## ⛓️ Blockchain Setup (Ethereum Sepolia)
-
-Each DPP created is automatically anchored on the **Ethereum Sepolia testnet** via an Alchemy RPC node. The SHA-256 hash of the DPP data is stored in the transaction's calldata, making it externally verifiable and tamper-proof.
-
-### Prerequisites
-
-1. **Create an Alchemy account** at [alchemy.com](https://www.alchemy.com) and create a new app on **Ethereum Sepolia**. Copy the HTTPS RPC URL (looks like `https://eth-sepolia.g.alchemy.com/v2/YOUR_KEY`).
-
-2. **Create a MetaMask wallet** and switch to the **Sepolia testnet**. Export your private key (Account > Settings > Export private key) — MetaMask exports it with a `0x` prefix, **remove the `0x`** before using it.
-
-3. **Get Sepolia ETH** (testnet tokens, free) at [cloud.google.com/application/web3/faucet/ethereum/sepolia](https://cloud.google.com/application/web3/faucet/ethereum/sepolia). You need a small amount to pay gas fees for each anchor transaction.
-
-### Configuration
-
-Add the two variables to your `.env` file:
-
-```env
-BLOCKCHAIN_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/YOUR_ALCHEMY_KEY
-BLOCKCHAIN_WALLET_PRIVATE_KEY=your_private_key_without_0x_prefix
-```
-
-> These variables are never committed — `.env` and `application-local.yaml` are gitignored.
-
-### How it works
-
-| Step | What happens |
-|------|-------------|
-| DPP created | SHA-256 hash computed from product fields, stored in DB with status `PENDING` |
-| After DB commit | Async job sends a transaction to Sepolia with the hash as calldata |
-| Receipt confirmed | Status updated to `ANCHORED`, transaction hash stored in DB |
-| `GET /api/dpp-forms/{id}/verify` | Retrieves hash from blockchain and compares to recomputed hash |
-
-### Verification response
-
-```json
-{
-  "id": "...",
-  "verified": true,
-  "blockchainHash": "6b3ae768...",
-  "recomputedHash": "6b3ae768...",
-  "blockchainTxHash": "0xdeadbeef...",
-  "anchorStatus": "ANCHORED",
-  "message": null
-}
-```
-
-- `verified: true` → the DPP data has not been tampered with since anchoring
-- `anchorStatus` can be `PENDING`, `ANCHORED`, or `FAILED`
-
----
-
-## 📝 License
-
-This project is proprietary and confidential. All rights reserved © Lumiris.
+© Lumiris — propriétaire et confidentiel.

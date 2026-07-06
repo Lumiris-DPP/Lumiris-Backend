@@ -88,12 +88,11 @@ class DppFormControllerTest {
                 objectMapper.writeValueAsBytes(request)
         );
 
+        // create returns DppFormCreatedResponse(id) only — the full DPP is fetched via GET /{id}.
         mockMvc.perform(multipart("/api/dpp-forms").file(dataPart))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.id").value(id.toString()))
-                .andExpect(jsonPath("$.productName").value("Pull Merino"))
-                .andExpect(jsonPath("$.id").isNotEmpty())
-                .andExpect(jsonPath("$.dataHash").value("abc123hash"));
+                .andExpect(jsonPath("$.id").isNotEmpty());
 
         verify(dppFormService).create(any(), anyMap(), eq(USER_EMAIL));
     }

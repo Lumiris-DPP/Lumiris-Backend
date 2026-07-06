@@ -5,15 +5,20 @@ import java.util.Map;
 
 public record ErrorResponse(
         int status,
+        String code,
         String message,
         Instant timestamp,
         Map<String, String> errors
 ) {
     public ErrorResponse(int status, String message) {
-        this(status, message, Instant.now(), null);
+        this(status, null, message, Instant.now(), null);
     }
 
     public ErrorResponse(int status, String message, Map<String, String> errors) {
-        this(status, message, Instant.now(), errors);
+        this(status, null, message, Instant.now(), errors);
+    }
+
+    public ErrorResponse(int status, String code, String message) {
+        this(status, code, message, Instant.now(), null);
     }
 }

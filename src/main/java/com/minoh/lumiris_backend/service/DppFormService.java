@@ -57,6 +57,7 @@ public class DppFormService {
     private final TransactionTemplate transactionTemplate;
     private final DppHashUtil dppHashUtil;
     private final BlockchainService blockchainService;
+    private final QuotaService quotaService;
 
     public DppFormCreatedResponse create(DppFormRequest request, Map<String, MultipartFile> files, String userEmail) {
         Map<String, UUID> uploadedIds = new LinkedHashMap<>();
@@ -69,6 +70,10 @@ public class DppFormService {
         return Objects.requireNonNull(transactionTemplate.execute(status -> {
             User user = userRepository.findByEmail(userEmail)
                     .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+            // Billing gate: require an active passport-granting subscription within quota.
+            // Inside the create transaction so assertCanCreate's SELECT ... FOR UPDATE is TOCTOU-safe.
+            quotaService.assertCanCreate(user);
 
             DppForm form = dppFormMapper.toEntity(request, user);
             form.setPublicCode(generateUniquePublicCode());

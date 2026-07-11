@@ -11,6 +11,9 @@ public interface DppFormRepository extends JpaRepository<DppForm, UUID> {
 
     List<DppForm> findByUserId(UUID userId);
 
+    // Used by the billing QuotaService to count a user's existing passports against their plan quota.
+    long countByUserId(UUID userId);
+
     Optional<DppForm> findByPublicCode(String publicCode);
 
     boolean existsByPublicCode(String publicCode);

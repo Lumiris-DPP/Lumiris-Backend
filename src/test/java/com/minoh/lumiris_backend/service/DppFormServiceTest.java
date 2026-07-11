@@ -73,6 +73,9 @@ class DppFormServiceTest {
     @Mock
     private BlockchainService blockchainService;
 
+    @Mock
+    private QuotaService quotaService;
+
     @InjectMocks
     private DppFormService service;
 

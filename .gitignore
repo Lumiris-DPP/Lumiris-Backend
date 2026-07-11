@@ -36,6 +36,9 @@ build/
 .env.local
 .env
 
+# Local Spring config (contains real credentials, never commit)
+src/main/resources/application-local.yaml
+
 # Misc
 Lumiris-Front
 CLAUDE.md

@@ -1,14 +1,16 @@
 package com.minoh.lumiris_backend.mapper;
 
-import com.minoh.lumiris_backend.dto.in.CertificationRequest;
 import com.minoh.lumiris_backend.dto.in.DppFormRequest;
 import com.minoh.lumiris_backend.dto.in.MaterialRequest;
+import com.minoh.lumiris_backend.dto.out.DppFormDocumentResponse;
 import com.minoh.lumiris_backend.dto.out.DppFormResponse;
 import com.minoh.lumiris_backend.dto.out.DppFormSummaryResponse;
 import com.minoh.lumiris_backend.entity.*;
 import org.springframework.stereotype.Component;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @Component
 public class DppFormMapper {
@@ -31,7 +33,6 @@ public class DppFormMapper {
         form.setProductDescription(request.productDescription());
         form.setProductCategory(request.productCategory());
         form.setOriginCountry(request.originCountry());
-        form.setMainPhotoUrl(request.mainPhotoUrl());
         form.setManufacturedAt(request.manufacturedAt());
         form.setBatchNumber(request.batchNumber());
         form.setGtin(request.gtin());
@@ -43,6 +44,7 @@ public class DppFormMapper {
         form.setEndOfLifeInstructions(request.endOfLifeInstructions());
         form.setAvailableSizes(request.availableSizes());
         form.setColors(request.colors());
+        form.setCareNotes(request.careNotes());
 
         if (request.materials() != null) {
             request.materials().forEach(m -> {
@@ -64,21 +66,10 @@ public class DppFormMapper {
             });
         }
 
-        if (request.certifications() != null) {
-            request.certifications().forEach(c -> {
-                DppCertification cert = new DppCertification();
-                cert.setDppForm(form);
-                cert.setName(c.name());
-                cert.setCustomName(c.customName());
-                cert.setLicenseNumber(c.licenseNumber());
-                form.getCertifications().add(cert);
-            });
-        }
-
         return form;
     }
 
-    public DppFormResponse toResponse(DppForm form) {
+    public DppFormResponse toResponse(DppForm form, String mainPhotoUrl, List<DppFormDocumentResponse> documents) {
         List<MaterialRequest> materials = form.getMaterials().stream()
                 .map(m -> new MaterialRequest(m.getFiber(), m.getPercentage(), m.getOriginCountry()))
                 .toList();
@@ -87,12 +78,9 @@ public class DppFormMapper {
                 .map(DppCareInstruction::getCareCode)
                 .toList();
 
-        List<CertificationRequest> certifications = form.getCertifications().stream()
-                .map(c -> new CertificationRequest(c.getName(), c.getCustomName(), c.getLicenseNumber()))
-                .toList();
-
         return new DppFormResponse(
                 form.getId(),
+                form.getPublicCode(),
                 form.getCreatedAt(),
                 form.getStatus(),
                 form.getProductName(),
@@ -101,10 +89,10 @@ public class DppFormMapper {
                 form.getOriginCountry(),
                 form.getAvailableSizes(),
                 form.getColors(),
-                form.getMainPhotoUrl(),
+                mainPhotoUrl,
                 materials,
                 careInstructions,
-                certifications,
+                form.getCareNotes(),
                 form.getManufacturedAt(),
                 form.getBatchNumber(),
                 form.getGtin(),
@@ -113,7 +101,37 @@ public class DppFormMapper {
                 form.getRecycledPct(),
                 form.getWarrantyDescription(),
                 form.getIsRepairable(),
-                form.getEndOfLifeInstructions()
+                form.getEndOfLifeInstructions(),
+                form.getDataHash(),
+                form.getBlockchainAnchorStatus(),
+                form.getBlockchainTxHash(),
+                documents
         );
+    }
+
+    public Map<String, Object> toHashableData(DppForm dppForm) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("productName", dppForm.getProductName());
+        data.put("productDescription", dppForm.getProductDescription());
+        data.put("productCategory", dppForm.getProductCategory());
+        data.put("originCountry", dppForm.getOriginCountry());
+        data.put("availableSizes", dppForm.getAvailableSizes());
+        data.put("colors", dppForm.getColors());
+        data.put("manufacturedAt", dppForm.getManufacturedAt());
+        data.put("batchNumber", dppForm.getBatchNumber());
+        data.put("gtin", dppForm.getGtin());
+        data.put("sku", dppForm.getSku());
+        data.put("reachCompliant", dppForm.getReachCompliant());
+        data.put("recycledPct", dppForm.getRecycledPct());
+        data.put("warrantyDescription", dppForm.getWarrantyDescription());
+        data.put("isRepairable", dppForm.getIsRepairable());
+        data.put("endOfLifeInstructions", dppForm.getEndOfLifeInstructions());
+        data.put("materials", dppForm.getMaterials().stream()
+                .map(m -> Map.of("fiber", m.getFiber(), "percentage", m.getPercentage(), "originCountry", String.valueOf(m.getOriginCountry())))
+                .toList());
+        data.put("careInstructions", dppForm.getCareInstructions().stream()
+                .map(c -> Map.of("careCode", c.getCareCode()))
+                .toList());
+        return data;
     }
 }

@@ -1,7 +1,7 @@
 package com.minoh.lumiris_backend.dto.out;
 
-import com.minoh.lumiris_backend.dto.in.CertificationRequest;
 import com.minoh.lumiris_backend.dto.in.MaterialRequest;
+import com.minoh.lumiris_backend.entity.BlockchainAnchorStatus;
 import com.minoh.lumiris_backend.entity.DppStatus;
 
 import java.time.Instant;
@@ -10,6 +10,7 @@ import java.util.UUID;
 
 public record DppFormResponse(
         UUID id,
+        String publicCode,
         Instant createdAt,
         DppStatus status,
 
@@ -23,7 +24,7 @@ public record DppFormResponse(
 
         List<MaterialRequest> materials,
         List<String> careInstructions,
-        List<CertificationRequest> certifications,
+        String careNotes,
 
         String manufacturedAt,
         String batchNumber,
@@ -34,5 +35,10 @@ public record DppFormResponse(
         Integer recycledPct,
         String warrantyDescription,
         Boolean isRepairable,
-        String endOfLifeInstructions
+        String endOfLifeInstructions,
+        String dataHash,
+        BlockchainAnchorStatus blockchainAnchorStatus,
+        String blockchainTxHash,
+
+        List<DppFormDocumentResponse> documents
 ) {}

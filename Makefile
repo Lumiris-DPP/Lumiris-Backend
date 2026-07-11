@@ -11,6 +11,13 @@ export SPRING_DATASOURCE_USERNAME
 export SPRING_DATASOURCE_PASSWORD
 export CORS_ALLOWED_ORIGINS
 export JWT_SECRET
+export MINIO_ENDPOINT
+export MINIO_ACCESS_KEY
+export MINIO_SECRET_KEY
+export MINIO_BUCKET
+export SPRING_PROFILES_ACTIVE
+export BLOCKCHAIN_RPC_URL
+export BLOCKCHAIN_WALLET_PRIVATE_KEY
 
 .DEFAULT_GOAL := help
 .PHONY: help start stop down fresh logs run mvn maven flyway test postman

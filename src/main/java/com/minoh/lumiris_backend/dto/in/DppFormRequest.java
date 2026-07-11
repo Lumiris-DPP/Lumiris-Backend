@@ -9,11 +9,10 @@ public record DppFormRequest(
         String originCountry,
         List<String> availableSizes,
         List<String> colors,
-        String mainPhotoUrl,
 
         List<MaterialRequest> materials,
         List<String> careInstructions,
-        List<CertificationRequest> certifications,
+        String careNotes,
 
         String manufacturedAt,
         String batchNumber,

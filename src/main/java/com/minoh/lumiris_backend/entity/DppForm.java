@@ -43,14 +43,14 @@ public class DppForm extends Auditable {
     @Column(name = "origin_country")
     private String originCountry;
 
-    @Column(name = "main_photo_url")
-    private String mainPhotoUrl;
-
     @Column(name = "manufactured_at")
     private String manufacturedAt;
 
     @Column(name = "batch_number")
     private String batchNumber;
+
+    @Column(name = "public_code", unique = true, nullable = false, length = 8)
+    private String publicCode;
 
     @Column(unique = true)
     private String gtin;
@@ -81,12 +81,29 @@ public class DppForm extends Auditable {
     @JdbcTypeCode(SqlTypes.ARRAY)
     private List<String> colors;
 
+    @Column(name = "data_hash", length = 64, nullable = false)
+    private String dataHash;
+
+    @Column(name = "blockchain_tx_hash", length = 66)
+    private String blockchainTxHash;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "blockchain_anchor_status", nullable = false, length = 20)
+    private BlockchainAnchorStatus blockchainAnchorStatus = BlockchainAnchorStatus.PENDING;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "main_photo_file_id")
+    private StoredFile mainPhotoFile;
+
     @OneToMany(mappedBy = "dppForm", cascade = CascadeType.PERSIST, fetch = FetchType.LAZY)
     private List<DppMaterial> materials = new ArrayList<>();
+
+    @Column(name = "care_notes")
+    private String careNotes;
 
     @OneToMany(mappedBy = "dppForm", cascade = CascadeType.PERSIST, fetch = FetchType.LAZY)
     private List<DppCareInstruction> careInstructions = new ArrayList<>();
 
     @OneToMany(mappedBy = "dppForm", cascade = CascadeType.PERSIST, fetch = FetchType.LAZY)
-    private List<DppCertification> certifications = new ArrayList<>();
+    private List<DppFormDocument> documents = new ArrayList<>();
 }

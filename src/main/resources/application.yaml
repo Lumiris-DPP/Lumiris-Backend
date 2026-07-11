@@ -1,38 +1,93 @@
 spring:
-  application:
-    name: lumiris-backend
+    application:
+        name: lumiris-backend
 
-  datasource:
-    url: ${SPRING_DATASOURCE_URL}
-    username: ${SPRING_DATASOURCE_USERNAME}
-    password: ${SPRING_DATASOURCE_PASSWORD}
+    datasource:
+        url: ${SPRING_DATASOURCE_URL}
+        username: ${SPRING_DATASOURCE_USERNAME}
+        password: ${SPRING_DATASOURCE_PASSWORD}
 
-  mail:
-    host: ${MAIL_HOST:smtp.gmail.com}
-    port: ${MAIL_PORT:587}
-    username: ${MAIL_USERNAME:}
-    password: ${MAIL_PASSWORD:}
-    properties:
-      mail.smtp.auth: true
-      mail.smtp.starttls.enable: true
+    servlet:
+        multipart:
+            max-file-size: 20MB
+            max-request-size: 60MB
+
+    flyway:
+        enabled: true
+        # Schema migrations only by default. Demo seeds (db/seed) are opt-in for dev:
+        # FLYWAY_LOCATIONS=classpath:db/migration,classpath:db/seed
+        locations: ${FLYWAY_LOCATIONS:classpath:db/migration}
+        # Tolerate seeds being absent from the resolved locations on envs that already applied them.
+        ignore-migration-patterns: '*:missing'
+
+    mail:
+        host: ${MAIL_HOST:smtp.gmail.com}
+        port: ${MAIL_PORT:587}
+        username: ${MAIL_USERNAME:}
+        password: ${MAIL_PASSWORD:}
+        properties:
+            mail.smtp.auth: true
+            mail.smtp.starttls.enable: true
 
 app:
-  mail:
-    from: ${MAIL_FROM:noreply@lumiris.com}
-
+    mail:
+        from: ${MAIL_FROM:noreply@lumiris.com}
 
 cors:
-  allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173,http://localhost:3001,http://localhost:3002,http://localhost:3003}
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173,http://localhost:3001,http://localhost:3002,http://localhost:3003}
 
 security:
-  jwt:
-    secret: ${JWT_SECRET:lumiris-secret-key-change-in-production-min-256-bits}
-    expiration: 900000
-    refresh-expiration: 604800000
+    jwt:
+        # No committed default: the app fails fast at startup if JWT_SECRET is unset (see .env.example).
+        secret: ${JWT_SECRET}
+        expiration: 900000
+        refresh-expiration: 604800000
+
+# ── Stripe monetisation ────────────────────────────────────────────────────
+# Keys injected from the environment (never committed). `bootstrap-catalog`
+# idempotently ensures the recurring prices exist for each product on startup.
+stripe:
+    secret-key: ${STRIPE_SECRET_KEY:}
+    publishable-key: ${STRIPE_PUBLISHABLE_KEY:}
+    webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
+    bootstrap-catalog: ${STRIPE_BOOTSTRAP_CATALOG:true}
+    portal-return-url: ${STRIPE_PORTAL_RETURN_URL:http://localhost:3003/subscription}
+    products:
+        solo: ${STRIPE_PRODUCT_SOLO:}
+        studio: ${STRIPE_PRODUCT_STUDIO:}
+        maison: ${STRIPE_PRODUCT_MAISON:}
+        atelier-plus: ${STRIPE_PRODUCT_ATELIER_PLUS:}
+        local: ${STRIPE_PRODUCT_LOCAL:}
+
+minio:
+    endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
+    access-key: ${MINIO_ACCESS_KEY:lumiris}
+    secret-key: ${MINIO_SECRET_KEY:lumiris_local_dev_only}
+    bucket: ${MINIO_BUCKET:lumiris}
+
+blockchain:
+    rpc-url: ${BLOCKCHAIN_RPC_URL:https://ethereum-sepolia-rpc.publicnode.com}
+    wallet:
+        private-key: ${BLOCKCHAIN_WALLET_PRIVATE_KEY:0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80}
 
 server:
-  error:
-    include-message: always
-    include-binding-errors: always
-    include-stacktrace: on_param
-    include-exception: false
+    error:
+        include-message: always
+        include-binding-errors: always
+        include-stacktrace: on_param
+        include-exception: false
+
+management:
+    endpoints:
+        web:
+            exposure:
+                include: health,info,prometheus
+    endpoint:
+        health:
+            probes:
+                enabled: true
+            show-details: when_authorized
+    prometheus:
+        metrics:
+            export:
+                enabled: true

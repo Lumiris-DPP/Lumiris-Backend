@@ -118,7 +118,7 @@ public class ArtisanOnboardingService {
                 .orElseThrow(() -> new ResourceNotFoundException("Profil artisan introuvable : " + id));
     }
 
-    private ArtisanProfileResponse toResponse(ArtisanProfile p) {
+    ArtisanProfileResponse toResponse(ArtisanProfile p) {
         return new ArtisanProfileResponse(
                 p.getId(),
                 p.getUser().getEmail(),
@@ -130,7 +130,18 @@ public class ArtisanOnboardingService {
                 p.isDeclarationSigned(),
                 p.getSignatureTimestamp(),
                 p.getRejectionReason(),
-                p.getCreatedAt()
+                p.getCreatedAt(),
+                p.getSlug(),
+                p.isPublished(),
+                p.getAtelierName(),
+                p.getStory(),
+                p.getMethod(),
+                p.getJourney(),
+                p.getSpecialties(),
+                p.getCity(),
+                p.getRegion(),
+                p.getWebsiteUrl(),
+                p.getLinks()
         );
     }
 }

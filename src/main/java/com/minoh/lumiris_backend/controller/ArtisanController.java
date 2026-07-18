@@ -1,8 +1,11 @@
 package com.minoh.lumiris_backend.controller;
 
 import com.minoh.lumiris_backend.dto.in.ArtisanRegisterRequest;
+import com.minoh.lumiris_backend.dto.in.ArtisanVitrineUpdateRequest;
+import com.minoh.lumiris_backend.dto.out.ArtisanPhotoResponse;
 import com.minoh.lumiris_backend.dto.out.ArtisanProfileResponse;
 import com.minoh.lumiris_backend.service.ArtisanOnboardingService;
+import com.minoh.lumiris_backend.service.ArtisanVitrineService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -10,11 +13,10 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/artisans")
@@ -22,6 +24,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class ArtisanController {
 
     private final ArtisanOnboardingService onboardingService;
+    private final ArtisanVitrineService vitrineService;
 
     @GetMapping("/me")
     ResponseEntity<ArtisanProfileResponse> me(@AuthenticationPrincipal UserDetails principal) {
@@ -44,6 +47,37 @@ public class ArtisanController {
     ) {
         String ip = resolveClientIp(httpRequest);
         return ResponseEntity.ok(onboardingService.signDeclaration(principal.getUsername(), ip));
+    }
+
+    @PutMapping("/me/profile")
+    ResponseEntity<ArtisanProfileResponse> updateProfile(
+            @RequestBody ArtisanVitrineUpdateRequest request,
+            @AuthenticationPrincipal UserDetails principal
+    ) {
+        return ResponseEntity.ok(vitrineService.updateProfile(principal.getUsername(), request));
+    }
+
+    @PostMapping(value = "/me/photos", consumes = "multipart/form-data")
+    ResponseEntity<ArtisanPhotoResponse> addPhoto(
+            @RequestPart("file") MultipartFile file,
+            @AuthenticationPrincipal UserDetails principal
+    ) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(vitrineService.addPhoto(principal.getUsername(), file));
+    }
+
+    @DeleteMapping("/me/photos/{photoId}")
+    ResponseEntity<Void> removePhoto(
+            @PathVariable UUID photoId,
+            @AuthenticationPrincipal UserDetails principal
+    ) {
+        vitrineService.removePhoto(principal.getUsername(), photoId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/me/publish")
+    ResponseEntity<ArtisanProfileResponse> publish(@AuthenticationPrincipal UserDetails principal) {
+        return ResponseEntity.ok(vitrineService.publish(principal.getUsername()));
     }
 
     private String resolveClientIp(HttpServletRequest request) {

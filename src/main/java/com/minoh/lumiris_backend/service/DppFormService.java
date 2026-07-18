@@ -13,9 +13,12 @@ import com.minoh.lumiris_backend.dto.out.DppVerificationResponse;
 import com.minoh.lumiris_backend.entity.BlockchainAnchorStatus;
 import com.minoh.lumiris_backend.entity.DppForm;
 import com.minoh.lumiris_backend.entity.User;
+import com.minoh.lumiris_backend.entity.ArtisanProfile;
+import com.minoh.lumiris_backend.entity.ArtisanStatus;
 import com.minoh.lumiris_backend.exception.ConflictException;
 import com.minoh.lumiris_backend.exception.ResourceNotFoundException;
 import com.minoh.lumiris_backend.mapper.DppFormMapper;
+import com.minoh.lumiris_backend.repository.ArtisanProfileRepository;
 import com.minoh.lumiris_backend.repository.DppCareInstructionRepository;
 import com.minoh.lumiris_backend.repository.DppEventRepository;
 import com.minoh.lumiris_backend.repository.DppFormDocumentRepository;
@@ -57,6 +60,7 @@ public class DppFormService {
     private final DppCareInstructionRepository dppCareInstructionRepository;
     private final DppFormDocumentRepository dppFormDocumentRepository;
     private final DppEventRepository dppEventRepository;
+    private final ArtisanProfileRepository artisanProfileRepository;
     private final UserRepository userRepository;
     private final StoredFileRepository storedFileRepository;
     private final IrisScoreRepository irisScoreRepository;
@@ -390,7 +394,13 @@ public class DppFormService {
                 ))
                 .orElse(null);
 
-        return new DppFormPublicResponse(dppResponse, scoreResponse);
+        String artisanSlug = artisanProfileRepository.findByUser(form.getUser())
+                .filter(ArtisanProfile::isPublished)
+                .filter(p -> p.getStatus() == ArtisanStatus.VERIFIED)
+                .map(ArtisanProfile::getSlug)
+                .orElse(null);
+
+        return new DppFormPublicResponse(dppResponse, scoreResponse, artisanSlug);
     }
 
     private String generateUniquePublicCode() {

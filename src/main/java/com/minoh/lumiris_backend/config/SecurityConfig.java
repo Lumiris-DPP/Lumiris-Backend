@@ -32,6 +32,8 @@ public class SecurityConfig {
         "/api/auth/**",
         // Public consumer/scan endpoints (DPP verification, etc.).
         "/public/**",
+        // Public artisan showcase pages (vitrine), indexable by WEB/VISION.
+        "/v1/**",
         // Stripe → server webhook: unauthenticated, secured by HMAC signature verification.
         "/api/stripe/webhook",
         "/swagger-ui/**",

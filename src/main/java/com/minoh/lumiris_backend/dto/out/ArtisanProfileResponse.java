@@ -32,5 +32,6 @@ public record ArtisanProfileResponse(
         String city,
         String region,
         String websiteUrl,
-        Map<String, String> links
+        Map<String, String> links,
+        List<ArtisanPhotoResponse> photos
 ) {}

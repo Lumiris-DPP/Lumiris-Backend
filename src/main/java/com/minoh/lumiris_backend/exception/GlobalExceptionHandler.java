@@ -78,6 +78,12 @@ public class GlobalExceptionHandler {
         return new ErrorResponse(403, "ROLE_NOT_ALLOWED", ex.getMessage());
     }
 
+    @ExceptionHandler(ArtisanNotVerifiedException.class)
+    @ResponseStatus(HttpStatus.FORBIDDEN)
+    ErrorResponse handleArtisanNotVerified(ArtisanNotVerifiedException ex) {
+        return new ErrorResponse(403, "ARTISAN_NOT_VERIFIED", ex.getMessage());
+    }
+
     @ExceptionHandler(WebhookSignatureException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     ErrorResponse handleWebhookSignature(WebhookSignatureException ex) {

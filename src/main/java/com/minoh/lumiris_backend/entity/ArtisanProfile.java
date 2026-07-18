@@ -7,6 +7,8 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Entity
@@ -97,4 +99,20 @@ public class ArtisanProfile extends Auditable {
 
     @Column(name = "rejection_reason")
     private String rejectionReason;
+
+    // Vitrine publique
+    private String method;
+
+    private String journey;
+
+    @Column(columnDefinition = "text[]")
+    @JdbcTypeCode(SqlTypes.ARRAY)
+    private List<String> specialties;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(columnDefinition = "jsonb")
+    private Map<String, String> links;
+
+    @Column(nullable = false)
+    private boolean published = false;
 }

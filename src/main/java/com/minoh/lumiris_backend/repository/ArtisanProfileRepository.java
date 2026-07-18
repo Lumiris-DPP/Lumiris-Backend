@@ -12,4 +12,5 @@ import java.util.UUID;
 public interface ArtisanProfileRepository extends JpaRepository<ArtisanProfile, UUID> {
     Optional<ArtisanProfile> findByUser(User user);
     List<ArtisanProfile> findByStatus(ArtisanStatus status);
+    Optional<ArtisanProfile> findBySlug(String slug);
 }

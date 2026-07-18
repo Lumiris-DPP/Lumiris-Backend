@@ -2,11 +2,13 @@ package com.minoh.lumiris_backend.service;
 
 import com.minoh.lumiris_backend.dto.in.ArtisanRegisterRequest;
 import com.minoh.lumiris_backend.dto.in.ArtisanStatusUpdateRequest;
+import com.minoh.lumiris_backend.dto.out.ArtisanPhotoResponse;
 import com.minoh.lumiris_backend.dto.out.ArtisanProfileResponse;
 import com.minoh.lumiris_backend.entity.ArtisanProfile;
 import com.minoh.lumiris_backend.entity.ArtisanStatus;
 import com.minoh.lumiris_backend.entity.User;
 import com.minoh.lumiris_backend.exception.ResourceNotFoundException;
+import com.minoh.lumiris_backend.repository.ArtisanProfilePhotoRepository;
 import com.minoh.lumiris_backend.repository.ArtisanProfileRepository;
 import com.minoh.lumiris_backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -22,9 +24,11 @@ import java.util.UUID;
 public class ArtisanOnboardingService {
 
     private final ArtisanProfileRepository artisanRepo;
+    private final ArtisanProfilePhotoRepository photoRepo;
     private final UserRepository userRepo;
     private final SireneService sireneService;
     private final MailService mailService;
+    private final StorageService storageService;
 
     @Transactional(readOnly = true)
     public ArtisanProfileResponse findByUserEmail(String userEmail) {
@@ -141,7 +145,13 @@ public class ArtisanOnboardingService {
                 p.getCity(),
                 p.getRegion(),
                 p.getWebsiteUrl(),
-                p.getLinks()
+                p.getLinks(),
+                photoRepo.findByArtisanProfileOrderByPosition(p).stream()
+                        .map(photo -> new ArtisanPhotoResponse(
+                                photo.getId(),
+                                storageService.getPresignedUrl(photo.getFile().getId())
+                        ))
+                        .toList()
         );
     }
 }

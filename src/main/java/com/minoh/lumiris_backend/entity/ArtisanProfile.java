@@ -3,6 +3,8 @@ package com.minoh.lumiris_backend.entity;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -65,4 +67,34 @@ public class ArtisanProfile extends Auditable {
 
     @Column(name = "joined_at", nullable = false)
     private Instant joinedAt;
+
+    // Onboarding fields
+    @Column(length = 14)
+    private String siret;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private ArtisanStatus status = ArtisanStatus.PENDING;
+
+    @Column(name = "company_name")
+    private String companyName;
+
+    @Column(name = "naf_code", length = 10)
+    private String nafCode;
+
+    @Column(name = "declaration_signed", nullable = false)
+    private boolean declarationSigned = false;
+
+    @Column(name = "signature_timestamp")
+    private Instant signatureTimestamp;
+
+    @Column(name = "signature_ip", length = 45)
+    private String signatureIp;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "sirene_raw_data", columnDefinition = "jsonb")
+    private String sireneRawData;
+
+    @Column(name = "rejection_reason")
+    private String rejectionReason;
 }

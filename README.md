@@ -80,8 +80,8 @@ Un compte par rôle est seedé (mot de passe = `<rôle>123`) :
 | `REPAIRER` | `repairer@lumiris.com` | `repairer123` |
 
 ```bash
-# retourne { token, user }
-curl -s http://localhost:8080/api/auth/login \
+# retourne { token, refreshToken, user }
+curl -s http://localhost:8081/api/auth/sign-in \
   -H 'content-type: application/json' \
   -d '{"email":"artisan@lumiris.com","password":"artisan123"}'
 
@@ -92,7 +92,7 @@ make postman   # raccourci : login admin, réponse formatée
 
 ## 🔌 API principale
 
-- **Auth** (`/api/auth`) — `POST login`, `POST register`, `GET me`
+- **Auth** (`/api/auth`) — `POST sign-in`, `POST sign-up`, `POST refresh`, `GET me`
 - **DPP** (`/api/dpp-forms`) — `POST` (**multipart** : part `data` JSON + fichiers `productPhoto`/documents), `GET` (liste), `GET /{id}`, `GET /{id}/iris_score`, `GET /{id}/verify` (ancrage blockchain)
 - **Abonnement** (`/api/subscription`) — `GET` (état), `GET plans`, `POST setup-intent`, `POST confirm`, `POST change` (changement de plan), `POST portal`
 - **Stripe** — `POST /api/stripe/webhook` (signé HMAC, non authentifié)

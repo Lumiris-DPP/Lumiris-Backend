@@ -20,14 +20,28 @@ spring:
         # Tolerate seeds being absent from the resolved locations on envs that already applied them.
         ignore-migration-patterns: '*:missing'
 
+    mail:
+        host: ${MAIL_HOST:smtp.gmail.com}
+        port: ${MAIL_PORT:587}
+        username: ${MAIL_USERNAME:}
+        password: ${MAIL_PASSWORD:}
+        properties:
+            mail.smtp.auth: true
+            mail.smtp.starttls.enable: true
+
+app:
+    mail:
+        from: ${MAIL_FROM:noreply@lumiris.com}
+
 cors:
-    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173,http://localhost:3002,http://localhost:3003}
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173,http://localhost:3001,http://localhost:3002,http://localhost:3003}
 
 security:
     jwt:
         # No committed default: the app fails fast at startup if JWT_SECRET is unset (see .env.example).
         secret: ${JWT_SECRET}
-        expiration: 86400000
+        expiration: 900000
+        refresh-expiration: 604800000
 
 # ── Stripe monetisation ────────────────────────────────────────────────────
 # Keys injected from the environment (never committed). `bootstrap-catalog`

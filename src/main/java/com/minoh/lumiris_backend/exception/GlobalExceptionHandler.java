@@ -48,6 +48,12 @@ public class GlobalExceptionHandler {
         return new ErrorResponse(409, ex.getMessage());
     }
 
+    @ExceptionHandler(IllegalArgumentException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    ErrorResponse handleBadRequest(IllegalArgumentException ex) {
+        return new ErrorResponse(400, ex.getMessage());
+    }
+
     @ExceptionHandler({BadCredentialsException.class, UsernameNotFoundException.class})
     @ResponseStatus(HttpStatus.UNAUTHORIZED)
     ErrorResponse handleUnauthorized(RuntimeException ex) {

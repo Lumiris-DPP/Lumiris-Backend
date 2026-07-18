@@ -10,10 +10,14 @@ import org.springframework.stereotype.Service;
 
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
+import java.security.SecureRandom;
+import java.util.Base64;
 import java.util.Date;
 
 @Service
 public class JwtService {
+
+    private static final SecureRandom RANDOM = new SecureRandom();
 
     private final SecretKey signingKey;
     private final long expirationMillis;
@@ -23,6 +27,19 @@ public class JwtService {
             @Value("${security.jwt.expiration}") long expirationMillis) {
         this.signingKey = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
         this.expirationMillis = expirationMillis;
+    }
+
+    @Value("${security.jwt.refresh-expiration}")
+    private long refreshExpiration;
+
+    public long getRefreshExpiration() {
+        return refreshExpiration;
+    }
+
+    public String generateRefreshToken() {
+        byte[] bytes = new byte[64];
+        RANDOM.nextBytes(bytes);
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
 
     public String generateToken(UserDetails userDetails) {

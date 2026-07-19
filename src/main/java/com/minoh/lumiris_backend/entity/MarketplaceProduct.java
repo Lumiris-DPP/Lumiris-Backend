@@ -65,4 +65,16 @@ public class MarketplaceProduct extends Auditable {
 
     @Column(name = "stripe_price_id")
     private String stripePriceId;
+
+    // Offre de vente directe (LUMIRIS-22) : frais de port + conditions de retour de l'annonce.
+    @Column(name = "shipping_cents", nullable = false)
+    private int shippingCents = 0;
+
+    @Column(name = "return_policy")
+    private String returnPolicy;
+
+    // Compteur de vues de la fiche produit (incrémenté à l'ouverture côté VISION) — statistiques vendeur.
+    @Column(name = "views", nullable = false)
+    private long views = 0;
 }
+

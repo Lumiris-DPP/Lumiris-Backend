@@ -1,11 +1,8 @@
 package com.minoh.lumiris_backend.controller;
 
 import com.minoh.lumiris_backend.dto.in.SuggestRequest;
-import com.minoh.lumiris_backend.dto.out.CheckoutResponse;
 import com.minoh.lumiris_backend.dto.out.SearchResponse;
 import com.minoh.lumiris_backend.dto.out.SuggestionResponse;
-
-import java.util.UUID;
 import com.minoh.lumiris_backend.service.MarketplaceService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -13,6 +10,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.UUID;
 
 // Surface publique du marketplace (accessible sans auth — l'app VISION mobile n'a pas
 // de session backend). Recherche catalogue filtrée + suggestions sur DPP scanné.
@@ -40,8 +38,10 @@ public class PublicMarketplaceController {
         return ResponseEntity.ok(marketplaceService.suggest(request));
     }
 
-    @PostMapping("/products/{id}/checkout")
-    ResponseEntity<CheckoutResponse> buy(@PathVariable UUID id) {
-        return ResponseEntity.ok(new CheckoutResponse(marketplaceService.buyCheckout(id)));
+    // Vue d'une fiche produit (VISION) — incrément fire-and-forget du compteur de vues (stats vendeur).
+    @PostMapping("/products/{id}/view")
+    ResponseEntity<Void> trackView(@PathVariable UUID id) {
+        marketplaceService.trackView(id);
+        return ResponseEntity.accepted().build();
     }
 }

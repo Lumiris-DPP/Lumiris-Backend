@@ -10,6 +10,7 @@ import com.minoh.lumiris_backend.dto.out.MarketplaceItemResponse;
 import com.minoh.lumiris_backend.dto.out.SearchResponse;
 import com.minoh.lumiris_backend.dto.out.SuggestionResponse;
 import com.minoh.lumiris_backend.entity.*;
+import com.minoh.lumiris_backend.exception.BillingValidationException;
 import com.minoh.lumiris_backend.exception.ResourceNotFoundException;
 import com.minoh.lumiris_backend.exception.RoleNotAllowedException;
 import com.minoh.lumiris_backend.mapper.MarketplaceProductMapper;
@@ -38,6 +39,7 @@ public class MarketplaceService {
     private static final int MAX_DECISION_LOG_ENTRIES = 500;
 
     private final MarketplaceProductRepository productRepository;
+    private final MarketplaceOrderRepository orderRepository;
     private final MarketplaceDecisionLogRepository decisionLogRepository;
     private final DecisionLogRecorder decisionLogRecorder;
     private final UserRepository userRepository;
@@ -49,15 +51,27 @@ public class MarketplaceService {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
+    // Vue d'une fiche produit (VISION) — incrément fire-and-forget du compteur (stats vendeur).
+    @Transactional
+    public void trackView(UUID productId) {
+        productRepository.incrementViews(productId);
+    }
+
     // ── Catalogue produit côté artisan (créé uniquement par conversion de DPP) ──
 
     @Transactional(readOnly = true)
     public List<MarketplaceItemResponse> listMine(String email) {
         User artisan = requireArtisan(email);
         boolean plus = atelierPlusResolver.isAtelierPlus(artisan.getId());
+        // Ventes réglées par produit (pour la colonne "Ventes" du catalogue vendeur).
+        Map<UUID, Long> salesByProduct = orderRepository
+                .salesCountByProduct(artisan.getId(), java.util.List.of(OrderStatus.PAID, OrderStatus.FULFILLED))
+                .stream()
+                .collect(Collectors.toMap(r -> (UUID) r[0], r -> (Long) r[1]));
         return fetch(productRepository.findScoredByArtisanProfileId(artisan.getArtisanProfile().getId()))
                 .stream()
-                .map(sp -> mapper.toResponse(sp.product(), sp.score(), plus))
+                .map(sp -> mapper.toResponse(sp.product(), sp.score(), plus,
+                        salesByProduct.getOrDefault(sp.product().getId(), 0L)))
                 .toList();
     }
 
@@ -89,6 +103,10 @@ public class MarketplaceService {
         if (dpp == null) {
             throw new ResourceNotFoundException("DPP introuvable");
         }
+        // LUMIRIS-22 : seules les pièces à passeport LUMIRIS valide sont vendables.
+        if (dpp.getStatus() != DppStatus.VALID) {
+            throw new BillingValidationException("Seules les pièces à passeport LUMIRIS valide sont vendables.");
+        }
         MarketplaceProduct product = productRepository.findByDppFormId(dppFormId).orElseGet(MarketplaceProduct::new);
         if (product.getId() == null) {
             product.setArtisanProfile(artisan.getArtisanProfile());
@@ -105,19 +123,13 @@ public class MarketplaceService {
         product.setStock(req.stock() != null ? req.stock() : dpp.getQuantity());
         product.setExternalOrderUrl(req.externalOrderUrl());
         product.setPhotoUrl(req.photoUrl());
+        product.setShippingCents(req.shippingCents() != null && req.shippingCents() >= 0 ? req.shippingCents() : 0);
+        product.setReturnPolicy(req.returnPolicy());
         product.setStatus(req.status() != null ? req.status() : MarketplaceProductStatus.PUBLISHED);
         MarketplaceProduct saved = productRepository.save(product);
         // Vente directe in-app : un seul produit/prix Stripe par annonce (dédup idempotente).
         marketplaceStripeService.ensureStripeProduct(saved);
         return toItem(saved, atelierPlusResolver.isAtelierPlus(artisan.getId()));
-    }
-
-    @Transactional(readOnly = true)
-    public String buyCheckout(UUID productId) {
-        MarketplaceProduct product = productRepository.findById(productId)
-                .filter(p -> p.getStatus() == MarketplaceProductStatus.PUBLISHED)
-                .orElseThrow(() -> new ResourceNotFoundException("Produit introuvable"));
-        return marketplaceStripeService.createBuyCheckout(product);
     }
 
     // ── Recherche publique (filtres combinables + reco perso) ───────────────

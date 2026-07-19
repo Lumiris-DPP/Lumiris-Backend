@@ -27,5 +27,8 @@ public record MarketplaceItemResponse(
         String irisGrade,
         boolean atelierPlus,
         boolean inAppSale,
-        Instant createdAt
+        Instant createdAt,
+        // Statistiques vendeur (0 sur les chemins publics search/suggest).
+        long views,
+        long salesCount
 ) {}

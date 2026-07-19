@@ -1,0 +1,47 @@
+package com.minoh.lumiris_backend.controller;
+
+import com.minoh.lumiris_backend.dto.in.SuggestRequest;
+import com.minoh.lumiris_backend.dto.out.CheckoutResponse;
+import com.minoh.lumiris_backend.dto.out.SearchResponse;
+import com.minoh.lumiris_backend.dto.out.SuggestionResponse;
+
+import java.util.UUID;
+import com.minoh.lumiris_backend.service.MarketplaceService;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+// Surface publique du marketplace (accessible sans auth — l'app VISION mobile n'a pas
+// de session backend). Recherche catalogue filtrée + suggestions sur DPP scanné.
+@RestController
+@RequestMapping("/public/marketplace")
+@RequiredArgsConstructor
+public class PublicMarketplaceController {
+
+    private final MarketplaceService marketplaceService;
+
+    // Filtres combinables (catégorie, matière, origine) + tri neutre par défaut.
+    // `personalize` = catégories d'affinité de l'utilisateur connecté (reco perso).
+    @GetMapping("/search")
+    ResponseEntity<SearchResponse> search(
+            @RequestParam(required = false) String category,
+            @RequestParam(required = false) String material,
+            @RequestParam(required = false) String origin,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) List<String> personalize) {
+        return ResponseEntity.ok(marketplaceService.search(category, material, origin, sort, personalize));
+    }
+
+    @PostMapping("/suggest")
+    ResponseEntity<SuggestionResponse> suggest(@Valid @RequestBody SuggestRequest request) {
+        return ResponseEntity.ok(marketplaceService.suggest(request));
+    }
+
+    @PostMapping("/products/{id}/checkout")
+    ResponseEntity<CheckoutResponse> buy(@PathVariable UUID id) {
+        return ResponseEntity.ok(new CheckoutResponse(marketplaceService.buyCheckout(id)));
+    }
+}

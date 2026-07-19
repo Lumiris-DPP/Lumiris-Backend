@@ -249,6 +249,44 @@ public class SubscriptionService {
                 && !properties.hasWebhookSecret();
     }
 
+    public String createCheckoutSession(String userEmail, PlanTier tier, BillingCycle cycle) {
+        properties.requireSecretKey();
+        User user = userRepository.getByEmail(userEmail);
+        subscriptionRepository.findByUserId(user.getId())
+                .filter(s -> StripeSubscriptionStatus.isLive(s.getStatus()))
+                .ifPresent(s -> {
+                    throw new ConflictException(
+                            "Vous avez déjà un abonnement en cours. Utilisez le portail pour le modifier.");
+                });
+        String customerId = customerService.ensureCustomer(user);
+        String priceId = catalogService.priceId(tier, cycle);
+        String returnUrl = properties.portalReturnUrl();
+        return StripeCalls.billed("Ouverture du paiement Stripe impossible", () -> {
+            com.stripe.param.checkout.SessionCreateParams params =
+                    com.stripe.param.checkout.SessionCreateParams.builder()
+                            .setMode(com.stripe.param.checkout.SessionCreateParams.Mode.SUBSCRIPTION)
+                            .setCustomer(customerId)
+                            .addLineItem(com.stripe.param.checkout.SessionCreateParams.LineItem.builder()
+                                    .setPrice(priceId)
+                                    .setQuantity(1L)
+                                    .build())
+                            .setSuccessUrl(appendQuery(returnUrl, "checkout=success"))
+                            .setCancelUrl(appendQuery(returnUrl, "checkout=cancel"))
+                            .putMetadata("user_id", user.getId().toString())
+                            .putMetadata("tier", tier.key())
+                            .putMetadata("cycle", cycle.key())
+                            .setSubscriptionData(com.stripe.param.checkout.SessionCreateParams.SubscriptionData.builder()
+                                    .putMetadata("user_id", user.getId().toString())
+                                    .build())
+                            .build();
+            return com.stripe.model.checkout.Session.create(params).getUrl();
+        });
+    }
+
+    private static String appendQuery(String url, String query) {
+        return url.contains("?") ? url + "&" + query : url + "?" + query;
+    }
+
     public String createPortalSession(String userEmail) {
         properties.requireSecretKey();
         User user = userRepository.getByEmail(userEmail);

@@ -7,6 +7,7 @@ import com.minoh.lumiris_backend.domain.PlanTier;
 import com.minoh.lumiris_backend.dto.in.ConfirmSubscriptionRequest;
 import com.minoh.lumiris_backend.dto.in.CreateSetupIntentRequest;
 import com.minoh.lumiris_backend.dto.out.CatalogResponse;
+import com.minoh.lumiris_backend.dto.out.CheckoutResponse;
 import com.minoh.lumiris_backend.dto.out.PlanResponse;
 import com.minoh.lumiris_backend.dto.out.PortalResponse;
 import com.minoh.lumiris_backend.dto.out.SetupIntentResponse;
@@ -67,6 +68,18 @@ public class SubscriptionController {
     ) {
         subscriptionService.confirmSubscription(email, request.setupIntentId());
         return ResponseEntity.ok(subscriptionService.getState(email));
+    }
+
+    @PostMapping("/checkout")
+    ResponseEntity<CheckoutResponse> checkout(
+            @Valid @RequestBody CreateSetupIntentRequest request,
+            @CurrentUserEmail String email
+    ) {
+        PlanTier tier = PlanTier.fromKey(request.tier())
+                .orElseThrow(() -> new BillingValidationException("Plan inconnu: " + request.tier()));
+        BillingCycle cycle = BillingCycle.fromKey(request.cycle());
+        String url = subscriptionService.createCheckoutSession(email, tier, cycle);
+        return ResponseEntity.ok(new CheckoutResponse(url));
     }
 
     // Change the plan of an existing subscription in-app (no new checkout).

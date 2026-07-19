@@ -56,6 +56,13 @@ public class StripeWebhookService {
                     subscriptionService.resyncById(subscriptionId);
                 }
             }
+            case "checkout.session.completed" -> {
+                String subscriptionId = checkoutSubscriptionIdOf(event);
+                if (subscriptionId != null) {
+                    subscriptionService.resyncById(subscriptionId);
+                    log.info("Resynced subscription {} (checkout.session.completed)", subscriptionId);
+                }
+            }
             default -> log.debug("Unhandled Stripe event: {}", event.getType());
         }
     }
@@ -68,6 +75,11 @@ public class StripeWebhookService {
     private String invoiceSubscriptionIdOf(Event event) {
         StripeObject object = deserialize(event);
         return object instanceof Invoice invoice ? invoice.getSubscription() : null;
+    }
+
+    private String checkoutSubscriptionIdOf(Event event) {
+        StripeObject object = deserialize(event);
+        return object instanceof com.stripe.model.checkout.Session session ? session.getSubscription() : null;
     }
 
     private StripeObject deserialize(Event event) {

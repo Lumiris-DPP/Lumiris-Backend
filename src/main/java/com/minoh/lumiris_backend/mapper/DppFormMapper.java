@@ -35,6 +35,7 @@ public class DppFormMapper {
         form.setOriginCountry(request.originCountry());
         form.setManufacturedAt(request.manufacturedAt());
         form.setBatchNumber(request.batchNumber());
+        form.setQuantity(request.quantity() != null && request.quantity() >= 1 ? request.quantity() : 1);
         form.setGtin(request.gtin());
         form.setSku(request.sku());
         form.setReachCompliant(request.reachCompliant());

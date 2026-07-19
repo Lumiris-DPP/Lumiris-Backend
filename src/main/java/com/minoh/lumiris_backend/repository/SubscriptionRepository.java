@@ -7,12 +7,17 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 public interface SubscriptionRepository extends JpaRepository<UserSubscription, UUID> {
 
     Optional<UserSubscription> findByUserId(UUID userId);
+
+    // Batch lookup for the marketplace ATELIER+ resolver (avoids N+1 across a result set).
+    List<UserSubscription> findByUserIdIn(Collection<UUID> userIds);
 
     Optional<UserSubscription> findByStripeSubscriptionId(String stripeSubscriptionId);
 

@@ -61,6 +61,7 @@ public class DppFormService {
     private final DppFormDocumentRepository dppFormDocumentRepository;
     private final DppEventRepository dppEventRepository;
     private final ArtisanProfileRepository artisanProfileRepository;
+    private final AtelierStatsService atelierStatsService;
     private final UserRepository userRepository;
     private final StoredFileRepository storedFileRepository;
     private final IrisScoreRepository irisScoreRepository;
@@ -403,6 +404,8 @@ public class DppFormService {
                         List.of()
                 ))
                 .orElse(null);
+
+        atelierStatsService.trackScan(form);
 
         return new DppFormPublicResponse(dppResponse, scoreResponse, artisanSlug);
     }

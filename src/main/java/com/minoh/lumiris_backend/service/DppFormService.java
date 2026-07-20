@@ -13,9 +13,14 @@ import com.minoh.lumiris_backend.dto.out.DppVerificationResponse;
 import com.minoh.lumiris_backend.entity.BlockchainAnchorStatus;
 import com.minoh.lumiris_backend.entity.DppForm;
 import com.minoh.lumiris_backend.entity.User;
+import com.minoh.lumiris_backend.exception.ConflictException;
 import com.minoh.lumiris_backend.exception.ResourceNotFoundException;
 import com.minoh.lumiris_backend.mapper.DppFormMapper;
+import com.minoh.lumiris_backend.repository.DppCareInstructionRepository;
+import com.minoh.lumiris_backend.repository.DppEventRepository;
+import com.minoh.lumiris_backend.repository.DppFormDocumentRepository;
 import com.minoh.lumiris_backend.repository.DppFormRepository;
+import com.minoh.lumiris_backend.repository.DppMaterialRepository;
 import com.minoh.lumiris_backend.repository.IrisScoreRepository;
 import com.minoh.lumiris_backend.repository.StoredFileRepository;
 import com.minoh.lumiris_backend.repository.UserRepository;
@@ -48,6 +53,10 @@ public class DppFormService {
     private static final SecureRandom RANDOM = new SecureRandom();
 
     private final DppFormRepository dppFormRepository;
+    private final DppMaterialRepository dppMaterialRepository;
+    private final DppCareInstructionRepository dppCareInstructionRepository;
+    private final DppFormDocumentRepository dppFormDocumentRepository;
+    private final DppEventRepository dppEventRepository;
     private final UserRepository userRepository;
     private final StoredFileRepository storedFileRepository;
     private final IrisScoreRepository irisScoreRepository;
@@ -59,13 +68,9 @@ public class DppFormService {
     private final BlockchainService blockchainService;
     private final QuotaService quotaService;
 
-    public DppFormCreatedResponse create(DppFormRequest request, Map<String, MultipartFile> files, String userEmail) {
-        Map<String, UUID> uploadedIds = new LinkedHashMap<>();
-        files.forEach((partName, file) -> {
-            if (file != null && !file.isEmpty()) {
-                uploadedIds.put(partName, storageService.upload(file, userEmail).id());
-            }
-        });
+    public DppFormCreatedResponse create(DppFormRequest request, Map<String, MultipartFile> files,
+                                         String userEmail, boolean draft) {
+        Map<String, UUID> uploadedIds = uploadFiles(files, userEmail);
 
         return Objects.requireNonNull(transactionTemplate.execute(status -> {
             User user = userRepository.findByEmail(userEmail)
@@ -73,63 +78,207 @@ public class DppFormService {
 
             // Billing gate: require an active passport-granting subscription within quota.
             // Inside the create transaction so assertCanCreate's SELECT ... FOR UPDATE is TOCTOU-safe.
-            quotaService.assertCanCreate(user);
+            // Drafts don't consume quota — the gate runs at publication instead.
+            if (!draft) {
+                quotaService.assertCanCreate(user);
+            }
 
             DppForm form = dppFormMapper.toEntity(request, user);
-            form.setPublicCode(generateUniquePublicCode());
-            form.setDataHash(dppHashUtil.generateDppHash(dppFormMapper.toHashableData(form)));
-            form.setBlockchainAnchorStatus(BlockchainAnchorStatus.PENDING);
+            if (draft) {
+                // No QR identity, no frozen hash, no score, no blockchain anchor until publication.
+                form.setStatus(DppStatus.DRAFT);
+            } else {
+                form.setPublicCode(generateUniquePublicCode());
+                form.setDataHash(dppHashUtil.generateDppHash(dppFormMapper.toHashableData(form)));
+                form.setBlockchainAnchorStatus(BlockchainAnchorStatus.PENDING);
+            }
 
-            uploadedIds.forEach((partName, fileId) -> {
-                StoredFile storedFile = storedFileRepository.getReferenceById(fileId);
-                if ("productPhoto".equals(partName)) {
-                    form.setMainPhotoFile(storedFile);
-                    return;
-                }
-                DocumentType.fromPartName(partName).ifPresent(docType -> {
-                    DppFormDocument doc = new DppFormDocument();
-                    doc.setDppForm(form);
-                    doc.setFile(storedFile);
-                    doc.setDocumentType(docType);
-                    doc.setVisibility(docType.defaultVisibility());
-                    form.getDocuments().add(doc);
-                });
-            });
+            attachUploads(form, uploadedIds, false);
 
             DppForm savedForm = dppFormRepository.save(form);
 
-            Set<DocumentType> uploadedDocTypes = uploadedIds.keySet().stream()
-                    .flatMap(partName -> DocumentType.fromPartName(partName).stream())
-                    .collect(Collectors.toSet());
-
-            IrisScoreResponse scoreResponse = irisScoreCalculator.compute(DppScoreInput.from(savedForm, uploadedDocTypes));
-            irisScoreRepository.save(new IrisScore(
-                    savedForm,
-                    scoreResponse.breakdown().transparency(),
-                    scoreResponse.breakdown().craftsmanship(),
-                    scoreResponse.breakdown().repairability(),
-                    scoreResponse.breakdown().impact(),
-                    scoreResponse.total(),
-                    scoreResponse.grade()
-            ));
-
-            UUID savedId = savedForm.getId();
-            String hash = savedForm.getDataHash();
-            // Fire async anchor only after the transaction commits so the row exists in DB.
-            // Falls back to direct call when no active transaction (e.g. unit tests).
-            if (TransactionSynchronizationManager.isSynchronizationActive()) {
-                TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                    @Override
-                    public void afterCommit() {
-                        blockchainService.anchorAsync(savedId, hash);
-                    }
-                });
-            } else {
-                blockchainService.anchorAsync(savedId, hash);
+            if (!draft) {
+                Set<DocumentType> uploadedDocTypes = uploadedIds.keySet().stream()
+                        .flatMap(partName -> DocumentType.fromPartName(partName).stream())
+                        .collect(Collectors.toSet());
+                saveIrisScore(savedForm, uploadedDocTypes);
+                anchorAfterCommit(savedForm.getId(), savedForm.getDataHash());
             }
 
             return new DppFormCreatedResponse(savedForm.getId());
         }));
+    }
+
+    public DppFormCreatedResponse update(UUID id, DppFormRequest request, Map<String, MultipartFile> files,
+                                         String userEmail) {
+        Map<String, UUID> uploadedIds = uploadFiles(files, userEmail);
+
+        return Objects.requireNonNull(transactionTemplate.execute(status -> {
+            DppForm form = loadOwnedDraft(id, userEmail);
+
+            dppFormMapper.applyScalars(form, request);
+
+            // Replace children wholesale. Persist the rebuilt rows directly through their repos
+            // (the child @ManyToOne owns the FK) rather than through the form's lazy collections —
+            // clearing/adding an uninitialized collection queues inserts with a null dpp_form_id.
+            dppMaterialRepository.deleteByDppForm(form);
+            dppCareInstructionRepository.deleteByDppForm(form);
+            saveChildrenDirect(form, request);
+
+            attachUploads(form, uploadedIds, true);
+
+            dppFormRepository.save(form);
+            return new DppFormCreatedResponse(form.getId());
+        }));
+    }
+
+    @Transactional
+    public void delete(UUID id, String userEmail) {
+        DppForm form = loadOwnedDraft(id, userEmail);
+
+        dppMaterialRepository.deleteByDppForm(form);
+        dppCareInstructionRepository.deleteByDppForm(form);
+        dppFormDocumentRepository.deleteByDppForm(form);
+        dppEventRepository.deleteByDppFormId(form.getId());
+        irisScoreRepository.findByDppFormId(form.getId()).ifPresent(irisScoreRepository::delete);
+        dppFormRepository.delete(form);
+    }
+
+    @Transactional
+    public DppFormCreatedResponse publish(UUID id, String userEmail) {
+        DppForm form = loadOwnedDraft(id, userEmail);
+
+        // The billing gate deferred at draft creation runs here.
+        quotaService.assertCanCreate(form.getUser());
+
+        Hibernate.initialize(form.getMaterials());
+        Hibernate.initialize(form.getCareInstructions());
+        Hibernate.initialize(form.getDocuments());
+
+        // Compute code + hash while the form is still clean: generateUniquePublicCode() runs a
+        // SELECT that would auto-flush the session. If status were already VALID at that flush,
+        // the trigger's published branch (NEW := OLD) would silently drop the later code/hash
+        // update. Set every field only after, so publication commits as one DRAFT→VALID UPDATE.
+        String publicCode = generateUniquePublicCode();
+        String dataHash = dppHashUtil.generateDppHash(dppFormMapper.toHashableData(form));
+        form.setStatus(DppStatus.VALID);
+        form.setPublicCode(publicCode);
+        form.setDataHash(dataHash);
+        form.setBlockchainAnchorStatus(BlockchainAnchorStatus.PENDING);
+        DppForm savedForm = dppFormRepository.save(form);
+
+        Set<DocumentType> docTypes = savedForm.getDocuments().stream()
+                .map(DppFormDocument::getDocumentType)
+                .collect(Collectors.toSet());
+        if (savedForm.getMainPhotoFile() != null) {
+            docTypes.add(DocumentType.PRODUCT_PHOTO);
+        }
+        saveIrisScore(savedForm, docTypes);
+        anchorAfterCommit(savedForm.getId(), savedForm.getDataHash());
+
+        return new DppFormCreatedResponse(savedForm.getId());
+    }
+
+    private Map<String, UUID> uploadFiles(Map<String, MultipartFile> files, String userEmail) {
+        Map<String, UUID> uploadedIds = new LinkedHashMap<>();
+        files.forEach((partName, file) -> {
+            if (file != null && !file.isEmpty()) {
+                uploadedIds.put(partName, storageService.upload(file, userEmail).id());
+            }
+        });
+        return uploadedIds;
+    }
+
+    /** Attach uploaded parts to the form; when {@code replaceExisting}, a part supersedes the stored document of the same type. */
+    private void attachUploads(DppForm form, Map<String, UUID> uploadedIds, boolean replaceExisting) {
+        uploadedIds.forEach((partName, fileId) -> {
+            StoredFile storedFile = storedFileRepository.getReferenceById(fileId);
+            if ("productPhoto".equals(partName)) {
+                form.setMainPhotoFile(storedFile);
+                return;
+            }
+            DocumentType.fromPartName(partName).ifPresent(docType -> {
+                if (replaceExisting) {
+                    List<DppFormDocument> stale = form.getDocuments().stream()
+                            .filter(d -> d.getDocumentType() == docType)
+                            .toList();
+                    stale.forEach(d -> {
+                        form.getDocuments().remove(d);
+                        dppFormDocumentRepository.delete(d);
+                    });
+                }
+                DppFormDocument doc = new DppFormDocument();
+                doc.setDppForm(form);
+                doc.setFile(storedFile);
+                doc.setDocumentType(docType);
+                doc.setVisibility(docType.defaultVisibility());
+                form.getDocuments().add(doc);
+            });
+        });
+    }
+
+    /** Persist materials and care instructions straight through their repos (owning side sets the FK). */
+    private void saveChildrenDirect(DppForm form, DppFormRequest request) {
+        if (request.materials() != null) {
+            request.materials().forEach(m -> {
+                DppMaterial material = new DppMaterial();
+                material.setDppForm(form);
+                material.setFiber(m.fiber());
+                material.setPercentage(m.percentage());
+                material.setOriginCountry(m.originCountry());
+                dppMaterialRepository.save(material);
+            });
+        }
+        if (request.careInstructions() != null) {
+            request.careInstructions().forEach(code -> {
+                DppCareInstruction care = new DppCareInstruction();
+                care.setDppForm(form);
+                care.setCareCode(code);
+                dppCareInstructionRepository.save(care);
+            });
+        }
+    }
+
+    private void saveIrisScore(DppForm form, Set<DocumentType> docTypes) {
+        IrisScoreResponse scoreResponse = irisScoreCalculator.compute(DppScoreInput.from(form, docTypes));
+        irisScoreRepository.save(new IrisScore(
+                form,
+                scoreResponse.breakdown().transparency(),
+                scoreResponse.breakdown().craftsmanship(),
+                scoreResponse.breakdown().repairability(),
+                scoreResponse.breakdown().impact(),
+                scoreResponse.total(),
+                scoreResponse.grade()
+        ));
+    }
+
+    // Fire async anchor only after the transaction commits so the row exists in DB.
+    // Falls back to direct call when no active transaction (e.g. unit tests).
+    private void anchorAfterCommit(UUID formId, String hash) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    blockchainService.anchorAsync(formId, hash);
+                }
+            });
+        } else {
+            blockchainService.anchorAsync(formId, hash);
+        }
+    }
+
+    private DppForm loadOwnedDraft(UUID id, String userEmail) {
+        User user = userRepository.findByEmail(userEmail)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        DppForm form = dppFormRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("DPP not found"));
+        if (!form.getUser().getId().equals(user.getId())) {
+            throw new ResourceNotFoundException("DPP not found");
+        }
+        if (form.getStatus() != DppStatus.DRAFT) {
+            throw new ConflictException("Seul un DPP en brouillon peut être modifié, supprimé ou publié.");
+        }
+        return form;
     }
 
     @Transactional(readOnly = true)

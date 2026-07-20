@@ -1,6 +1,7 @@
 package com.minoh.lumiris_backend.service;
 
 import com.minoh.lumiris_backend.domain.PlanTier;
+import com.minoh.lumiris_backend.entity.DppStatus;
 import com.minoh.lumiris_backend.entity.User;
 import com.minoh.lumiris_backend.entity.UserSubscription;
 import com.minoh.lumiris_backend.exception.QuotaExceededException;
@@ -44,7 +45,8 @@ class QuotaServiceTest {
     }
 
     private void usage(long count) {
-        lenient().when(dppFormRepository.countByUserId(user.getId())).thenReturn(count);
+        lenient().when(dppFormRepository.countByUserIdAndStatusNot(user.getId(), DppStatus.DRAFT))
+                .thenReturn(count);
     }
 
     private void subscription(PlanTier tier, String status) {

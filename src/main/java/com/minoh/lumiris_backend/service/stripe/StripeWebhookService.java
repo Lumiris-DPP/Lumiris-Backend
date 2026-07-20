@@ -3,10 +3,13 @@ package com.minoh.lumiris_backend.service.stripe;
 import com.minoh.lumiris_backend.config.stripe.StripeProperties;
 import com.minoh.lumiris_backend.exception.WebhookSignatureException;
 import com.stripe.exception.SignatureVerificationException;
+import com.stripe.model.Account;
 import com.stripe.model.Event;
 import com.stripe.model.Invoice;
+import com.stripe.model.PaymentIntent;
 import com.stripe.model.StripeObject;
 import com.stripe.model.Subscription;
+import com.stripe.model.checkout.Session;
 import com.stripe.net.Webhook;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -23,6 +26,8 @@ public class StripeWebhookService {
 
     private final StripeProperties properties;
     private final SubscriptionService subscriptionService;
+    private final DirectSaleService directSaleService;
+    private final SellerConnectService sellerConnectService;
 
     public void handle(String payload, String signatureHeader) {
         if (!properties.hasWebhookSecret()) {
@@ -56,11 +61,20 @@ public class StripeWebhookService {
                     subscriptionService.resyncById(subscriptionId);
                 }
             }
-            case "checkout.session.completed" -> {
-                String subscriptionId = checkoutSubscriptionIdOf(event);
-                if (subscriptionId != null) {
-                    subscriptionService.resyncById(subscriptionId);
-                    log.info("Resynced subscription {} (checkout.session.completed)", subscriptionId);
+            case "checkout.session.completed" -> handleCheckoutCompleted(event);
+            // LUMIRIS-22 : achat direct in-app payé (Payment Element) → fulfillment (Garde-Robe + facture).
+            case "payment_intent.succeeded" -> {
+                StripeObject object = deserialize(event);
+                if (object instanceof PaymentIntent pi && pi.getMetadata() != null
+                        && "marketplace".equals(pi.getMetadata().get("order_type"))) {
+                    directSaleService.fulfillByPaymentIntent(pi.getId());
+                }
+            }
+            // LUMIRIS-22 : état d'un compte vendeur Connect (charges/payouts activés après onboarding).
+            case "account.updated" -> {
+                StripeObject object = deserialize(event);
+                if (object instanceof Account account) {
+                    sellerConnectService.syncFromStripe(account.getId());
                 }
             }
             default -> log.debug("Unhandled Stripe event: {}", event.getType());
@@ -77,9 +91,12 @@ public class StripeWebhookService {
         return object instanceof Invoice invoice ? invoice.getSubscription() : null;
     }
 
-    private String checkoutSubscriptionIdOf(Event event) {
+    private void handleCheckoutCompleted(Event event) {
         StripeObject object = deserialize(event);
-        return object instanceof com.stripe.model.checkout.Session session ? session.getSubscription() : null;
+        if (object instanceof Session session && session.getSubscription() != null) {
+            subscriptionService.resyncById(session.getSubscription());
+            log.info("Resynced subscription {} (checkout.session.completed)", session.getSubscription());
+        }
     }
 
     private StripeObject deserialize(Event event) {

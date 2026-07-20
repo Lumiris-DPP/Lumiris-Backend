@@ -22,7 +22,13 @@ public class MarketplaceProductMapper {
 
     // Vue canonique d'un produit (CRUD, recherche, suggestions). Le score comparable
     // provient exclusivement du DPP lié ; atelierPlus est résolu à la volée par le service.
+    // salesCount = ventes réglées de cette annonce (0 sur les chemins publics).
     public MarketplaceItemResponse toResponse(MarketplaceProduct p, IrisScore score, boolean atelierPlus) {
+        return toResponse(p, score, atelierPlus, 0L);
+    }
+
+    public MarketplaceItemResponse toResponse(MarketplaceProduct p, IrisScore score, boolean atelierPlus,
+                                              long salesCount) {
         ArtisanProfile artisan = p.getArtisanProfile();
         String artisanName = artisan.getAtelierName() != null ? artisan.getAtelierName() : artisan.getDisplayName();
         return new MarketplaceItemResponse(
@@ -45,7 +51,9 @@ public class MarketplaceProductMapper {
                 score != null ? score.getGrade() : null,
                 atelierPlus,
                 p.getStripePriceId() != null,
-                p.getCreatedAt()
+                p.getCreatedAt(),
+                p.getViews(),
+                salesCount
         );
     }
 

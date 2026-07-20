@@ -62,8 +62,20 @@ public class SubscriptionService {
             long amountCents
     ) {}
 
+    // ATELIER+ est une OPTION (add-on) : on ne peut pas la souscrire sans un abonnement ATELIER de base,
+    // ni comme plan autonome / de bascule. (La détention simultanée base + ATELIER+ relève de la
+    // gestion d'add-ons Stripe — 2e item d'abonnement — pas encore branchée.)
+    private void assertNotStandaloneAddon(PlanTier tier) {
+        if (tier == PlanTier.ATELIER_PLUS) {
+            throw new BillingValidationException(
+                    "ATELIER+ est une option à ajouter à un abonnement ATELIER actif (Solo, Studio ou Maison), "
+                            + "pas un abonnement autonome.");
+        }
+    }
+
     public SetupIntentResult createSetupIntent(String userEmail, PlanTier tier, BillingCycle cycle) {
         properties.requireSecretKey();
+        assertNotStandaloneAddon(tier);
         User user = userRepository.getByEmail(userEmail);
         String customerId = customerService.ensureCustomer(user);
         String priceId = catalogService.priceId(tier, cycle);
@@ -129,6 +141,7 @@ public class SubscriptionService {
     // that was flagged to cancel at period end, since choosing a plan expresses intent to keep it.
     public UserSubscription changePlan(String userEmail, PlanTier tier, BillingCycle cycle) {
         properties.requireSecretKey();
+        assertNotStandaloneAddon(tier);
         User user = userRepository.getByEmail(userEmail);
         UserSubscription current = subscriptionRepository.findByUserId(user.getId())
                 .filter(s -> StripeSubscriptionStatus.isLive(s.getStatus()))
@@ -251,6 +264,7 @@ public class SubscriptionService {
 
     public String createCheckoutSession(String userEmail, PlanTier tier, BillingCycle cycle) {
         properties.requireSecretKey();
+        assertNotStandaloneAddon(tier);
         User user = userRepository.getByEmail(userEmail);
         subscriptionRepository.findByUserId(user.getId())
                 .filter(s -> StripeSubscriptionStatus.isLive(s.getStatus()))

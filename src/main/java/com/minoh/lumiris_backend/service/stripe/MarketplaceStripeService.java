@@ -2,15 +2,12 @@ package com.minoh.lumiris_backend.service.stripe;
 
 import com.minoh.lumiris_backend.config.stripe.StripeProperties;
 import com.minoh.lumiris_backend.entity.MarketplaceProduct;
-import com.minoh.lumiris_backend.exception.BillingValidationException;
 import com.minoh.lumiris_backend.repository.MarketplaceProductRepository;
 import com.stripe.model.Price;
 import com.stripe.model.Product;
-import com.stripe.model.checkout.Session;
 import com.stripe.net.RequestOptions;
 import com.stripe.param.PriceCreateParams;
 import com.stripe.param.ProductCreateParams;
-import com.stripe.param.checkout.SessionCreateParams;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -66,27 +63,5 @@ public class MarketplaceStripeService {
         } catch (com.stripe.exception.StripeException e) {
             log.warn("Could not ensure Stripe product for marketplace product {}: {}", pid, e.getMessage());
         }
-    }
-
-    // Session Checkout mode=payment pour ACHETER l'article in-app (paiement unique). Public (app VISION).
-    public String createBuyCheckout(MarketplaceProduct product) {
-        properties.requireSecretKey();
-        if (product.getStripePriceId() == null) {
-            throw new BillingValidationException("Cet article n'est pas en vente directe in-app.");
-        }
-        String base = properties.portalReturnUrl();
-        return StripeCalls.billed("Ouverture du paiement impossible", () -> {
-            SessionCreateParams params = SessionCreateParams.builder()
-                    .setMode(SessionCreateParams.Mode.PAYMENT)
-                    .addLineItem(SessionCreateParams.LineItem.builder()
-                            .setPrice(product.getStripePriceId())
-                            .setQuantity(1L)
-                            .build())
-                    .setSuccessUrl(base + (base.contains("?") ? "&" : "?") + "purchase=success")
-                    .setCancelUrl(base + (base.contains("?") ? "&" : "?") + "purchase=cancel")
-                    .putMetadata("marketplace_product_id", product.getId().toString())
-                    .build();
-            return Session.create(params).getUrl();
-        });
     }
 }

@@ -11,7 +11,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 // Public, anonymous analytics ingestion (passport scans/views/clicks/conversions from
-// WEB/VISION). No PII accepted or stored — see AtelierStatsService / dpp_events table.
+// WEB/VISION). No PII accepted or stored — see AtelierStatsService / passport_analytics_events table.
 @RestController
 @RequestMapping("/v1/events")
 @RequiredArgsConstructor

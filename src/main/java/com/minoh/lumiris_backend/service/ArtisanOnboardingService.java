@@ -66,6 +66,9 @@ public class ArtisanOnboardingService {
         profile.setCompanyName(sirene.companyName());
         profile.setNafCode(sirene.nafCode());
         profile.setSireneRawData(sirene.rawJson());
+        if (profile.getAtelierName() == null || profile.getAtelierName().isBlank()) {
+            profile.setAtelierName(sirene.companyName());
+        }
         return profile;
     }
 

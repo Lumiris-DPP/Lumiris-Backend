@@ -321,7 +321,11 @@ public class DppFormService {
                 ))
                 .toList();
 
-        return dppFormMapper.toResponse(form, mainPhotoUrl, documents);
+        String artisanSlug = artisanProfileRepository.findByUser(form.getUser())
+                .map(ArtisanProfile::getSlug)
+                .orElse(null);
+
+        return dppFormMapper.toResponse(form, mainPhotoUrl, documents, artisanSlug);
     }
 
     @Transactional(readOnly = true)
@@ -377,7 +381,13 @@ public class DppFormService {
                 ))
                 .toList();
 
-        DppFormResponse dppResponse = dppFormMapper.toResponse(form, mainPhotoUrl, documents);
+        String artisanSlug = artisanProfileRepository.findByUser(form.getUser())
+                .filter(ArtisanProfile::isPublished)
+                .filter(p -> p.getStatus() == ArtisanStatus.VERIFIED)
+                .map(ArtisanProfile::getSlug)
+                .orElse(null);
+
+        DppFormResponse dppResponse = dppFormMapper.toResponse(form, mainPhotoUrl, documents, artisanSlug);
 
         IrisScoreResponse scoreResponse = irisScoreRepository.findByDppFormId(form.getId())
                 .map(score -> new IrisScoreResponse(
@@ -392,12 +402,6 @@ public class DppFormService {
                         IrisScoreResponse.FIXED_WEIGHTS,
                         List.of()
                 ))
-                .orElse(null);
-
-        String artisanSlug = artisanProfileRepository.findByUser(form.getUser())
-                .filter(ArtisanProfile::isPublished)
-                .filter(p -> p.getStatus() == ArtisanStatus.VERIFIED)
-                .map(ArtisanProfile::getSlug)
                 .orElse(null);
 
         return new DppFormPublicResponse(dppResponse, scoreResponse, artisanSlug);

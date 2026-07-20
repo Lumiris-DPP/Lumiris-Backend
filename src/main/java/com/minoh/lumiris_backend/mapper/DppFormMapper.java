@@ -86,7 +86,12 @@ public class DppFormMapper {
         }
     }
 
-    public DppFormResponse toResponse(DppForm form, String mainPhotoUrl, List<DppFormDocumentResponse> documents) {
+    public DppFormResponse toResponse(
+            DppForm form,
+            String mainPhotoUrl,
+            List<DppFormDocumentResponse> documents,
+            String artisanSlug
+    ) {
         List<MaterialResponse> materials = form.getMaterials().stream()
                 .map(m -> new MaterialResponse(m.getFiber(), m.getPercentage(), m.getOriginCountry(), m.getLatitude(), m.getLongitude()))
                 .toList();
@@ -122,7 +127,8 @@ public class DppFormMapper {
                 form.getDataHash(),
                 form.getBlockchainAnchorStatus(),
                 form.getBlockchainTxHash(),
-                documents
+                documents,
+                artisanSlug
         );
     }
 

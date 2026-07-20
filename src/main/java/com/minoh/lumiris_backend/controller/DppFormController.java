@@ -43,7 +43,64 @@ public class DppFormController {
             @RequestPart(value = "endOfLifeGuide",    required = false) MultipartFile endOfLifeGuide,
             @RequestPart(value = "saleInvoice",       required = false) MultipartFile saleInvoice,
             @RequestPart(value = "creationPassport",  required = false) MultipartFile creationPassport,
+            @RequestParam(value = "draft", defaultValue = "false") boolean draft,
             @AuthenticationPrincipal UserDetails principal
+    ) {
+        Map<String, MultipartFile> files = collectFiles(productPhoto, reachCompliance, euDeclaration, testReports,
+                transactionCerts, originCerts, repairManual, careGuide, endOfLifeGuide, saleInvoice, creationPassport);
+
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(dppFormService.create(request, files, principal.getUsername(), draft));
+    }
+
+    // Draft-only: 409 when the DPP is already published.
+    @PutMapping(value = "/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    ResponseEntity<DppFormCreatedResponse> update(
+            @PathVariable UUID id,
+            @RequestPart(value = "data") DppFormRequest request,
+            @RequestPart(value = "productPhoto",      required = false) MultipartFile productPhoto,
+            @RequestPart(value = "reachCompliance",   required = false) MultipartFile reachCompliance,
+            @RequestPart(value = "euDeclaration",     required = false) MultipartFile euDeclaration,
+            @RequestPart(value = "testReports",       required = false) MultipartFile testReports,
+            @RequestPart(value = "transactionCerts",  required = false) MultipartFile transactionCerts,
+            @RequestPart(value = "originCerts",       required = false) MultipartFile originCerts,
+            @RequestPart(value = "repairManual",      required = false) MultipartFile repairManual,
+            @RequestPart(value = "careGuide",         required = false) MultipartFile careGuide,
+            @RequestPart(value = "endOfLifeGuide",    required = false) MultipartFile endOfLifeGuide,
+            @RequestPart(value = "saleInvoice",       required = false) MultipartFile saleInvoice,
+            @RequestPart(value = "creationPassport",  required = false) MultipartFile creationPassport,
+            @AuthenticationPrincipal UserDetails principal
+    ) {
+        Map<String, MultipartFile> files = collectFiles(productPhoto, reachCompliance, euDeclaration, testReports,
+                transactionCerts, originCerts, repairManual, careGuide, endOfLifeGuide, saleInvoice, creationPassport);
+
+        return ResponseEntity.ok(dppFormService.update(id, request, files, principal.getUsername()));
+    }
+
+    // Draft-only: 409 when the DPP is already published.
+    @DeleteMapping("/{id}")
+    ResponseEntity<Void> delete(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal UserDetails principal
+    ) {
+        dppFormService.delete(id, principal.getUsername());
+        return ResponseEntity.noContent().build();
+    }
+
+    // Finalisation of a draft: quota gate, public code (QR), data hash, Iris score, blockchain anchor.
+    @PostMapping("/{id}/publish")
+    ResponseEntity<DppFormCreatedResponse> publish(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal UserDetails principal
+    ) {
+        return ResponseEntity.ok(dppFormService.publish(id, principal.getUsername()));
+    }
+
+    private static Map<String, MultipartFile> collectFiles(
+            MultipartFile productPhoto, MultipartFile reachCompliance, MultipartFile euDeclaration,
+            MultipartFile testReports, MultipartFile transactionCerts, MultipartFile originCerts,
+            MultipartFile repairManual, MultipartFile careGuide, MultipartFile endOfLifeGuide,
+            MultipartFile saleInvoice, MultipartFile creationPassport
     ) {
         Map<String, MultipartFile> files = new LinkedHashMap<>();
         if (productPhoto     != null && !productPhoto.isEmpty())     files.put("productPhoto",     productPhoto);
@@ -57,9 +114,7 @@ public class DppFormController {
         if (endOfLifeGuide   != null && !endOfLifeGuide.isEmpty())   files.put("endOfLifeGuide",   endOfLifeGuide);
         if (saleInvoice      != null && !saleInvoice.isEmpty())      files.put("saleInvoice",      saleInvoice);
         if (creationPassport != null && !creationPassport.isEmpty()) files.put("creationPassport", creationPassport);
-
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(dppFormService.create(request, files, principal.getUsername()));
+        return files;
     }
 
     @GetMapping

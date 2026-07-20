@@ -117,7 +117,7 @@ class DppFormServiceTest {
                 30, "2 ans", true, "Rapporter en boutique"
         );
 
-        DppFormCreatedResponse response = service.create(request, Collections.emptyMap(), USER_EMAIL);
+        DppFormCreatedResponse response = service.create(request, Collections.emptyMap(), USER_EMAIL, false);
 
         verify(dppFormRepository).save(any());
         assertThat(response.id()).isNotNull();
@@ -133,7 +133,7 @@ class DppFormServiceTest {
                 null, null, false, null
         );
 
-        DppFormCreatedResponse response = service.create(request, Collections.emptyMap(), USER_EMAIL);
+        DppFormCreatedResponse response = service.create(request, Collections.emptyMap(), USER_EMAIL, false);
 
         verify(dppFormRepository).save(any());
         assertThat(response.id()).isNotNull();
@@ -143,7 +143,7 @@ class DppFormServiceTest {
     void create_shouldThrowWhenUserNotFound() {
         when(userRepository.findByEmail("unknown@test.com")).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.create(null, Collections.emptyMap(), "unknown@test.com"))
+        assertThatThrownBy(() -> service.create(null, Collections.emptyMap(), "unknown@test.com", false))
                 .isInstanceOf(ResourceNotFoundException.class);
     }
 

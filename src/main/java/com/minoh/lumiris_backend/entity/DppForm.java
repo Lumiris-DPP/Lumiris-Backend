@@ -51,7 +51,8 @@ public class DppForm extends Auditable {
     @Column(nullable = false)
     private int quantity = 1;
 
-    @Column(name = "public_code", unique = true, nullable = false, length = 8)
+    // Null while the form is a DRAFT — the QR identity only exists after publication.
+    @Column(name = "public_code", unique = true, length = 8)
     private String publicCode;
 
     @Column(unique = true)
@@ -83,7 +84,8 @@ public class DppForm extends Auditable {
     @JdbcTypeCode(SqlTypes.ARRAY)
     private List<String> colors;
 
-    @Column(name = "data_hash", length = 64, nullable = false)
+    // Null while the form is a DRAFT — the hash is frozen at publication.
+    @Column(name = "data_hash", length = 64)
     private String dataHash;
 
     @Column(name = "blockchain_tx_hash", length = 66)

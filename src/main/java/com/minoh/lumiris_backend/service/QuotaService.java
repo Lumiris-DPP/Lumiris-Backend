@@ -1,6 +1,7 @@
 package com.minoh.lumiris_backend.service;
 
 import com.minoh.lumiris_backend.domain.PlanTier;
+import com.minoh.lumiris_backend.entity.DppStatus;
 import com.minoh.lumiris_backend.entity.User;
 import com.minoh.lumiris_backend.entity.UserSubscription;
 import com.minoh.lumiris_backend.exception.QuotaExceededException;
@@ -35,7 +36,7 @@ public class QuotaService {
 
     @Transactional(readOnly = true)
     public Quota forUser(User user) {
-        long used = dppFormRepository.countByUserId(user.getId());
+        long used = dppFormRepository.countByUserIdAndStatusNot(user.getId(), DppStatus.DRAFT);
         UserSubscription sub = subscriptionRepository.findByUserId(user.getId()).orElse(null);
         boolean active = sub != null && sub.isActive();
         PlanTier tier = sub != null ? sub.getPlanTier() : null;

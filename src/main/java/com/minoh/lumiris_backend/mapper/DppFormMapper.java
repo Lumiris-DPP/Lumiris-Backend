@@ -29,6 +29,12 @@ public class DppFormMapper {
     public DppForm toEntity(DppFormRequest request, User user) {
         DppForm form = new DppForm();
         form.setUser(user);
+        applyScalars(form, request);
+        addChildren(form, request);
+        return form;
+    }
+
+    public void applyScalars(DppForm form, DppFormRequest request) {
         form.setProductName(request.productName());
         form.setProductDescription(request.productDescription());
         form.setProductCategory(request.productCategory());
@@ -38,15 +44,18 @@ public class DppFormMapper {
         form.setQuantity(request.quantity() != null && request.quantity() >= 1 ? request.quantity() : 1);
         form.setGtin(request.gtin());
         form.setSku(request.sku());
-        form.setReachCompliant(request.reachCompliant());
+        // NOT NULL in DB (default false); a draft may omit them, so coalesce.
+        form.setReachCompliant(request.reachCompliant() != null && request.reachCompliant());
         form.setRecycledPct(request.recycledPct());
         form.setWarrantyDescription(request.warrantyDescription());
-        form.setIsRepairable(request.isRepairable());
+        form.setIsRepairable(request.isRepairable() != null && request.isRepairable());
         form.setEndOfLifeInstructions(request.endOfLifeInstructions());
         form.setAvailableSizes(request.availableSizes());
         form.setColors(request.colors());
         form.setCareNotes(request.careNotes());
+    }
 
+    public void addChildren(DppForm form, DppFormRequest request) {
         if (request.materials() != null) {
             request.materials().forEach(m -> {
                 DppMaterial material = new DppMaterial();
@@ -66,8 +75,6 @@ public class DppFormMapper {
                 form.getCareInstructions().add(care);
             });
         }
-
-        return form;
     }
 
     public DppFormResponse toResponse(DppForm form, String mainPhotoUrl, List<DppFormDocumentResponse> documents) {

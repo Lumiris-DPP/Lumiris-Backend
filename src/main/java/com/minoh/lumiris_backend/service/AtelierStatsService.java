@@ -2,14 +2,14 @@ package com.minoh.lumiris_backend.service;
 
 import com.minoh.lumiris_backend.domain.PlanTier;
 import com.minoh.lumiris_backend.dto.out.AtelierStatsResponse;
-import com.minoh.lumiris_backend.entity.DppEvent;
-import com.minoh.lumiris_backend.entity.DppEventType;
+import com.minoh.lumiris_backend.entity.PassportAnalyticsEvent;
+import com.minoh.lumiris_backend.entity.PassportAnalyticsEventType;
 import com.minoh.lumiris_backend.entity.DppForm;
 import com.minoh.lumiris_backend.entity.User;
 import com.minoh.lumiris_backend.entity.UserSubscription;
 import com.minoh.lumiris_backend.exception.ResourceNotFoundException;
 import com.minoh.lumiris_backend.exception.SubscriptionRequiredException;
-import com.minoh.lumiris_backend.repository.DppEventRepository;
+import com.minoh.lumiris_backend.repository.PassportAnalyticsEventRepository;
 import com.minoh.lumiris_backend.repository.DppFormRepository;
 import com.minoh.lumiris_backend.repository.SubscriptionRepository;
 import com.minoh.lumiris_backend.repository.UserRepository;
@@ -28,24 +28,24 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class AtelierStatsService {
 
-    private final DppEventRepository dppEventRepository;
+    private final PassportAnalyticsEventRepository passportAnalyticsEventRepository;
     private final DppFormRepository dppFormRepository;
     private final SubscriptionRepository subscriptionRepository;
     private final UserRepository userRepository;
 
     @Transactional
     public void track(String publicCode, String rawType) {
-        DppEventType type = DppEventType.valueOf(rawType.toUpperCase());
+        PassportAnalyticsEventType type = PassportAnalyticsEventType.valueOf(rawType.toUpperCase());
         DppForm form = dppFormRepository.findByPublicCode(publicCode)
                 .orElseThrow(() -> new ResourceNotFoundException("Passeport introuvable"));
-        dppEventRepository.save(new DppEvent(form, type));
+        passportAnalyticsEventRepository.save(new PassportAnalyticsEvent(form, type));
     }
 
     // Called from the (read-only) public DPP lookup, so a "scan" is tracked with zero extra
     // integration work from VISION/WEB. Runs in its own transaction, independent of the caller's.
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void trackScan(DppForm form) {
-        dppEventRepository.save(new DppEvent(form, DppEventType.SCAN));
+        passportAnalyticsEventRepository.save(new PassportAnalyticsEvent(form, PassportAnalyticsEventType.SCAN));
     }
 
     @Transactional(readOnly = true)
@@ -68,11 +68,11 @@ public class AtelierStatsService {
         Map<UUID, String[]> passportMeta = new LinkedHashMap<>();
         long totalScans = 0, totalViews = 0, totalClicks = 0, totalConversions = 0;
 
-        for (Object[] row : dppEventRepository.aggregateByArtisan(user.getId(), effectiveFrom, effectiveTo)) {
+        for (Object[] row : passportAnalyticsEventRepository.aggregateByArtisan(user.getId(), effectiveFrom, effectiveTo)) {
             UUID dppFormId = (UUID) row[0];
             String publicCode = (String) row[1];
             String productName = (String) row[2];
-            DppEventType type = (DppEventType) row[3];
+            PassportAnalyticsEventType type = (PassportAnalyticsEventType) row[3];
             long count = (Long) row[4];
 
             passportMeta.putIfAbsent(dppFormId, new String[]{publicCode, productName});

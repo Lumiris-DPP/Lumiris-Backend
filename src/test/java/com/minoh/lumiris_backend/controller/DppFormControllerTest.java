@@ -73,7 +73,7 @@ class DppFormControllerTest {
     @Test
     void create_shouldReturn201_withBody() throws Exception {
         UUID id = UUID.randomUUID();
-        when(dppFormService.create(any(), anyMap(), eq(USER_EMAIL))).thenReturn(new DppFormCreatedResponse(id));
+        when(dppFormService.create(any(), anyMap(), eq(USER_EMAIL), eq(false))).thenReturn(new DppFormCreatedResponse(id));
 
         DppFormRequest request = new DppFormRequest(
                 "Pull Merino", "Un pull doux", "top", "FR",
@@ -94,6 +94,6 @@ class DppFormControllerTest {
                 .andExpect(jsonPath("$.id").value(id.toString()))
                 .andExpect(jsonPath("$.id").isNotEmpty());
 
-        verify(dppFormService).create(any(), anyMap(), eq(USER_EMAIL));
+        verify(dppFormService).create(any(), anyMap(), eq(USER_EMAIL), eq(false));
     }
 }

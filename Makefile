@@ -34,7 +34,7 @@ export BLOCKCHAIN_RPC_URL
 export BLOCKCHAIN_WALLET_PRIVATE_KEY
 
 .DEFAULT_GOAL := help
-.PHONY: help start stop down fresh logs run mvn maven flyway test postman
+.PHONY: help start stop down fresh fresh-seed logs run mvn maven flyway test postman
 
 help:
 	@echo "Usage: make <command>"
@@ -44,6 +44,7 @@ help:
 	@echo "    stop      Stop containers without removing them"
 	@echo "    down      Stop and remove containers"
 	@echo "    fresh     Full reset: remove containers + volumes, then restart"
+	@echo "    fresh-seed  Full reset, then run the app with demo seeds (db/seed)"
 	@echo "    logs      Follow PostgreSQL logs"
 	@echo ""
 	@echo "  App"
@@ -83,6 +84,9 @@ down:
 fresh:
 	@$(DC) down -v
 	@$(DC) up -d
+
+fresh-seed: fresh
+	@FLYWAY_LOCATIONS=classpath:db/migration,classpath:db/seed $(MAKE) run
 
 logs:
 	@$(DC) logs -f postgres

@@ -39,5 +39,6 @@ public record DppFormResponse(
         BlockchainAnchorStatus blockchainAnchorStatus,
         String blockchainTxHash,
 
-        List<DppFormDocumentResponse> documents
+        List<DppFormDocumentResponse> documents,
+        String artisanSlug
 ) {}

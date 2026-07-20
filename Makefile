@@ -34,7 +34,7 @@ export BLOCKCHAIN_RPC_URL
 export BLOCKCHAIN_WALLET_PRIVATE_KEY
 
 .DEFAULT_GOAL := help
-.PHONY: help start stop down fresh fresh-seed logs run mvn maven flyway test postman
+.PHONY: help start stop down fresh fresh-seed logs run mvn maven flyway test postman setup-stripe
 
 help:
 	@echo "Usage: make <command>"

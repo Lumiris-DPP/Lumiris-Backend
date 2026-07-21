@@ -1,6 +1,7 @@
 package com.minoh.lumiris_backend.controller;
 
 import com.minoh.lumiris_backend.dto.in.RepairerReviewRequest;
+import com.minoh.lumiris_backend.dto.out.RepairerPublicProfileResponse;
 import com.minoh.lumiris_backend.dto.out.RepairerReviewResponse;
 import com.minoh.lumiris_backend.dto.out.RepairerSearchResult;
 import com.minoh.lumiris_backend.service.RepairerOnboardingService;
@@ -21,6 +22,11 @@ public class PublicRepairerController {
 
     private final RepairerOnboardingService onboardingService;
     private final RepairerReviewService reviewService;
+
+    @GetMapping("/{id}")
+    ResponseEntity<RepairerPublicProfileResponse> findById(@PathVariable UUID id) {
+        return ResponseEntity.ok(onboardingService.findPublicById(id));
+    }
 
     @GetMapping("/search")
     ResponseEntity<List<RepairerSearchResult>> search(

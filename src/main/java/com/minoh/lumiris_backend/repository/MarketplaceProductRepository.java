@@ -17,6 +17,35 @@ public interface MarketplaceProductRepository extends JpaRepository<MarketplaceP
     @Query("update MarketplaceProduct p set p.views = p.views + 1 where p.id = :id")
     int incrementViews(@Param("id") UUID id);
 
+    // Réservation de stock au checkout — décrément conditionnel atomique : ne passe que si le
+    // stock disponible couvre la quantité (garde anti-survente). Renvoie le nb de lignes affectées
+    // (1 = réservé, 0 = stock insuffisant, à traiter en 422 côté service).
+    @Modifying
+    @Query("update MarketplaceProduct p set p.stock = p.stock - :qty where p.id = :id and p.stock >= :qty")
+    int decrementStock(@Param("id") UUID id, @Param("qty") int qty);
+
+    // Fiche produit publiée unitaire (VISION) — évite de scanner tout le catalogue pour un deep-link.
+    @Query("""
+            select p, s
+            from MarketplaceProduct p
+            join fetch p.artisanProfile
+            left join IrisScore s on s.dppForm.id = p.dppForm.id
+            where p.id = :id
+              and p.status = com.minoh.lumiris_backend.entity.MarketplaceProductStatus.PUBLISHED
+            """)
+    List<Object[]> findScoredPublishedById(@Param("id") UUID id);
+
+    // Pont scan → achat : le produit publié lié à un passeport scanné (unifie les 2 modèles d'achat).
+    @Query("""
+            select p, s
+            from MarketplaceProduct p
+            join fetch p.artisanProfile
+            left join IrisScore s on s.dppForm.id = p.dppForm.id
+            where p.dppForm.id = :dppFormId
+              and p.status = com.minoh.lumiris_backend.entity.MarketplaceProductStatus.PUBLISHED
+            """)
+    List<Object[]> findScoredPublishedByDpp(@Param("dppFormId") UUID dppFormId);
+
     // Total des vues de toutes les fiches d'un atelier — KPI tableau de bord.
     @Query("select coalesce(sum(p.views), 0) from MarketplaceProduct p where p.artisanProfile.id = :artisanProfileId")
     long totalViewsByArtisanProfile(@Param("artisanProfileId") UUID artisanProfileId);

@@ -15,6 +15,10 @@ public interface MarketplaceOrderRepository extends JpaRepository<MarketplaceOrd
 
     Optional<MarketplaceOrder> findByStripeCheckoutSessionId(String sessionId);
 
+    // Une annonce a-t-elle des commandes ? (garde-fou : on archive au lieu de supprimer pour ne pas
+    // orpheliner l'historique d'achat / la garde-robe des acheteurs).
+    boolean existsByProduct_Id(UUID productId);
+
     // Fulfillment du paiement embarqué : toutes les lignes de commande d'un même PaymentIntent.
     List<MarketplaceOrder> findByStripePaymentIntentId(String paymentIntentId);
 
@@ -38,4 +42,15 @@ public interface MarketplaceOrderRepository extends JpaRepository<MarketplaceOrd
             + "where o.seller.id = :sellerId and o.status in :statuses group by o.product.id")
     List<Object[]> salesCountByProduct(@Param("sellerId") UUID sellerId,
                                        @Param("statuses") Collection<OrderStatus> statuses);
+
+    // ── Trésorerie escrow (montants nets, part vendeur) ──────────────────────
+    // Encaissé mais retenu (payé, pas encore reversé).
+    @Query("select coalesce(sum(o.netCents), 0) from MarketplaceOrder o "
+            + "where o.seller.id = :sellerId and o.status = 'PAID' and o.stripeTransferId is null")
+    long heldNetCentsBySeller(@Param("sellerId") UUID sellerId);
+
+    // Déjà reversé au vendeur (Transfer créé).
+    @Query("select coalesce(sum(o.netCents), 0) from MarketplaceOrder o "
+            + "where o.seller.id = :sellerId and o.stripeTransferId is not null")
+    long releasedNetCentsBySeller(@Param("sellerId") UUID sellerId);
 }

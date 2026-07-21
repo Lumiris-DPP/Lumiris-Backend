@@ -114,6 +114,23 @@ public class AuthService {
         return UserResponse.from(user);
     }
 
+    // RGPD — droit à l'effacement. On ANONYMISE le compte (les enregistrements transactionnels
+    // — commandes/factures — sont conservés pour obligation légale, mais dissociés de l'identité) :
+    // e-mail/nom neutralisés, mot de passe rendu inutilisable, sessions révoquées. La révocation
+    // des jetons empêche toute réutilisation. Idempotent (un compte déjà anonymisé le reste).
+    @Transactional
+    public void deleteAccount(String email) {
+        User user = userRepository.getByEmail(email);
+        refreshTokenRepository.deleteByUser_Id(user.getId());
+        user.setEmail("deleted-" + user.getId() + "@deleted.lumiris.invalid");
+        user.setName(null);
+        user.setAvatarUrl(null);
+        user.setVerified(false);
+        // Hash aléatoire non déchiffrable : plus aucune connexion possible sur ce compte.
+        user.setPasswordHash(passwordEncoder.encode(jwtService.generateRefreshToken()));
+        userRepository.save(user);
+    }
+
     private AuthResponse buildAuthResponse(User user) {
         UserDetails userDetails = userDetailsService.loadUserByUsername(user.getEmail());
         String accessToken = jwtService.generateToken(userDetails);

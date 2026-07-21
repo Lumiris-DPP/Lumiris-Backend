@@ -13,6 +13,7 @@ public record SubscriptionResponse(
         boolean grantsPassports,
         Instant currentPeriodEnd,
         boolean cancelAtPeriodEnd,
+        boolean atelierPlus,
         String priceId
 ) {
     public static SubscriptionResponse from(UserSubscription s) {
@@ -28,6 +29,7 @@ public record SubscriptionResponse(
                 s.getPlanTier().grantsPassports(),
                 s.getCurrentPeriodEnd(),
                 s.isCancelAtPeriodEnd(),
+                s.isAtelierPlus(),
                 s.getStripePriceId()
         );
     }

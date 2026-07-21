@@ -1,6 +1,5 @@
 package com.minoh.lumiris_backend.service;
 
-import com.minoh.lumiris_backend.domain.PlanTier;
 import com.minoh.lumiris_backend.entity.UserSubscription;
 import com.minoh.lumiris_backend.repository.SubscriptionRepository;
 import lombok.RequiredArgsConstructor;
@@ -24,7 +23,7 @@ public class AtelierPlusResolver {
     public boolean isAtelierPlus(UUID userId) {
         return subscriptionRepository.findByUserId(userId)
                 .filter(UserSubscription::isActive)
-                .map(s -> s.getPlanTier() == PlanTier.ATELIER_PLUS)
+                .map(UserSubscription::isAtelierPlus)
                 .orElse(false);
     }
 
@@ -36,7 +35,7 @@ public class AtelierPlusResolver {
         }
         return subscriptionRepository.findByUserIdIn(userIds).stream()
                 .filter(UserSubscription::isActive)
-                .filter(s -> s.getPlanTier() == PlanTier.ATELIER_PLUS)
+                .filter(UserSubscription::isAtelierPlus)
                 .map(s -> s.getUser().getId())
                 .collect(Collectors.toSet());
     }

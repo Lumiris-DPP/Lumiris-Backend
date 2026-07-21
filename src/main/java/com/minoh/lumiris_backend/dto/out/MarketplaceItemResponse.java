@@ -20,6 +20,10 @@ public record MarketplaceItemResponse(
         int priceCents,
         String currency,
         int stock,
+        // Livraison + retour + garantie : visibles AVANT le paiement (transparence, moins d'abandon panier).
+        int shippingCents,
+        String returnPolicy,
+        String warrantyDescription,
         String externalOrderUrl,
         String photoUrl,
         MarketplaceProductStatus status,

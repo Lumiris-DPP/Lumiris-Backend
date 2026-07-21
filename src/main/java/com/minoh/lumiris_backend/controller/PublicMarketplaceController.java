@@ -1,6 +1,7 @@
 package com.minoh.lumiris_backend.controller;
 
 import com.minoh.lumiris_backend.dto.in.SuggestRequest;
+import com.minoh.lumiris_backend.dto.out.MarketplaceItemResponse;
 import com.minoh.lumiris_backend.dto.out.SearchResponse;
 import com.minoh.lumiris_backend.dto.out.SuggestionResponse;
 import com.minoh.lumiris_backend.service.MarketplaceService;
@@ -36,6 +37,18 @@ public class PublicMarketplaceController {
     @PostMapping("/suggest")
     ResponseEntity<SuggestionResponse> suggest(@Valid @RequestBody SuggestRequest request) {
         return ResponseEntity.ok(marketplaceService.suggest(request));
+    }
+
+    // Fiche produit publiée unitaire (deep-link VISION) — 404 si non publiée / vendeur non encaissable.
+    @GetMapping("/products/{id}")
+    ResponseEntity<MarketplaceItemResponse> product(@PathVariable UUID id) {
+        return ResponseEntity.ok(marketplaceService.getPublished(id));
+    }
+
+    // Pont scan → achat : produit achetable lié à un passeport scanné (unifie les 2 modèles d'achat).
+    @GetMapping("/products/by-dpp/{dppFormId}")
+    ResponseEntity<MarketplaceItemResponse> productByDpp(@PathVariable UUID dppFormId) {
+        return ResponseEntity.ok(marketplaceService.getPublishedByDpp(dppFormId));
     }
 
     // Vue d'une fiche produit (VISION) — incrément fire-and-forget du compteur de vues (stats vendeur).

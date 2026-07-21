@@ -182,6 +182,92 @@ public class SubscriptionService {
         }
     }
 
+    // Résiliation / reprise IN-APP (sans passer par le portail Stripe). On ne résilie PAS
+    // immédiatement : cancel_at_period_end laisse l'accès jusqu'à la fin de la période déjà payée,
+    // puis l'abonnement s'éteint. Reprendre (resume) = lever ce drapeau avant l'échéance.
+    // (Un changement de plan lève aussi le drapeau — cf. changePlan.)
+    public UserSubscription setCancelAtPeriodEnd(String userEmail, boolean cancelAtPeriodEnd) {
+        properties.requireSecretKey();
+        User user = userRepository.getByEmail(userEmail);
+        UserSubscription current = subscriptionRepository.findByUserId(user.getId())
+                .filter(s -> StripeSubscriptionStatus.isLive(s.getStatus()))
+                .orElseThrow(() -> new BillingValidationException(
+                        "Aucun abonnement actif à " + (cancelAtPeriodEnd ? "résilier" : "reprendre") + "."));
+        String subscriptionId = current.getStripeSubscriptionId();
+        if (subscriptionId == null) {
+            throw new BillingValidationException("Abonnement Stripe introuvable pour ce compte.");
+        }
+        if (current.isCancelAtPeriodEnd() == cancelAtPeriodEnd) {
+            // Déjà dans l'état demandé : rien à faire, on renvoie l'état courant (idempotent).
+            return current;
+        }
+        try {
+            Subscription stripeSub = Subscription.retrieve(subscriptionId);
+            Subscription updated = stripeSub.update(SubscriptionUpdateParams.builder()
+                    .setCancelAtPeriodEnd(cancelAtPeriodEnd)
+                    .build());
+            UserSubscription saved = syncService.persist(updated);
+            if (saved == null) {
+                throw new BillingException("La synchronisation de l'abonnement a échoué.");
+            }
+            return saved;
+        } catch (StripeException e) {
+            throw new BillingException(
+                    (cancelAtPeriodEnd ? "Résiliation" : "Reprise") + " de l'abonnement impossible: "
+                            + e.getMessage(), e);
+        }
+    }
+
+    // ATELIER+ (add-on) : ajoute ou retire une 2e ligne (price ATELIER_PLUS) sur l'abonnement de base
+    // existant, avec proration. Requiert un abonnement ATELIER live (l'option n'a pas de sens seule).
+    public UserSubscription setAtelierPlus(String userEmail, boolean enable) {
+        properties.requireSecretKey();
+        User user = userRepository.getByEmail(userEmail);
+        UserSubscription current = subscriptionRepository.findByUserId(user.getId())
+                .filter(s -> StripeSubscriptionStatus.isLive(s.getStatus()))
+                .orElseThrow(() -> new BillingValidationException(
+                        "ATELIER+ est une option d'un abonnement ATELIER actif — souscrivez d'abord un plan."));
+        String subscriptionId = current.getStripeSubscriptionId();
+        if (subscriptionId == null) {
+            throw new BillingValidationException("Abonnement Stripe introuvable pour ce compte.");
+        }
+        BillingCycle cycle = current.getBillingCycle() != null ? current.getBillingCycle() : BillingCycle.MONTHLY;
+        String plusMonthly = catalogService.priceId(PlanTier.ATELIER_PLUS, BillingCycle.MONTHLY);
+        String plusAnnual = catalogService.priceId(PlanTier.ATELIER_PLUS, BillingCycle.ANNUAL);
+        try {
+            Subscription stripeSub = Subscription.retrieve(subscriptionId);
+            List<SubscriptionItem> items = stripeSub.getItems() != null ? stripeSub.getItems().getData() : List.of();
+            SubscriptionItem plusItem = items.stream()
+                    .filter(it -> it.getPrice() != null
+                            && (it.getPrice().getId().equals(plusMonthly) || it.getPrice().getId().equals(plusAnnual)))
+                    .findFirst().orElse(null);
+
+            if (enable == (plusItem != null)) {
+                return current; // Déjà dans l'état voulu (idempotent).
+            }
+
+            SubscriptionUpdateParams.Builder params = SubscriptionUpdateParams.builder()
+                    .setProrationBehavior(SubscriptionUpdateParams.ProrationBehavior.CREATE_PRORATIONS)
+                    .setPaymentBehavior(SubscriptionUpdateParams.PaymentBehavior.ALLOW_INCOMPLETE)
+                    .putMetadata("user_id", user.getId().toString());
+            if (enable) {
+                params.addItem(SubscriptionUpdateParams.Item.builder()
+                        .setPrice(catalogService.priceId(PlanTier.ATELIER_PLUS, cycle)).build());
+            } else {
+                params.addItem(SubscriptionUpdateParams.Item.builder()
+                        .setId(plusItem.getId()).setDeleted(true).build());
+            }
+            Subscription updated = stripeSub.update(params.build());
+            UserSubscription saved = syncService.persist(updated);
+            if (saved == null) {
+                throw new BillingException("La synchronisation de l'abonnement a échoué.");
+            }
+            return saved;
+        } catch (StripeException e) {
+            throw new BillingException("Mise à jour de l'option ATELIER+ impossible: " + e.getMessage(), e);
+        }
+    }
+
     // Make the confirmed payment method the customer's default, so Stripe bills it for the subscription.
     private void setCustomerDefaultPaymentMethod(String customerId, String paymentMethodId) throws StripeException {
         Customer customer = Customer.retrieve(customerId);

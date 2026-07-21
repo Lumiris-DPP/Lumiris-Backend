@@ -150,6 +150,14 @@ public class ArtisanOnboardingService {
                 .toList();
     }
 
+    // Every registered artisan account (any status), for the admin's general account browser —
+    // as opposed to findPending() which only surfaces dossiers awaiting review.
+    public List<ArtisanProfileResponse> findAll() {
+        return artisanRepo.findAll().stream()
+                .map(this::toResponse)
+                .toList();
+    }
+
     @Transactional
     public ArtisanProfileResponse verify(UUID profileId) {
         return updateKybStatus(profileId, KybStatus.VALIDATED, null);

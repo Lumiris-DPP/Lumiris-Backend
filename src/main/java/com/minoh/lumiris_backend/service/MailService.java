@@ -52,6 +52,14 @@ public class MailService {
         send(to, subject, "email/registration-rejected", context);
     }
 
+    public void sendRepairRequestRefused(String to, String name, String productName) {
+        String subject = "Devis refusé";
+        Context context = titledContext(subject);
+        context.setVariable("name", name);
+        context.setVariable("productName", productName);
+        send(to, subject, "email/repair-request-refused", context);
+    }
+
     public void sendPaymentSuccess(String to, String name, String amount, String orderRef) {
         String subject = "Paiement confirmé";
         Context context = titledContext(subject);
@@ -94,13 +102,7 @@ public class MailService {
             body += "\n\nDétail : " + note;
         }
         body += "\n\nConnectez-vous à votre espace pour le mettre à jour.\nL'équipe Lumiris";
-        send(to, "Votre dossier KYB Lumiris est incomplet", body);
-    }
-
-    public void sendRepairRequestRefused(String to, String name, String productName) {
-        send(to, "Devis refusé",
-                "Bonjour " + name + ",\n\nLe client a refusé votre devis pour \"" + productName + "\". " +
-                "La demande est désormais close.\n\nL'équipe Lumiris");
+        sendNotification(to, "Votre dossier KYB Lumiris est incomplet", body);
     }
 
     public void sendNotification(String to, String title, String body) {

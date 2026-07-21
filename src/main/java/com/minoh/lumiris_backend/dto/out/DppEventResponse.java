@@ -10,5 +10,9 @@ public record DppEventResponse(
         Instant occurredAt,
         String description,
         DppEventActorType actorType,
+        String locationCity,
+        String locationCountry,
+        Double latitude,
+        Double longitude,
         Instant createdAt
 ) {}

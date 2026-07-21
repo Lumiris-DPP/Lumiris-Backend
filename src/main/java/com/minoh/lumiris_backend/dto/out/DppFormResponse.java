@@ -1,6 +1,5 @@
 package com.minoh.lumiris_backend.dto.out;
 
-import com.minoh.lumiris_backend.dto.in.MaterialRequest;
 import com.minoh.lumiris_backend.entity.BlockchainAnchorStatus;
 import com.minoh.lumiris_backend.entity.DppStatus;
 
@@ -22,7 +21,7 @@ public record DppFormResponse(
         List<String> colors,
         String mainPhotoUrl,
 
-        List<MaterialRequest> materials,
+        List<MaterialResponse> materials,
         List<String> careInstructions,
         String careNotes,
 

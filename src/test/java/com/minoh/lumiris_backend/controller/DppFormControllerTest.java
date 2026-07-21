@@ -4,8 +4,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.minoh.lumiris_backend.dto.in.DppFormRequest;
 import com.minoh.lumiris_backend.dto.out.DppFormCreatedResponse;
-import com.minoh.lumiris_backend.entity.BlockchainAnchorStatus;
-import com.minoh.lumiris_backend.entity.DppStatus;
 import com.minoh.lumiris_backend.service.DppFormService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -79,7 +77,7 @@ class DppFormControllerTest {
                 "Pull Merino", "Un pull doux", "top", "FR",
                 List.of("S", "M"), List.of("Écru"),
                 List.of(), List.of(), null,
-                "2026-01-01", null,null, null, true,
+                "2026-01-01", null, null, null, true,
                 null, null, null, null, 1
         );
 

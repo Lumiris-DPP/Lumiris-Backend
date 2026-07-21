@@ -118,4 +118,12 @@ public class ArtisanProfile extends Auditable {
 
     @Embedded
     private KybDetails kyb = new KybDetails();
+
+    // Hibernate leaves `kyb` null after loading a row where every kyb_* column is still NULL
+    // (no KYB dossier submitted yet) instead of using the field initializer above — guarantee
+    // callers never see a null embeddable regardless of load path.
+    @PostLoad
+    private void initKyb() {
+        if (kyb == null) kyb = new KybDetails();
+    }
 }

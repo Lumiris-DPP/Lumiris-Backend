@@ -18,6 +18,7 @@ import com.minoh.lumiris_backend.service.stripe.SubscriptionService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -99,5 +100,32 @@ public class SubscriptionController {
     ResponseEntity<PortalResponse> portal(@CurrentUserEmail String email) {
         String url = subscriptionService.createPortalSession(email);
         return ResponseEntity.ok(new PortalResponse(url));
+    }
+
+    // Résiliation in-app : l'abonnement reste actif jusqu'à la fin de la période payée, puis s'éteint.
+    @PostMapping("/cancel")
+    ResponseEntity<SubscriptionStateResponse> cancel(@CurrentUserEmail String email) {
+        subscriptionService.setCancelAtPeriodEnd(email, true);
+        return ResponseEntity.ok(subscriptionService.getState(email));
+    }
+
+    // Reprise in-app : annule une résiliation programmée avant l'échéance.
+    @PostMapping("/resume")
+    ResponseEntity<SubscriptionStateResponse> resume(@CurrentUserEmail String email) {
+        subscriptionService.setCancelAtPeriodEnd(email, false);
+        return ResponseEntity.ok(subscriptionService.getState(email));
+    }
+
+    // Option ATELIER+ (add-on) : activer (POST) / retirer (DELETE) sur l'abonnement de base.
+    @PostMapping("/atelier-plus")
+    ResponseEntity<SubscriptionStateResponse> addAtelierPlus(@CurrentUserEmail String email) {
+        subscriptionService.setAtelierPlus(email, true);
+        return ResponseEntity.ok(subscriptionService.getState(email));
+    }
+
+    @DeleteMapping("/atelier-plus")
+    ResponseEntity<SubscriptionStateResponse> removeAtelierPlus(@CurrentUserEmail String email) {
+        subscriptionService.setAtelierPlus(email, false);
+        return ResponseEntity.ok(subscriptionService.getState(email));
     }
 }

@@ -51,6 +51,10 @@ public class UserSubscription extends Auditable {
     @Column(name = "cancel_at_period_end", nullable = false)
     private boolean cancelAtPeriodEnd = false;
 
+    // Option ATELIER+ (add-on) présente sur l'abonnement (2e ligne Stripe). Synchronisée depuis Stripe.
+    @Column(name = "atelier_plus", nullable = false)
+    private boolean atelierPlus = false;
+
     public boolean isActive() {
         return StripeSubscriptionStatus.isActive(status);
     }

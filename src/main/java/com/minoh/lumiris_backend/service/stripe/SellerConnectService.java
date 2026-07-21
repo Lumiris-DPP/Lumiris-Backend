@@ -5,13 +5,11 @@ import com.minoh.lumiris_backend.dto.out.SellerStatusResponse;
 import com.minoh.lumiris_backend.entity.SellerAccount;
 import com.minoh.lumiris_backend.entity.User;
 import com.minoh.lumiris_backend.entity.UserRole;
-import com.minoh.lumiris_backend.exception.BillingValidationException;
 import com.minoh.lumiris_backend.exception.RoleNotAllowedException;
 import com.minoh.lumiris_backend.repository.SellerAccountRepository;
 import com.minoh.lumiris_backend.repository.UserRepository;
 import com.stripe.exception.StripeException;
 import com.stripe.model.Account;
-import com.stripe.model.LoginLink;
 import com.stripe.param.AccountCreateParams;
 import com.stripe.param.AccountLinkCreateParams;
 import lombok.RequiredArgsConstructor;
@@ -70,19 +68,6 @@ public class SellerConnectService {
                 .build());
         persistAccount(user, created.getId(), created);
         return created.getId();
-    }
-
-    // Lien de connexion au tableau de bord Stripe Express de l'atelier (solde, virements/payouts,
-    // détail de chaque vente encaissée). C'est LÀ que l'artisan voit ce qu'il a récupéré.
-    @Transactional(readOnly = true)
-    public String createDashboardLink(String userEmail) {
-        properties.requireSecretKey();
-        User user = requireArtisan(userEmail);
-        SellerAccount account = sellerAccountRepository.findByUser_Id(user.getId())
-                .orElseThrow(() -> new BillingValidationException(
-                        "Aucun compte de paiement — activez d'abord les paiements."));
-        return StripeCalls.billed("Ouverture du tableau de bord Stripe impossible",
-                () -> LoginLink.createOnAccount(account.getStripeAccountId()).getUrl());
     }
 
     @Transactional

@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.time.Instant;
 import java.util.UUID;
 
 // Commande d'achat direct in-app. commissionCents = part plateforme (application_fee) prélevée
@@ -43,6 +44,11 @@ public class MarketplaceOrder extends Auditable {
     @Column(name = "amount_total_cents", nullable = false)
     private int amountTotalCents = 0;
 
+    // Frais de port du panier (portés par la 1re ligne, 0 sur les autres) — permet de reconstituer
+    // le montant réellement débité (articles + livraison) sur l'écran de confirmation.
+    @Column(name = "shipping_cents", nullable = false)
+    private int shippingCents = 0;
+
     @Column(name = "commission_cents", nullable = false)
     private int commissionCents = 0;
 
@@ -55,4 +61,21 @@ public class MarketplaceOrder extends Auditable {
 
     @Column(name = "invoice_number")
     private String invoiceNumber;
+
+    // ── Escrow : fonds encaissés sur la plateforme puis reversés au vendeur par un Transfer Stripe ──
+    // netCents = part reversée au vendeur (brut de la ligne − commission plateforme).
+    @Column(name = "net_cents", nullable = false)
+    private int netCents = 0;
+
+    // Id du Transfer Stripe une fois les fonds libérés vers le compte connecté (null = encore retenu).
+    @Column(name = "stripe_transfer_id")
+    private String stripeTransferId;
+
+    // Relie la charge et son (ses) transfert(s) côté Stripe (reporting / réconciliation).
+    @Column(name = "transfer_group")
+    private String transferGroup;
+
+    // Date de libération des fonds au vendeur (Transfer créé).
+    @Column(name = "released_at")
+    private Instant releasedAt;
 }

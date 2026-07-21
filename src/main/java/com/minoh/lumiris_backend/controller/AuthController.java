@@ -39,4 +39,11 @@ public class AuthController {
     ResponseEntity<UserResponse> me(@CurrentUserEmail String email) {
         return ResponseEntity.ok(authService.me(email));
     }
+
+    // RGPD — suppression (anonymisation) du compte courant. 204. Le client doit ensuite purger sa session.
+    @DeleteMapping("/me")
+    ResponseEntity<Void> deleteMe(@CurrentUserEmail String email) {
+        authService.deleteAccount(email);
+        return ResponseEntity.noContent().build();
+    }
 }

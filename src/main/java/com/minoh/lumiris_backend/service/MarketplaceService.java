@@ -11,6 +11,7 @@ import com.minoh.lumiris_backend.dto.out.SearchResponse;
 import com.minoh.lumiris_backend.dto.out.SuggestionResponse;
 import com.minoh.lumiris_backend.entity.*;
 import com.minoh.lumiris_backend.exception.BillingValidationException;
+import com.minoh.lumiris_backend.exception.ConflictException;
 import com.minoh.lumiris_backend.exception.ResourceNotFoundException;
 import com.minoh.lumiris_backend.exception.RoleNotAllowedException;
 import com.minoh.lumiris_backend.mapper.MarketplaceProductMapper;
@@ -45,6 +46,8 @@ public class MarketplaceService {
     private final UserRepository userRepository;
     private final DppFormRepository dppFormRepository;
     private final IrisScoreRepository irisScoreRepository;
+    private final SellerAccountRepository sellerAccountRepository;
+    private final SubscriptionRepository subscriptionRepository;
     private final MarketplaceProductMapper mapper;
     private final AtelierPlusResolver atelierPlusResolver;
     private final com.minoh.lumiris_backend.service.stripe.MarketplaceStripeService marketplaceStripeService;
@@ -87,18 +90,41 @@ public class MarketplaceService {
         User artisan = requireArtisan(email);
         MarketplaceProduct product = requireOwnedProduct(id, artisan);
         mapper.applyUpdate(product, req, resolveOwnedDpp(req.dppFormId(), artisan));
+        assertSellablePrice(product);
         return toItem(productRepository.save(product), atelierPlusResolver.isAtelierPlus(artisan.getId()));
     }
+
+    // Prix Stripe minimum encaissable (~0,50 €). En-dessous, un PaymentIntent échouerait au checkout.
+    private static final int MIN_SELLABLE_PRICE_CENTS = 50;
 
     @Transactional
     public void delete(String email, UUID id) {
         User artisan = requireArtisan(email);
-        productRepository.delete(requireOwnedProduct(id, artisan));
+        MarketplaceProduct product = requireOwnedProduct(id, artisan);
+        // Garde-fou : une annonce déjà vendue ne se supprime pas (FK ON DELETE SET NULL → historique
+        // d'achat + garde-robe orphelinés). On oriente vers l'archivage (retire de la vente, garde l'historique).
+        if (orderRepository.existsByProduct_Id(id)) {
+            throw new ConflictException(
+                    "Cette annonce a déjà des commandes : archivez-la (elle sera retirée de la vente) "
+                            + "plutôt que de la supprimer, pour préserver l'historique d'achat.");
+        }
+        productRepository.delete(product);
+    }
+
+    // Un produit PUBLISHED (donc achetable) doit avoir un prix encaissable par Stripe.
+    private static void assertSellablePrice(MarketplaceProduct product) {
+        if (product.getStatus() == MarketplaceProductStatus.PUBLISHED
+                && product.getPriceCents() < MIN_SELLABLE_PRICE_CENTS) {
+            throw new BillingValidationException(
+                    "Un produit en vente doit coûter au moins 0,50 € (prix minimum encaissable).");
+        }
     }
 
     public MarketplaceItemResponse convertFromDpp(String email, UUID dppFormId,
                                                   com.minoh.lumiris_backend.dto.in.ConvertDppRequest req) {
         User artisan = requireArtisan(email);
+        // On ne peut pas mettre en vente sans un abonnement ATELIER actif (la vente est un service payant).
+        requireSellingSubscription(artisan);
         DppForm dpp = resolveOwnedDpp(dppFormId, artisan);
         if (dpp == null) {
             throw new ResourceNotFoundException("DPP introuvable");
@@ -126,6 +152,7 @@ public class MarketplaceService {
         product.setShippingCents(req.shippingCents() != null && req.shippingCents() >= 0 ? req.shippingCents() : 0);
         product.setReturnPolicy(req.returnPolicy());
         product.setStatus(req.status() != null ? req.status() : MarketplaceProductStatus.PUBLISHED);
+        assertSellablePrice(product);
         MarketplaceProduct saved = productRepository.save(product);
         // Vente directe in-app : un seul produit/prix Stripe par annonce (dédup idempotente).
         marketplaceStripeService.ensureStripeProduct(saved);
@@ -137,8 +164,8 @@ public class MarketplaceService {
     @Transactional(readOnly = true)
     public SearchResponse search(String category, String material, String origin,
                                  String sort, List<String> personalizeCategories) {
-        List<ScoredProduct> rows = fetch(productRepository.searchPublished(
-                blankToNull(category), blankToNull(material), blankToNull(origin)));
+        List<ScoredProduct> rows = retainPayable(fetch(productRepository.searchPublished(
+                blankToNull(category), blankToNull(material), blankToNull(origin))));
         Set<UUID> plusIds = atelierPlusResolver.atelierPlusUserIds(userIdsOf(rows));
 
         Set<String> perso = normalizeCategories(personalizeCategories);
@@ -167,6 +194,25 @@ public class MarketplaceService {
         return new SearchResponse(items, log);
     }
 
+    // Fiche produit publiée unitaire (VISION deep-link) — 404 si non publiée ou vendeur non
+    // encaissable (invariant : un acheteur ne voit que des produits réellement achetables).
+    @Transactional(readOnly = true)
+    public MarketplaceItemResponse getPublished(UUID id) {
+        return firstPayable(productRepository.findScoredPublishedById(id));
+    }
+
+    // Pont scan → achat : produit publié (et achetable) lié à un passeport scanné, ou 404.
+    @Transactional(readOnly = true)
+    public MarketplaceItemResponse getPublishedByDpp(UUID dppFormId) {
+        return firstPayable(productRepository.findScoredPublishedByDpp(dppFormId));
+    }
+
+    private MarketplaceItemResponse firstPayable(List<Object[]> rawRows) {
+        ScoredProduct sp = retainPayable(fetch(rawRows)).stream().findFirst()
+                .orElseThrow(() -> new ResourceNotFoundException("Produit introuvable"));
+        return mapper.toResponse(sp.product(), sp.score(), atelierPlusResolver.isAtelierPlus(sp.artisanUserId()));
+    }
+
     // ── Moteur de suggestions (DPP scanné → 3 alternatives) ─────────────────
 
     @Transactional(readOnly = true)
@@ -174,13 +220,13 @@ public class MarketplaceService {
         double minTotal = req.score();
         String category = blankToNull(req.category());
 
-        List<ScoredProduct> rows = fetch(productRepository.suggestCandidates(minTotal, category));
+        List<ScoredProduct> rows = retainPayable(fetch(productRepository.suggestCandidates(minTotal, category)));
         boolean relaxed = false;
         if (rows.size() < SUGGESTION_COUNT && category != null) {
             // Fallback : élargir hors catégorie pour TENDRE vers 3 suggestions. Le seuil de score
             // n'est JAMAIS abaissé (invariant "score >= scan") : s'il existe globalement moins de 3
             // pièces au-dessus du score scanné, on en renvoie moins (voire 0 pour un scan très élevé).
-            rows = fetch(productRepository.suggestCandidates(minTotal, null));
+            rows = retainPayable(fetch(productRepository.suggestCandidates(minTotal, null)));
             relaxed = true;
         }
 
@@ -243,6 +289,41 @@ public class MarketplaceService {
         return rows.stream()
                 .map(r -> new ScoredProduct((MarketplaceProduct) r[0], (IrisScore) r[1]))
                 .collect(Collectors.toCollection(ArrayList::new));
+    }
+
+    // Ne garde que les produits dont l'atelier est ENCAISSABLE (Stripe Connect actif). Un produit
+    // publié par un artisan pas encore payable reste invisible côté acheteur (il le voit, lui, dans
+    // son catalogue) : on évite ainsi le cul-de-sac "impossible d'encaisser" au moment du paiement.
+    private List<ScoredProduct> retainPayable(List<ScoredProduct> rows) {
+        if (rows.isEmpty()) {
+            return rows;
+        }
+        Set<UUID> ids = userIdsOf(rows);
+        Set<UUID> payable = sellerAccountRepository.payableUserIds(ids);
+        Set<UUID> subscribed = activeSubscriberIds(ids);
+        // Achetable seulement si le vendeur est encaissable (Stripe Connect) ET a un abonnement ATELIER
+        // actif : un artisan qui laisse son abonnement expirer voit ses produits retirés de la vente.
+        rows.removeIf(sp -> !payable.contains(sp.artisanUserId()) || !subscribed.contains(sp.artisanUserId()));
+        return rows;
+    }
+
+    // Utilisateurs (parmi ids) ayant un abonnement ATELIER actif (source de vérité = table subscriptions).
+    private Set<UUID> activeSubscriberIds(Set<UUID> ids) {
+        return subscriptionRepository.findByUserIdIn(ids).stream()
+                .filter(UserSubscription::isActive)
+                .map(s -> s.getUser().getId())
+                .collect(Collectors.toSet());
+    }
+
+    // La mise en vente exige un abonnement ATELIER actif.
+    private void requireSellingSubscription(User artisan) {
+        boolean active = subscriptionRepository.findByUserId(artisan.getId())
+                .filter(UserSubscription::isActive)
+                .isPresent();
+        if (!active) {
+            throw new BillingValidationException(
+                    "Un abonnement ATELIER actif est requis pour mettre une pièce en vente.");
+        }
     }
 
     private static Set<UUID> userIdsOf(List<ScoredProduct> rows) {

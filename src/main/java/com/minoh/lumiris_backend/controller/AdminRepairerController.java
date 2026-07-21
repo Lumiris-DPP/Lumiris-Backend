@@ -34,4 +34,18 @@ public class AdminRepairerController {
     ) {
         return ResponseEntity.ok(onboardingService.reject(id, request != null ? request : new RejectionRequest(null)));
     }
+
+    @PatchMapping("/{id}/kyb-ongoing")
+    ResponseEntity<RepairerProfileResponse> markOngoing(@PathVariable UUID id) {
+        return ResponseEntity.ok(onboardingService.markKybOngoing(id));
+    }
+
+    @PatchMapping("/{id}/kyb-incomplete")
+    ResponseEntity<RepairerProfileResponse> markIncomplete(
+            @PathVariable UUID id,
+            @RequestBody(required = false) RejectionRequest request
+    ) {
+        String note = request != null ? request.reason() : null;
+        return ResponseEntity.ok(onboardingService.markKybIncomplete(id, note));
+    }
 }

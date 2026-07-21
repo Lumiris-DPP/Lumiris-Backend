@@ -18,9 +18,11 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
@@ -59,9 +61,10 @@ public class RepairerController {
     ResponseEntity<RepairerProfileResponse> uploadKybDocument(
             @PathVariable KybDocumentLabel label,
             @RequestPart("file") MultipartFile file,
+            @RequestParam(value = "expiresAt", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate expiresAt,
             @AuthenticationPrincipal UserDetails principal
     ) {
-        return ResponseEntity.ok(onboardingService.uploadKybDocument(principal.getUsername(), label, file));
+        return ResponseEntity.ok(onboardingService.uploadKybDocument(principal.getUsername(), label, file, expiresAt));
     }
 
     @PutMapping("/me/profile")

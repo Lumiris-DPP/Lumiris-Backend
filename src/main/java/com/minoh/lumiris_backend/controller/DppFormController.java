@@ -96,6 +96,15 @@ public class DppFormController {
         return ResponseEntity.ok(dppFormService.publish(id, principal.getUsername()));
     }
 
+    // Retrait d'un passeport publié (VALID → INVALID) + archivage de l'annonce liée. 409 si non publié.
+    @PostMapping("/{id}/withdraw")
+    ResponseEntity<DppFormCreatedResponse> withdraw(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal UserDetails principal
+    ) {
+        return ResponseEntity.ok(dppFormService.withdraw(id, principal.getUsername()));
+    }
+
     private static Map<String, MultipartFile> collectFiles(
             MultipartFile productPhoto, MultipartFile reachCompliance, MultipartFile euDeclaration,
             MultipartFile testReports, MultipartFile transactionCerts, MultipartFile originCerts,

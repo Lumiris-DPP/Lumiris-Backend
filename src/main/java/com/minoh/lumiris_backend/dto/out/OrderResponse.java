@@ -10,10 +10,12 @@ public record OrderResponse(
         UUID id,
         String productName,
         int amountTotalCents,
+        int shippingCents,
         int commissionCents,
         String currency,
         String status,
         String invoiceNumber,
+        String paymentIntentId,
         Instant createdAt
 ) {
     public static OrderResponse from(MarketplaceOrder o) {
@@ -21,10 +23,12 @@ public record OrderResponse(
                 o.getId(),
                 o.getProduct() != null ? o.getProduct().getName() : null,
                 o.getAmountTotalCents(),
+                o.getShippingCents(),
                 o.getCommissionCents(),
                 o.getCurrency(),
                 o.getStatus().name(),
                 o.getInvoiceNumber(),
+                o.getStripePaymentIntentId(),
                 o.getCreatedAt()
         );
     }

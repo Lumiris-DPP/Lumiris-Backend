@@ -72,6 +72,52 @@ public class DppFormService {
     private final DppHashUtil dppHashUtil;
     private final BlockchainService blockchainService;
     private final QuotaService quotaService;
+    private final com.minoh.lumiris_backend.repository.MarketplaceProductRepository marketplaceProductRepository;
+
+    // Retrait d'un passeport publié : la conception rend un DPP publié IMMUABLE (aucun retour à DRAFT),
+    // mais un passeport erroné/rappelé doit pouvoir être retiré. On passe VALID → INVALID (transition
+    // autorisée par le trigger d'immuabilité) et on ARCHIVE l'annonce liée (retirée de la vente/recherche).
+    @Transactional
+    public DppFormCreatedResponse withdraw(UUID id, String userEmail) {
+        DppForm form = dppFormRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Passeport introuvable"));
+        if (!form.getUser().getEmail().equalsIgnoreCase(userEmail)) {
+            throw new ResourceNotFoundException("Passeport introuvable");
+        }
+        if (form.getStatus() != DppStatus.VALID) {
+            throw new com.minoh.lumiris_backend.exception.ConflictException(
+                    "Seul un passeport publié (VALID) peut être retiré.");
+        }
+        form.setStatus(DppStatus.INVALID);
+        dppFormRepository.save(form);
+        // Retire aussi l'annonce marketplace liée de la vente (archivage), le cas échéant.
+        marketplaceProductRepository.findByDppFormId(id).ifPresent(p -> {
+            p.setStatus(com.minoh.lumiris_backend.entity.MarketplaceProductStatus.ARCHIVED);
+            marketplaceProductRepository.save(p);
+        });
+        return new DppFormCreatedResponse(form.getId());
+    }
+
+    // Invariants minimaux d'un passeport PUBLIÉ (un brouillon reste volontairement tolérant). Défense
+    // en profondeur : le front valide déjà, mais un publish direct / hors UI ne doit pas créer un
+    // passeport public incomplet. 400 avec le détail des champs manquants.
+    private void assertPublishable(DppForm form) {
+        java.util.List<String> missing = new java.util.ArrayList<>();
+        if (isBlank(form.getProductName())) missing.add("le nom du produit");
+        if (isBlank(form.getProductCategory())) missing.add("la catégorie");
+        if (isBlank(form.getOriginCountry())) missing.add("le pays d'origine");
+        if (form.getRecycledPct() != null && (form.getRecycledPct() < 0 || form.getRecycledPct() > 100)) {
+            missing.add("un pourcentage recyclé entre 0 et 100");
+        }
+        if (form.getQuantity() < 1) missing.add("une quantité d'au moins 1");
+        if (!missing.isEmpty()) {
+            throw new IllegalArgumentException("Passeport incomplet : renseignez " + String.join(", ", missing) + ".");
+        }
+    }
+
+    private static boolean isBlank(String s) {
+        return s == null || s.isBlank();
+    }
 
     public DppFormCreatedResponse create(DppFormRequest request, Map<String, MultipartFile> files,
                                          String userEmail, boolean draft) {
@@ -93,6 +139,9 @@ public class DppFormService {
                 // No QR identity, no frozen hash, no score, no blockchain anchor until publication.
                 form.setStatus(DppStatus.DRAFT);
             } else {
+                // Publication directe : les invariants d'un passeport public doivent être remplis
+                // (un brouillon, lui, reste tolérant).
+                assertPublishable(form);
                 form.setPublicCode(generateUniquePublicCode());
                 form.setDataHash(dppHashUtil.generateDppHash(dppFormMapper.toHashableData(form)));
                 form.setBlockchainAnchorStatus(BlockchainAnchorStatus.PENDING);
@@ -155,6 +204,8 @@ public class DppFormService {
 
         // The billing gate deferred at draft creation runs here.
         quotaService.assertCanCreate(form.getUser());
+        // DRAFT → VALID : le passeport doit être complet avant d'obtenir un QR public + un score.
+        assertPublishable(form);
 
         Hibernate.initialize(form.getMaterials());
         Hibernate.initialize(form.getCareInstructions());

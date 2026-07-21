@@ -68,10 +68,30 @@ public class SubscriptionSyncService {
             return;
         }
         List<SubscriptionItem> items = stripeSub.getItems().getData();
-        if (items == null || items.isEmpty() || items.get(0).getPrice() == null) {
+        if (items == null || items.isEmpty()) {
             return;
         }
-        var price = items.get(0).getPrice();
+        // Un abonnement peut porter 2 lignes : le plan de base + l'add-on ATELIER+. On détecte l'add-on
+        // et on retient comme "plan" la 1re ligne NON-ATELIER+ (fallback : la 1re ligne).
+        boolean plus = false;
+        SubscriptionItem baseItem = null;
+        for (SubscriptionItem item : items) {
+            if (item.getPrice() == null) {
+                continue;
+            }
+            if (resolveTier(item.getPrice()) == PlanTier.ATELIER_PLUS) {
+                plus = true;
+            } else if (baseItem == null) {
+                baseItem = item;
+            }
+        }
+        entity.setAtelierPlus(plus);
+
+        SubscriptionItem chosen = baseItem != null ? baseItem : items.get(0);
+        if (chosen.getPrice() == null) {
+            return;
+        }
+        var price = chosen.getPrice();
         entity.setStripePriceId(price.getId());
         // Cache-only: this runs inside the persist() transaction, so it must not call Stripe.
         // On a cache miss we derive tier/cycle from the price object already loaded with the subscription.
@@ -87,6 +107,14 @@ public class SubscriptionSyncService {
                         entity.setBillingCycle(BillingCycle.fromStripeInterval(price.getRecurring().getInterval()));
                     }
                 });
+    }
+
+    // Palier d'une price : cache local d'abord (aucun appel Stripe dans cette transaction), sinon
+    // dérivé du product id. null si inconnu.
+    private PlanTier resolveTier(com.stripe.model.Price price) {
+        return catalogService.cachedCoordinate(price.getId())
+                .map(StripeCatalogService.PlanCoordinate::tier)
+                .orElseGet(() -> PlanTier.fromProductId(price.getProduct(), properties.products()).orElse(null));
     }
 
     private UserSubscription resolveRow(User user, Subscription stripeSub) {

@@ -28,11 +28,16 @@ public class StripeWebhookService {
     private final SubscriptionService subscriptionService;
     private final DirectSaleService directSaleService;
     private final SellerConnectService sellerConnectService;
+    private final SellerPayoutService sellerPayoutService;
 
     public void handle(String payload, String signatureHeader) {
         if (!properties.hasWebhookSecret()) {
-            log.error("Stripe webhook received but STRIPE_WEBHOOK_SECRET is not configured — event ignored.");
-            return;
+            // Fail-closed : sans secret on ne PEUT PAS vérifier la signature. On refuse (500) plutôt que
+            // d'acquitter (200) en silence — sinon, en prod mal configurée, des commandes payées ne
+            // seraient jamais confirmées ni les vendeurs reversés, sans aucun signal. Le 500 fait
+            // réessayer Stripe et remonte l'incident.
+            log.error("Stripe webhook reçu mais STRIPE_WEBHOOK_SECRET n'est pas configuré — refus (fail-closed).");
+            throw new IllegalStateException("Webhook Stripe non configuré (STRIPE_WEBHOOK_SECRET manquant).");
         }
 
         Event event;
@@ -62,12 +67,14 @@ public class StripeWebhookService {
                 }
             }
             case "checkout.session.completed" -> handleCheckoutCompleted(event);
-            // LUMIRIS-22 : achat direct in-app payé (Payment Element) → fulfillment (Garde-Robe + facture).
+            // LUMIRIS-22 : achat direct in-app payé (Payment Element) → fulfillment (Garde-Robe + facture),
+            // puis reversement AUTOMATIQUE du net au vendeur (la plateforme ne conserve que la commission).
             case "payment_intent.succeeded" -> {
                 StripeObject object = deserialize(event);
                 if (object instanceof PaymentIntent pi && pi.getMetadata() != null
                         && "marketplace".equals(pi.getMetadata().get("order_type"))) {
                     directSaleService.fulfillByPaymentIntent(pi.getId());
+                    sellerPayoutService.autoReleaseByPaymentIntent(pi.getId());
                 }
             }
             // LUMIRIS-22 : état d'un compte vendeur Connect (charges/payouts activés après onboarding).

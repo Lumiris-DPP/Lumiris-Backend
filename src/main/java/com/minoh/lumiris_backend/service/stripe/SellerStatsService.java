@@ -1,5 +1,7 @@
 package com.minoh.lumiris_backend.service.stripe;
 
+import com.minoh.lumiris_backend.dto.out.SellerEarningsResponse;
+import com.minoh.lumiris_backend.dto.out.SellerSaleResponse;
 import com.minoh.lumiris_backend.dto.out.SellerStatsResponse;
 import com.minoh.lumiris_backend.entity.OrderStatus;
 import com.minoh.lumiris_backend.entity.User;
@@ -31,10 +33,7 @@ public class SellerStatsService {
 
     @Transactional(readOnly = true)
     public SellerStatsResponse getStats(String userEmail) {
-        User artisan = userRepository.getByEmail(userEmail);
-        if (artisan.getRole() != UserRole.ARTISAN) {
-            throw new RoleNotAllowedException("Seuls les artisans disposent d'un tableau de bord vendeur.");
-        }
+        User artisan = requireArtisan(userEmail);
         UUID sellerId = artisan.getId();
         UUID artisanProfileId = artisan.getArtisanProfile().getId();
 
@@ -51,5 +50,34 @@ public class SellerStatsService {
                 productRepository.countByArtisanProfileIdAndStatus(
                         artisanProfileId, com.minoh.lumiris_backend.entity.MarketplaceProductStatus.PUBLISHED)
         );
+    }
+
+    // Historique des ventes de l'atelier (hors commandes non confirmées).
+    @Transactional(readOnly = true)
+    public List<SellerSaleResponse> getSales(String userEmail) {
+        User artisan = requireArtisan(userEmail);
+        return orderRepository.findBySeller_IdOrderByCreatedAtDesc(artisan.getId()).stream()
+                .filter(o -> o.getStatus() != OrderStatus.PENDING)
+                .map(SellerSaleResponse::from)
+                .toList();
+    }
+
+    // Trésorerie escrow : montants nets retenus (en attente d'expédition) vs déjà reversés.
+    @Transactional(readOnly = true)
+    public SellerEarningsResponse getEarnings(String userEmail) {
+        User artisan = requireArtisan(userEmail);
+        return new SellerEarningsResponse(
+                orderRepository.heldNetCentsBySeller(artisan.getId()),
+                orderRepository.releasedNetCentsBySeller(artisan.getId()),
+                "EUR"
+        );
+    }
+
+    private User requireArtisan(String userEmail) {
+        User user = userRepository.getByEmail(userEmail);
+        if (user.getRole() != UserRole.ARTISAN) {
+            throw new RoleNotAllowedException("Seuls les artisans disposent d'un tableau de bord vendeur.");
+        }
+        return user;
     }
 }

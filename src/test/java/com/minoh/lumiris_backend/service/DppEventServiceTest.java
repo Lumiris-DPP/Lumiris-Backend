@@ -10,6 +10,7 @@ import com.minoh.lumiris_backend.exception.ResourceNotFoundException;
 import com.minoh.lumiris_backend.mapper.DppEventMapper;
 import com.minoh.lumiris_backend.repository.DppEventRepository;
 import com.minoh.lumiris_backend.repository.DppFormRepository;
+import com.minoh.lumiris_backend.repository.RepairRequestRepository;
 import com.minoh.lumiris_backend.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -48,6 +49,9 @@ class DppEventServiceTest {
 
     @Mock
     private GeocodingService geocodingService;
+
+    @Mock
+    private RepairRequestRepository repairRequestRepository;
 
     @Spy
     private DppEventMapper dppEventMapper;

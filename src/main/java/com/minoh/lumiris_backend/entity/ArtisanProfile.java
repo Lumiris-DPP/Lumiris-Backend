@@ -132,6 +132,9 @@ public class ArtisanProfile extends Auditable {
     @Column(name = "paused_until")
     private Instant pausedUntil;
 
+    @Embedded
+    private KybDetails kyb = new KybDetails();
+
     // ── Adresse d'enlèvement (expéditeur du bordereau) ──────────────────────
     // Distincte de `city`, qui est une donnée de vitrine : un atelier expose sa ville sans publier
     // sa rue. Sans elle, aucune étiquette n'est fabricable.

@@ -157,6 +157,14 @@ public class RepairerOnboardingService {
                 .toList();
     }
 
+    // Every registered repairer account (any status), for the admin's general account browser —
+    // as opposed to findPending() which only surfaces dossiers awaiting review.
+    public List<RepairerProfileResponse> findAll() {
+        return repairerRepo.findAll().stream()
+                .map(this::toResponse)
+                .toList();
+    }
+
     @Transactional
     public RepairerProfileResponse verify(UUID profileId) {
         return updateKybStatus(profileId, KybStatus.VALIDATED, null);

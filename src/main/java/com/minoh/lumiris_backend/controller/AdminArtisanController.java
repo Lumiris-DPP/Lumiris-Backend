@@ -22,6 +22,11 @@ public class AdminArtisanController {
         return ResponseEntity.ok(onboardingService.findPending());
     }
 
+    @GetMapping("/all")
+    ResponseEntity<List<ArtisanProfileResponse>> listAll() {
+        return ResponseEntity.ok(onboardingService.findAll());
+    }
+
     @PatchMapping("/{id}/verify")
     ResponseEntity<ArtisanProfileResponse> verify(@PathVariable UUID id) {
         return ResponseEntity.ok(onboardingService.verify(id));

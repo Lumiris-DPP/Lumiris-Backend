@@ -22,6 +22,11 @@ public class AdminRepairerController {
         return ResponseEntity.ok(onboardingService.findPending());
     }
 
+    @GetMapping("/all")
+    ResponseEntity<List<RepairerProfileResponse>> listAll() {
+        return ResponseEntity.ok(onboardingService.findAll());
+    }
+
     @PatchMapping("/{id}/verify")
     ResponseEntity<RepairerProfileResponse> verify(@PathVariable UUID id) {
         return ResponseEntity.ok(onboardingService.verify(id));

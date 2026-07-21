@@ -1,5 +1,6 @@
 package com.minoh.lumiris_backend.controller;
 
+import com.minoh.lumiris_backend.dto.in.KybDetailsRequest;
 import com.minoh.lumiris_backend.dto.in.RepairMessageRequest;
 import com.minoh.lumiris_backend.dto.in.RepairQuoteRequest;
 import com.minoh.lumiris_backend.dto.in.RepairerProfileUpdateRequest;
@@ -7,6 +8,7 @@ import com.minoh.lumiris_backend.dto.in.RepairerRegisterRequest;
 import com.minoh.lumiris_backend.dto.out.RepairMessageResponse;
 import com.minoh.lumiris_backend.dto.out.RepairRequestResponse;
 import com.minoh.lumiris_backend.dto.out.RepairerProfileResponse;
+import com.minoh.lumiris_backend.entity.KybDocumentLabel;
 import com.minoh.lumiris_backend.service.RepairMessageService;
 import com.minoh.lumiris_backend.service.RepairRequestService;
 import com.minoh.lumiris_backend.service.RepairerOnboardingService;
@@ -17,6 +19,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.UUID;
@@ -42,6 +45,23 @@ public class RepairerController {
     ) {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(onboardingService.register(principal.getUsername(), request));
+    }
+
+    @PutMapping("/me/kyb")
+    ResponseEntity<RepairerProfileResponse> submitKyb(
+            @Valid @RequestBody KybDetailsRequest request,
+            @AuthenticationPrincipal UserDetails principal
+    ) {
+        return ResponseEntity.ok(onboardingService.submitKyb(principal.getUsername(), request));
+    }
+
+    @PostMapping(value = "/me/kyb/documents/{label}", consumes = "multipart/form-data")
+    ResponseEntity<RepairerProfileResponse> uploadKybDocument(
+            @PathVariable KybDocumentLabel label,
+            @RequestPart("file") MultipartFile file,
+            @AuthenticationPrincipal UserDetails principal
+    ) {
+        return ResponseEntity.ok(onboardingService.uploadKybDocument(principal.getUsername(), label, file));
     }
 
     @PutMapping("/me/profile")

@@ -1,6 +1,7 @@
 package com.minoh.lumiris_backend.repository;
 
 import com.minoh.lumiris_backend.entity.RepairerProfile;
+import com.minoh.lumiris_backend.entity.RepairerStatus;
 import com.minoh.lumiris_backend.entity.User;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -13,6 +14,8 @@ import java.util.UUID;
 public interface RepairerProfileRepository extends JpaRepository<RepairerProfile, UUID> {
 
     Optional<RepairerProfile> findByUser(User user);
+
+    List<RepairerProfile> findByStatus(RepairerStatus status);
 
     // ST_DWithin uses the spatial GIST index to pre-filter before computing exact
     // distance; both operate on the geography cast so the radius/distance are in meters.

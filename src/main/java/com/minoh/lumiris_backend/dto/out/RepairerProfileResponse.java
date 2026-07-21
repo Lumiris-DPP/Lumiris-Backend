@@ -23,5 +23,6 @@ public record RepairerProfileResponse(
         String region,
         Double averageRating,
         long reviewCount,
-        Instant createdAt
+        Instant createdAt,
+        KybDetailsResponse kyb
 ) {}

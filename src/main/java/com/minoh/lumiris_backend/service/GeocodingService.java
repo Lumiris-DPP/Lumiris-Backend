@@ -4,6 +4,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.minoh.lumiris_backend.entity.GeocodeCache;
 import com.minoh.lumiris_backend.repository.GeocodeCacheRepository;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -21,15 +24,27 @@ public class GeocodingService {
 
     private final RestClient restClient;
     private final GeocodeCacheRepository cacheRepository;
+    private final MeterRegistry meterRegistry;
+    private final Counter cacheHitCounter;
+    private final Counter cacheMissCounter;
+    private final Counter providerErrorCounter;
 
     public GeocodingService(RestClient.Builder builder,
                              GeocodeCacheRepository cacheRepository,
+                             MeterRegistry meterRegistry,
                              @Value("${geocoding.user-agent}") String userAgent) {
         this.restClient = builder
                 .baseUrl("https://nominatim.openstreetmap.org")
                 .defaultHeader("User-Agent", userAgent)
                 .build();
         this.cacheRepository = cacheRepository;
+        this.meterRegistry = meterRegistry;
+        this.cacheHitCounter = Counter.builder("geocoding.cache")
+                .tag("result", "hit").register(meterRegistry);
+        this.cacheMissCounter = Counter.builder("geocoding.cache")
+                .tag("result", "miss").register(meterRegistry);
+        this.providerErrorCounter = Counter.builder("geocoding.provider.errors")
+                .tag("provider", PROVIDER).register(meterRegistry);
     }
 
     public record Coordinates(Double latitude, Double longitude) {}
@@ -44,17 +59,24 @@ public class GeocodingService {
         }
         String normalized = query.trim().toLowerCase(Locale.ROOT);
 
-        return cacheRepository.findByQueryNormalized(normalized)
-                .map(cache -> new Coordinates(cache.getLatitude(), cache.getLongitude()))
-                .or(() -> callProviderAndCache(normalized, query.trim()));
+        Optional<GeocodeCache> cached = cacheRepository.findByQueryNormalized(normalized);
+        if (cached.isPresent()) {
+            cacheHitCounter.increment();
+            return cached.map(cache -> new Coordinates(cache.getLatitude(), cache.getLongitude()));
+        }
+
+        cacheMissCounter.increment();
+        return callProviderAndCache(normalized, query.trim());
     }
 
     private Optional<Coordinates> callProviderAndCache(String normalized, String originalQuery) {
+        Timer.Sample sample = Timer.start(meterRegistry);
         try {
             String rawJson = restClient.get()
                     .uri("/search?q={q}&format=json&limit=1", originalQuery)
                     .retrieve()
                     .body(String.class);
+            sample.stop(providerTimer("success"));
 
             JsonNode root = MAPPER.readTree(rawJson);
             if (!root.isArray() || root.isEmpty()) {
@@ -70,8 +92,17 @@ public class GeocodingService {
 
             return Optional.of(new Coordinates(lat, lon));
         } catch (Exception e) {
+            sample.stop(providerTimer("error"));
+            providerErrorCounter.increment();
             log.warn("Geocoding failed for '{}': {}", originalQuery, e.getMessage());
             return Optional.empty();
         }
+    }
+
+    private Timer providerTimer(String outcome) {
+        return Timer.builder("geocoding.provider.latency")
+                .tag("provider", PROVIDER)
+                .tag("outcome", outcome)
+                .register(meterRegistry);
     }
 }

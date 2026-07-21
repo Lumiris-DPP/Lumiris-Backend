@@ -36,6 +36,8 @@ public class SecurityConfig {
         "/v1/artisans/**",
         // Anonymous analytics ingestion (passport scans/views/clicks) — no PII collected.
         "/v1/events",
+        // Public repairer directory: search and reviews.
+        "/v1/repairers/**",
         // Stripe → server webhook: unauthenticated, secured by HMAC signature verification.
         "/api/stripe/webhook",
         "/swagger-ui/**",

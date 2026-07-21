@@ -38,6 +38,12 @@ public class MailService {
         send(to, "Votre inscription Lumiris n'a pas pu être validée", body);
     }
 
+    public void sendRepairRequestRefused(String to, String name, String productName) {
+        send(to, "Devis refusé",
+                "Bonjour " + name + ",\n\nLe client a refusé votre devis pour \"" + productName + "\". " +
+                "La demande est désormais close.\n\nL'équipe Lumiris");
+    }
+
     private void send(String to, String subject, String body) {
         try {
             SimpleMailMessage message = new SimpleMailMessage();

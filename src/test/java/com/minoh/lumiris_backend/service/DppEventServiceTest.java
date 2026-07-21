@@ -24,6 +24,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import static org.mockito.ArgumentMatchers.anyString;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -43,6 +45,9 @@ class DppEventServiceTest {
 
     @Mock
     private UserRepository userRepository;
+
+    @Mock
+    private GeocodingService geocodingService;
 
     @Spy
     private DppEventMapper dppEventMapper;
@@ -70,12 +75,13 @@ class DppEventServiceTest {
 
         lenient().when(userRepository.findByEmail(USER_EMAIL)).thenReturn(Optional.of(user));
         lenient().when(dppFormRepository.findById(formId)).thenReturn(Optional.of(form));
+        lenient().when(geocodingService.geocode(anyString())).thenReturn(Optional.empty());
     }
 
     @Test
     void create_shouldPersistAndReturnResponse() {
         Instant occurredAt = Instant.parse("2026-05-01T10:00:00Z");
-        DppEventRequest request = new DppEventRequest(occurredAt, "Remplacement de la semelle", DppEventActorType.REPAIRER);
+        DppEventRequest request = new DppEventRequest(occurredAt, "Remplacement de la semelle", DppEventActorType.REPAIRER, "Lyon", "France");
         when(dppEventRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         DppEventResponse response = service.create(formId, request, USER_EMAIL);
@@ -93,7 +99,7 @@ class DppEventServiceTest {
         otherUser.setEmail("other@test.com");
         when(userRepository.findByEmail("other@test.com")).thenReturn(Optional.of(otherUser));
 
-        DppEventRequest request = new DppEventRequest(Instant.now(), "Tentative non autorisée", DppEventActorType.CONSUMER);
+        DppEventRequest request = new DppEventRequest(Instant.now(), "Tentative non autorisée", DppEventActorType.CONSUMER, null, null);
 
         assertThatThrownBy(() -> service.create(formId, request, "other@test.com"))
                 .isInstanceOf(ResourceNotFoundException.class)
@@ -106,7 +112,7 @@ class DppEventServiceTest {
         UUID unknownId = UUID.randomUUID();
         when(dppFormRepository.findById(unknownId)).thenReturn(Optional.empty());
 
-        DppEventRequest request = new DppEventRequest(Instant.now(), "Événement", DppEventActorType.CONSUMER);
+        DppEventRequest request = new DppEventRequest(Instant.now(), "Événement", DppEventActorType.CONSUMER, null, null);
 
         assertThatThrownBy(() -> service.create(unknownId, request, USER_EMAIL))
                 .isInstanceOf(ResourceNotFoundException.class);
@@ -115,7 +121,7 @@ class DppEventServiceTest {
     @Test
     void findAllByDppFormId_shouldReturnMappedEvents() {
         DppEvent event = new DppEvent(form, Instant.parse("2026-05-01T10:00:00Z"),
-                "Vente au client final", DppEventActorType.RETAILER);
+                "Vente au client final", DppEventActorType.RETAILER, null, null, null, null);
         when(dppEventRepository.findByDppFormIdOrderByOccurredAtDesc(formId)).thenReturn(List.of(event));
 
         List<DppEventResponse> responses = service.findAllByDppFormId(formId, USER_EMAIL);
@@ -129,7 +135,7 @@ class DppEventServiceTest {
     void findAllByPublicCode_shouldReturnEvents_withoutOwnershipCheck() {
         when(dppFormRepository.findByPublicCode("ABCD1234")).thenReturn(Optional.of(form));
         DppEvent event = new DppEvent(form, Instant.parse("2026-05-01T10:00:00Z"),
-                "Recyclage du produit", DppEventActorType.RECYCLER);
+                "Recyclage du produit", DppEventActorType.RECYCLER, null, null, null, null);
         when(dppEventRepository.findByDppFormIdOrderByOccurredAtDesc(formId)).thenReturn(List.of(event));
 
         List<DppEventResponse> responses = service.findAllByPublicCode("ABCD1234");

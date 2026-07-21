@@ -65,6 +65,10 @@ minio:
     secret-key: ${MINIO_SECRET_KEY:lumiris_local_dev_only}
     bucket: ${MINIO_BUCKET:lumiris}
 
+# Nominatim (OpenStreetMap) usage policy requires a descriptive User-Agent identifying the app.
+geocoding:
+    user-agent: ${GEOCODING_USER_AGENT:Lumiris/1.0 (contact@lumiris.app)}
+
 blockchain:
     rpc-url: ${BLOCKCHAIN_RPC_URL:https://ethereum-sepolia-rpc.publicnode.com}
     wallet:

@@ -28,4 +28,10 @@ public class DppMaterial {
 
     @Column(name = "origin_country")
     private String originCountry;
+
+    @Column
+    private Double latitude;
+
+    @Column
+    private Double longitude;
 }

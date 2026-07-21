@@ -3,10 +3,8 @@ package com.minoh.lumiris_backend.service;
 import com.minoh.lumiris_backend.dto.in.DppFormRequest;
 import com.minoh.lumiris_backend.dto.out.DppFormCreatedResponse;
 import com.minoh.lumiris_backend.entity.DppForm;
-import com.minoh.lumiris_backend.dto.out.DppFormResponse;
 import com.minoh.lumiris_backend.dto.out.DppVerificationResponse;
 import com.minoh.lumiris_backend.entity.BlockchainAnchorStatus;
-import com.minoh.lumiris_backend.entity.DppForm;
 import com.minoh.lumiris_backend.entity.User;
 import com.minoh.lumiris_backend.exception.ResourceNotFoundException;
 import com.minoh.lumiris_backend.mapper.DppFormMapper;
@@ -37,6 +35,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -64,8 +63,10 @@ class DppFormServiceTest {
     @Mock
     private StorageService storageService;
 
+    private final GeocodingService geocodingService = mock(GeocodingService.class);
+
     @Spy
-    private DppFormMapper dppFormMapper;
+    private DppFormMapper dppFormMapper = new DppFormMapper(geocodingService);
 
     @Mock
     private DppHashUtil dppHashUtil;
@@ -112,7 +113,7 @@ class DppFormServiceTest {
         DppFormRequest request = new DppFormRequest(
                 "Pull Merino", "Un pull doux", "top", "FR",
                 List.of("S", "M"), List.of("Écru"),
-                List.of(), List.of(), null,
+                List.of(), List.of(), "none",
                 "2026-01-01", "LOT-001", null, "SKU-001", true,
                 30, "2 ans", true, "Rapporter en boutique", 1
         );

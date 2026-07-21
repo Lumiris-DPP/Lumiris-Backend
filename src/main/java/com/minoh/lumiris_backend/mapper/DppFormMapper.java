@@ -1,11 +1,13 @@
 package com.minoh.lumiris_backend.mapper;
 
 import com.minoh.lumiris_backend.dto.in.DppFormRequest;
-import com.minoh.lumiris_backend.dto.in.MaterialRequest;
 import com.minoh.lumiris_backend.dto.out.DppFormDocumentResponse;
 import com.minoh.lumiris_backend.dto.out.DppFormResponse;
 import com.minoh.lumiris_backend.dto.out.DppFormSummaryResponse;
+import com.minoh.lumiris_backend.dto.out.MaterialResponse;
 import com.minoh.lumiris_backend.entity.*;
+import com.minoh.lumiris_backend.service.GeocodingService;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashMap;
@@ -13,7 +15,10 @@ import java.util.List;
 import java.util.Map;
 
 @Component
+@RequiredArgsConstructor
 public class DppFormMapper {
+
+    private final GeocodingService geocodingService;
 
     public DppFormSummaryResponse toSummaryResponse(DppForm form) {
         return new DppFormSummaryResponse(
@@ -63,6 +68,10 @@ public class DppFormMapper {
                 material.setFiber(m.fiber());
                 material.setPercentage(m.percentage());
                 material.setOriginCountry(m.originCountry());
+                geocodingService.geocode(m.originCountry()).ifPresent(coordinates -> {
+                    material.setLatitude(coordinates.latitude());
+                    material.setLongitude(coordinates.longitude());
+                });
                 form.getMaterials().add(material);
             });
         }
@@ -78,8 +87,8 @@ public class DppFormMapper {
     }
 
     public DppFormResponse toResponse(DppForm form, String mainPhotoUrl, List<DppFormDocumentResponse> documents) {
-        List<MaterialRequest> materials = form.getMaterials().stream()
-                .map(m -> new MaterialRequest(m.getFiber(), m.getPercentage(), m.getOriginCountry()))
+        List<MaterialResponse> materials = form.getMaterials().stream()
+                .map(m -> new MaterialResponse(m.getFiber(), m.getPercentage(), m.getOriginCountry(), m.getLatitude(), m.getLongitude()))
                 .toList();
 
         List<String> careInstructions = form.getCareInstructions().stream()

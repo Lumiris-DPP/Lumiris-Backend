@@ -38,6 +38,15 @@ public class MailService {
         send(to, "Votre inscription Lumiris n'a pas pu être validée", body);
     }
 
+    public void sendKybIncomplete(String to, String name, String note) {
+        String body = "Bonjour " + name + ",\n\nVotre dossier KYB Lumiris est incomplet et doit être complété avant de pouvoir être validé.";
+        if (note != null && !note.isBlank()) {
+            body += "\n\nDétail : " + note;
+        }
+        body += "\n\nConnectez-vous à votre espace pour le mettre à jour.\nL'équipe Lumiris";
+        send(to, "Votre dossier KYB Lumiris est incomplet", body);
+    }
+
     public void sendRepairRequestRefused(String to, String name, String productName) {
         send(to, "Devis refusé",
                 "Bonjour " + name + ",\n\nLe client a refusé votre devis pour \"" + productName + "\". " +

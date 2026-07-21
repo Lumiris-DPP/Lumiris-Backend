@@ -9,6 +9,7 @@ import com.minoh.lumiris_backend.dto.out.RepairerProfileResponse;
 import com.minoh.lumiris_backend.dto.out.RepairerPublicProfileResponse;
 import com.minoh.lumiris_backend.dto.out.RepairerSearchResult;
 import com.minoh.lumiris_backend.entity.KybDocumentLabel;
+import com.minoh.lumiris_backend.entity.KybStatus;
 import com.minoh.lumiris_backend.entity.RepairerProfile;
 import com.minoh.lumiris_backend.entity.RepairerStatus;
 import com.minoh.lumiris_backend.entity.User;
@@ -24,6 +25,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
@@ -42,6 +44,7 @@ public class RepairerOnboardingService {
     private final KybMapper kybMapper;
     private final StorageService storageService;
     private final MailService mailService;
+    private final OcrService ocrService;
 
     @Transactional(readOnly = true)
     public RepairerProfileResponse findByUserEmail(String userEmail) {
@@ -115,17 +118,32 @@ public class RepairerOnboardingService {
     }
 
     @Transactional
-    public RepairerProfileResponse uploadKybDocument(String userEmail, KybDocumentLabel label, MultipartFile file) {
+    public RepairerProfileResponse uploadKybDocument(
+            String userEmail, KybDocumentLabel label, MultipartFile file, LocalDate expiresAt
+    ) {
         User user = findUser(userEmail);
         RepairerProfile profile = repairerRepo.findByUser(user)
                 .orElseThrow(() -> new ResourceNotFoundException("Profil retoucheur introuvable"));
 
         FileUploadResponse uploaded = storageService.upload(file, userEmail);
         switch (label) {
-            case legal_representative_id_doc -> profile.getKyb().setIdDocFileId(uploaded.id());
-            case kbis -> profile.getKyb().setKbisFileId(uploaded.id());
-            case proof_of_address -> profile.getKyb().setProofOfAddressFileId(uploaded.id());
-            case rib -> profile.getKyb().setRibFileId(uploaded.id());
+            case legal_representative_id_doc -> {
+                profile.getKyb().setIdDocFileId(uploaded.id());
+                profile.getKyb().setIdDocExpiresAt(expiresAt);
+                ocrService.extractText(file).ifPresent(profile.getKyb()::setIdDocOcrText);
+            }
+            case kbis -> {
+                profile.getKyb().setKbisFileId(uploaded.id());
+                profile.getKyb().setKbisExpiresAt(expiresAt);
+            }
+            case proof_of_address -> {
+                profile.getKyb().setProofOfAddressFileId(uploaded.id());
+                profile.getKyb().setProofOfAddressExpiresAt(expiresAt);
+            }
+            case rib -> {
+                profile.getKyb().setRibFileId(uploaded.id());
+                profile.getKyb().setRibExpiresAt(expiresAt);
+            }
         }
 
         return toResponse(repairerRepo.save(profile));
@@ -141,26 +159,59 @@ public class RepairerOnboardingService {
 
     @Transactional
     public RepairerProfileResponse verify(UUID profileId) {
-        RepairerProfile profile = repairerRepo.findById(profileId)
-                .orElseThrow(() -> new ResourceNotFoundException("Profil retoucheur introuvable : " + profileId));
-        profile.setStatus(RepairerStatus.VERIFIED);
-        RepairerProfileResponse response = toResponse(repairerRepo.save(profile));
-        if (profile.getUser() != null) {
-            mailService.sendVerified(profile.getUser().getEmail(), profile.getUser().getName());
-        }
-        return response;
+        return updateKybStatus(profileId, KybStatus.VALIDATED, null);
     }
 
     @Transactional
     public RepairerProfileResponse reject(UUID profileId, RejectionRequest request) {
-        RepairerProfile profile = repairerRepo.findById(profileId)
-                .orElseThrow(() -> new ResourceNotFoundException("Profil retoucheur introuvable : " + profileId));
-        profile.setStatus(RepairerStatus.REJECTED);
+        return updateKybStatus(profileId, KybStatus.REJECTED, request.reason());
+    }
+
+    // Marks a dossier as under active review — no account-status or email side effect.
+    @Transactional
+    public RepairerProfileResponse markKybOngoing(UUID profileId) {
+        RepairerProfile profile = findProfile(profileId);
+        profile.getKyb().setKybStatus(KybStatus.ONGOING);
+        return toResponse(repairerRepo.save(profile));
+    }
+
+    // Sends the dossier back to the repairer with a note on what's missing/wrong, without a hard
+    // rejection — the account stays PENDING so they can fix and resubmit.
+    @Transactional
+    public RepairerProfileResponse markKybIncomplete(UUID profileId, String note) {
+        RepairerProfile profile = findProfile(profileId);
+        profile.getKyb().setKybStatus(KybStatus.INCOMPLETE);
+        profile.getKyb().setKybReviewNote(note);
         RepairerProfileResponse response = toResponse(repairerRepo.save(profile));
         if (profile.getUser() != null) {
-            mailService.sendRejected(profile.getUser().getEmail(), profile.getUser().getName(), request.reason());
+            mailService.sendKybIncomplete(profile.getUser().getEmail(), profile.getUser().getName(), note);
         }
         return response;
+    }
+
+    private RepairerProfileResponse updateKybStatus(UUID profileId, KybStatus status, String note) {
+        RepairerProfile profile = findProfile(profileId);
+        profile.getKyb().setKybStatus(status);
+        profile.getKyb().setKybReviewNote(note);
+        if (status == KybStatus.VALIDATED) {
+            profile.setStatus(RepairerStatus.VERIFIED);
+        } else if (status == KybStatus.REJECTED) {
+            profile.setStatus(RepairerStatus.REJECTED);
+        }
+        RepairerProfileResponse response = toResponse(repairerRepo.save(profile));
+        if (profile.getUser() != null) {
+            if (status == KybStatus.VALIDATED) {
+                mailService.sendVerified(profile.getUser().getEmail(), profile.getUser().getName());
+            } else if (status == KybStatus.REJECTED) {
+                mailService.sendRejected(profile.getUser().getEmail(), profile.getUser().getName(), note);
+            }
+        }
+        return response;
+    }
+
+    private RepairerProfile findProfile(UUID id) {
+        return repairerRepo.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Profil retoucheur introuvable : " + id));
     }
 
     @Transactional(readOnly = true)

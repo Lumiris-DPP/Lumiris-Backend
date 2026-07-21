@@ -82,18 +82,47 @@ public class KybDetails {
     @Column(name = "kyb_rep_ownership_percentage")
     private Integer repOwnershipPercentage;
 
-    // Documents — UUID references to `files` (StorageService/MinIO), uploaded one at a time.
+    // Documents — UUID references to `files` (StorageService/MinIO), uploaded one at a time,
+    // each with an admin/user-declared expiry date (meaningful for the ID card; optional for
+    // the others, which don't have a hard legal expiry but are still often re-requested).
     @Column(name = "kyb_doc_id_file_id")
     private UUID idDocFileId;
+
+    @Column(name = "kyb_doc_id_expires_at")
+    private LocalDate idDocExpiresAt;
+
+    // Best-effort OCR text of the ID document (self-hosted Tesseract, image uploads only) —
+    // used to flag whether the declared representative's name appears on the document, not as
+    // a certified identity check.
+    @Column(name = "kyb_doc_id_ocr_text", columnDefinition = "text")
+    private String idDocOcrText;
 
     @Column(name = "kyb_doc_kbis_file_id")
     private UUID kbisFileId;
 
+    @Column(name = "kyb_doc_kbis_expires_at")
+    private LocalDate kbisExpiresAt;
+
     @Column(name = "kyb_doc_proof_of_address_file_id")
     private UUID proofOfAddressFileId;
 
+    @Column(name = "kyb_doc_proof_of_address_expires_at")
+    private LocalDate proofOfAddressExpiresAt;
+
     @Column(name = "kyb_doc_rib_file_id")
     private UUID ribFileId;
+
+    @Column(name = "kyb_doc_rib_expires_at")
+    private LocalDate ribExpiresAt;
+
+    // Review workflow status (distinct from the account-level PENDING/VERIFIED/REJECTED).
+    @Enumerated(EnumType.STRING)
+    @Column(name = "kyb_status", nullable = false)
+    private KybStatus kybStatus = KybStatus.PENDING;
+
+    // Admin's note explaining an INCOMPLETE/REJECTED verdict (what's missing or wrong).
+    @Column(name = "kyb_review_note", columnDefinition = "text")
+    private String kybReviewNote;
 
     // SIRENE snapshot captured at registration time (read-only) — the "ground truth" an admin
     // compares the declared fields above against. Not user-editable.

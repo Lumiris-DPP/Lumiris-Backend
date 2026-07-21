@@ -52,6 +52,15 @@ public class MailService {
         send(to, subject, "email/registration-rejected", context);
     }
 
+    public void sendKybIncomplete(String to, String name, String note) {
+        String body = "Bonjour " + name + ",\n\nVotre dossier KYB Lumiris est incomplet et doit être complété avant de pouvoir être validé.";
+        if (note != null && !note.isBlank()) {
+            body += "\n\nDétail : " + note;
+        }
+        body += "\n\nConnectez-vous à votre espace pour le mettre à jour.\nL'équipe Lumiris";
+        send(to, "Votre dossier KYB Lumiris est incomplet", body);
+    }
+
     public void sendRepairRequestRefused(String to, String name, String productName) {
         String subject = "Devis refusé";
         Context context = titledContext(subject);

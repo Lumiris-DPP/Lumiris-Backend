@@ -72,31 +72,6 @@ public class DppFormService {
     private final DppHashUtil dppHashUtil;
     private final BlockchainService blockchainService;
     private final QuotaService quotaService;
-    private final com.minoh.lumiris_backend.repository.MarketplaceProductRepository marketplaceProductRepository;
-
-    // Retrait d'un passeport publié : la conception rend un DPP publié IMMUABLE (aucun retour à DRAFT),
-    // mais un passeport erroné/rappelé doit pouvoir être retiré. On passe VALID → INVALID (transition
-    // autorisée par le trigger d'immuabilité) et on ARCHIVE l'annonce liée (retirée de la vente/recherche).
-    @Transactional
-    public DppFormCreatedResponse withdraw(UUID id, String userEmail) {
-        DppForm form = dppFormRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Passeport introuvable"));
-        if (!form.getUser().getEmail().equalsIgnoreCase(userEmail)) {
-            throw new ResourceNotFoundException("Passeport introuvable");
-        }
-        if (form.getStatus() != DppStatus.VALID) {
-            throw new com.minoh.lumiris_backend.exception.ConflictException(
-                    "Seul un passeport publié (VALID) peut être retiré.");
-        }
-        form.setStatus(DppStatus.INVALID);
-        dppFormRepository.save(form);
-        // Retire aussi l'annonce marketplace liée de la vente (archivage), le cas échéant.
-        marketplaceProductRepository.findByDppFormId(id).ifPresent(p -> {
-            p.setStatus(com.minoh.lumiris_backend.entity.MarketplaceProductStatus.ARCHIVED);
-            marketplaceProductRepository.save(p);
-        });
-        return new DppFormCreatedResponse(form.getId());
-    }
 
     // Invariants minimaux d'un passeport PUBLIÉ (un brouillon reste volontairement tolérant). Défense
     // en profondeur : le front valide déjà, mais un publish direct / hors UI ne doit pas créer un

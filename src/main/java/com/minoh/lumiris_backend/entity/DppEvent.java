@@ -29,12 +29,29 @@ public class DppEvent extends Auditable {
     @Column(name = "actor_type", nullable = false, updatable = false)
     private DppEventActorType actorType;
 
+    @Column(name = "location_city", updatable = false)
+    private String locationCity;
+
+    @Column(name = "location_country", updatable = false)
+    private String locationCountry;
+
+    @Column(updatable = false)
+    private Double latitude;
+
+    @Column(updatable = false)
+    private Double longitude;
+
     protected DppEvent() {}
 
-    public DppEvent(DppForm dppForm, Instant occurredAt, String description, DppEventActorType actorType) {
+    public DppEvent(DppForm dppForm, Instant occurredAt, String description, DppEventActorType actorType,
+                     String locationCity, String locationCountry, Double latitude, Double longitude) {
         this.dppForm = dppForm;
         this.occurredAt = occurredAt;
         this.description = description;
         this.actorType = actorType;
+        this.locationCity = locationCity;
+        this.locationCountry = locationCountry;
+        this.latitude = latitude;
+        this.longitude = longitude;
     }
 }

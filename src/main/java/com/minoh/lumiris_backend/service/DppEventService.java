@@ -25,12 +25,21 @@ public class DppEventService {
     private final DppFormRepository dppFormRepository;
     private final UserRepository userRepository;
     private final DppEventMapper dppEventMapper;
+    private final GeocodingService geocodingService;
 
     @Transactional
     public DppEventResponse create(UUID dppFormId, DppEventRequest request, String userEmail) {
         DppForm form = findOwnedForm(dppFormId, userEmail);
-        DppEvent event = dppEventRepository.save(dppEventMapper.toEntity(request, form));
+        GeocodingService.Coordinates coordinates = geocodingService.geocode(locationQuery(request)).orElse(null);
+        DppEvent event = dppEventRepository.save(dppEventMapper.toEntity(request, form, coordinates));
         return dppEventMapper.toResponse(event);
+    }
+
+    private String locationQuery(DppEventRequest request) {
+        if (request.locationCity() != null && request.locationCountry() != null) {
+            return request.locationCity() + ", " + request.locationCountry();
+        }
+        return request.locationCity() != null ? request.locationCity() : request.locationCountry();
     }
 
     @Transactional(readOnly = true)

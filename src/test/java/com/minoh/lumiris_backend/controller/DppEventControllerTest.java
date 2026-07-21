@@ -75,10 +75,10 @@ class DppEventControllerTest {
         UUID dppId = UUID.randomUUID();
         UUID eventId = UUID.randomUUID();
         Instant occurredAt = Instant.parse("2026-05-01T10:00:00Z");
-        DppEventRequest request = new DppEventRequest(occurredAt, "Remplacement de la fermeture éclair", DppEventActorType.REPAIRER);
+        DppEventRequest request = new DppEventRequest(occurredAt, "Remplacement de la fermeture éclair", DppEventActorType.REPAIRER, null, null);
 
         when(dppEventService.create(eq(dppId), any(), eq(USER_EMAIL)))
-                .thenReturn(new DppEventResponse(eventId, occurredAt, request.description(), request.actorType(), Instant.now()));
+                .thenReturn(new DppEventResponse(eventId, occurredAt, request.description(), request.actorType(), null, null, null, null, Instant.now()));
 
         mockMvc.perform(post("/api/dpp-forms/{id}/events", dppId)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -94,7 +94,7 @@ class DppEventControllerTest {
     @Test
     void create_shouldReturn400_whenDescriptionBlank() throws Exception {
         UUID dppId = UUID.randomUUID();
-        DppEventRequest request = new DppEventRequest(Instant.parse("2026-05-01T10:00:00Z"), "  ", DppEventActorType.CONSUMER);
+        DppEventRequest request = new DppEventRequest(Instant.parse("2026-05-01T10:00:00Z"), "  ", DppEventActorType.CONSUMER, null, null);
 
         mockMvc.perform(post("/api/dpp-forms/{id}/events", dppId)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -110,7 +110,7 @@ class DppEventControllerTest {
         UUID eventId = UUID.randomUUID();
         when(dppEventService.findAllByDppFormId(dppId, USER_EMAIL)).thenReturn(List.of(
                 new DppEventResponse(eventId, Instant.parse("2026-05-01T10:00:00Z"),
-                        "Vente au client final", DppEventActorType.RETAILER, Instant.now())
+                        "Vente au client final", DppEventActorType.RETAILER, null, null, null, null, Instant.now())
         ));
 
         mockMvc.perform(get("/api/dpp-forms/{id}/events", dppId))

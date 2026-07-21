@@ -3,6 +3,7 @@ package com.minoh.lumiris_backend.service;
 import com.minoh.lumiris_backend.dto.in.RepairerProfileUpdateRequest;
 import com.minoh.lumiris_backend.dto.in.RepairerRegisterRequest;
 import com.minoh.lumiris_backend.dto.out.RepairerProfileResponse;
+import com.minoh.lumiris_backend.dto.out.RepairerPublicProfileResponse;
 import com.minoh.lumiris_backend.dto.out.RepairerSearchResult;
 import com.minoh.lumiris_backend.entity.RepairerProfile;
 import com.minoh.lumiris_backend.entity.RepairerStatus;
@@ -86,6 +87,18 @@ public class RepairerOnboardingService {
         });
 
         return toResponse(repairerRepo.save(profile));
+    }
+
+    @Transactional(readOnly = true)
+    public RepairerPublicProfileResponse findPublicById(UUID id) {
+        RepairerProfile p = repairerRepo.findById(id)
+                .filter(profile -> profile.getStatus() == RepairerStatus.VERIFIED)
+                .orElseThrow(() -> new ResourceNotFoundException("Retoucheur introuvable"));
+        return new RepairerPublicProfileResponse(
+                p.getId(), p.getDisplayName(), p.getCompanyName(), p.getSpecialties(), p.getZones(),
+                p.getSchedule(), p.getAddress(), p.getCity(), p.getRegion(),
+                reviewRepo.averageRating(p), reviewRepo.countByRepairerProfile(p)
+        );
     }
 
     @Transactional(readOnly = true)

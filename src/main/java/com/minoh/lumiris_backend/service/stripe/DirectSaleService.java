@@ -110,10 +110,14 @@ public class DirectSaleService {
                         // Reçu Stripe envoyé automatiquement à l'acheteur (preuve d'achat + email de confirmation).
                         .setReceiptEmail(buyer.getEmail())
                         .setTransferGroup(transferGroup)
-                        // Moyens de paiement : UNIQUEMENT carte bancaire + Klarna (pas de wallets
-                        // Apple Pay / Google Pay — choix produit). Types explicites = wallets désactivés.
-                        .addPaymentMethodType("card")
-                        .addPaymentMethodType("klarna")
+                        // Méthodes automatiques : Stripe propose toutes les méthodes éligibles activées au
+                        // dashboard — carte, Klarna (paiement en plusieurs fois), et wallets Apple Pay /
+                        // Google Pay (ces derniers uniquement en HTTPS + domaine vérifié → invisibles en
+                        // local http). Redirections autorisées (nécessaire pour Klarna) — confirmPayment
+                        // utilise redirect:'if_required', le retour est géré par return_url.
+                        .setAutomaticPaymentMethods(PaymentIntentCreateParams.AutomaticPaymentMethods.builder()
+                                .setEnabled(true)
+                                .build())
                         .putMetadata("order_type", "marketplace")
                         .putMetadata("buyer_user_id", buyer.getId().toString())
                         .putMetadata("transfer_group", transferGroup)

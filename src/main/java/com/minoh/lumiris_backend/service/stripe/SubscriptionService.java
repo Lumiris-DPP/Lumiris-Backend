@@ -82,10 +82,17 @@ public class SubscriptionService {
         return StripeCalls.billed("Préparation du paiement impossible", () -> {
             // Card only: no wallets/SEPA/redirect methods — explicit payment_method_types
             // (mutually exclusive with automaticPaymentMethods).
+            // Méthodes automatiques pour l'abonnement (SaaS) : carte + wallets Apple Pay / Google Pay
+            // (wallets uniquement en HTTPS + domaine vérifié → invisibles en local http). Redirections
+            // désactivées : le moyen est enregistré off-session pour la facturation récurrente sans
+            // quitter la page (les méthodes à redirection type Klarna ne conviennent pas au récurrent).
             SetupIntentCreateParams params = SetupIntentCreateParams.builder()
                     .setCustomer(customerId)
                     .setUsage(SetupIntentCreateParams.Usage.OFF_SESSION)
-                    .addPaymentMethodType("card")
+                    .setAutomaticPaymentMethods(SetupIntentCreateParams.AutomaticPaymentMethods.builder()
+                            .setEnabled(true)
+                            .setAllowRedirects(SetupIntentCreateParams.AutomaticPaymentMethods.AllowRedirects.NEVER)
+                            .build())
                     .putMetadata("user_id", user.getId().toString())
                     .putMetadata("tier", tier.key())
                     .putMetadata("cycle", cycle.key())

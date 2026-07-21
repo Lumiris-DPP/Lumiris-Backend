@@ -2,8 +2,10 @@ package com.minoh.lumiris_backend.controller;
 
 import com.minoh.lumiris_backend.dto.in.ArtisanRegisterRequest;
 import com.minoh.lumiris_backend.dto.in.ArtisanVitrineUpdateRequest;
+import com.minoh.lumiris_backend.dto.in.KybDetailsRequest;
 import com.minoh.lumiris_backend.dto.out.ArtisanPhotoResponse;
 import com.minoh.lumiris_backend.dto.out.ArtisanProfileResponse;
+import com.minoh.lumiris_backend.entity.KybDocumentLabel;
 import com.minoh.lumiris_backend.service.ArtisanOnboardingService;
 import com.minoh.lumiris_backend.service.ArtisanVitrineService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -47,6 +49,23 @@ public class ArtisanController {
     ) {
         String ip = resolveClientIp(httpRequest);
         return ResponseEntity.ok(onboardingService.signDeclaration(principal.getUsername(), ip));
+    }
+
+    @PutMapping("/me/kyb")
+    ResponseEntity<ArtisanProfileResponse> submitKyb(
+            @Valid @RequestBody KybDetailsRequest request,
+            @AuthenticationPrincipal UserDetails principal
+    ) {
+        return ResponseEntity.ok(onboardingService.submitKyb(principal.getUsername(), request));
+    }
+
+    @PostMapping(value = "/me/kyb/documents/{label}", consumes = "multipart/form-data")
+    ResponseEntity<ArtisanProfileResponse> uploadKybDocument(
+            @PathVariable KybDocumentLabel label,
+            @RequestPart("file") MultipartFile file,
+            @AuthenticationPrincipal UserDetails principal
+    ) {
+        return ResponseEntity.ok(onboardingService.uploadKybDocument(principal.getUsername(), label, file));
     }
 
     @PutMapping("/me/profile")

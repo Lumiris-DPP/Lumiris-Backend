@@ -1,10 +1,14 @@
 package com.minoh.lumiris_backend.service;
 
+import com.minoh.lumiris_backend.dto.in.KybDetailsRequest;
 import com.minoh.lumiris_backend.dto.in.RepairerProfileUpdateRequest;
 import com.minoh.lumiris_backend.dto.in.RepairerRegisterRequest;
+import com.minoh.lumiris_backend.dto.in.RejectionRequest;
+import com.minoh.lumiris_backend.dto.out.FileUploadResponse;
 import com.minoh.lumiris_backend.dto.out.RepairerProfileResponse;
 import com.minoh.lumiris_backend.dto.out.RepairerPublicProfileResponse;
 import com.minoh.lumiris_backend.dto.out.RepairerSearchResult;
+import com.minoh.lumiris_backend.entity.KybDocumentLabel;
 import com.minoh.lumiris_backend.entity.RepairerProfile;
 import com.minoh.lumiris_backend.entity.RepairerStatus;
 import com.minoh.lumiris_backend.entity.User;
@@ -18,6 +22,7 @@ import org.locationtech.jts.geom.GeometryFactory;
 import org.locationtech.jts.geom.PrecisionModel;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.UUID;
@@ -34,6 +39,9 @@ public class RepairerOnboardingService {
     private final UserRepository userRepo;
     private final SireneService sireneService;
     private final GeocodingService geocodingService;
+    private final KybMapper kybMapper;
+    private final StorageService storageService;
+    private final MailService mailService;
 
     @Transactional(readOnly = true)
     public RepairerProfileResponse findByUserEmail(String userEmail) {
@@ -43,7 +51,9 @@ public class RepairerOnboardingService {
                 .orElseThrow(() -> new ResourceNotFoundException("Profil retoucheur introuvable"));
     }
 
-    // KYB simplifié : la vérification SIRENE suffit, pas de file d'attente admin.
+    // Inscription rapide (SIRET seul) : crée le profil et snapshot les données SIRENE pour
+    // comparaison admin. Le dossier KYB complet (PUT /me/kyb) + une revue admin restent requis
+    // avant le passage à VERIFIED.
     @Transactional
     public RepairerProfileResponse register(String userEmail, RepairerRegisterRequest request) {
         User user = findUser(userEmail);
@@ -57,10 +67,14 @@ public class RepairerOnboardingService {
 
         profile.setSiret(request.siret());
         profile.setCompanyName(sirene.companyName());
-        profile.setStatus(RepairerStatus.VERIFIED);
+        profile.setStatus(RepairerStatus.PENDING);
         if (profile.getDisplayName() == null || profile.getDisplayName().isBlank()) {
             profile.setDisplayName(sirene.companyName());
         }
+        profile.getKyb().setSireneSiren(sirene.siren());
+        profile.getKyb().setSireneSiegeAddress(sirene.siegeAddress());
+        profile.getKyb().setSireneNatureJuridique(sirene.natureJuridique());
+        profile.getKyb().setSireneDirigeantsJson(sirene.dirigeantsJson());
 
         return toResponse(repairerRepo.save(profile));
     }
@@ -87,6 +101,66 @@ public class RepairerOnboardingService {
         });
 
         return toResponse(repairerRepo.save(profile));
+    }
+
+    @Transactional
+    public RepairerProfileResponse submitKyb(String userEmail, KybDetailsRequest request) {
+        User user = findUser(userEmail);
+        RepairerProfile profile = repairerRepo.findByUser(user)
+                .orElseThrow(() -> new ResourceNotFoundException("Profil retoucheur introuvable"));
+
+        kybMapper.applyRequest(profile.getKyb(), request);
+
+        return toResponse(repairerRepo.save(profile));
+    }
+
+    @Transactional
+    public RepairerProfileResponse uploadKybDocument(String userEmail, KybDocumentLabel label, MultipartFile file) {
+        User user = findUser(userEmail);
+        RepairerProfile profile = repairerRepo.findByUser(user)
+                .orElseThrow(() -> new ResourceNotFoundException("Profil retoucheur introuvable"));
+
+        FileUploadResponse uploaded = storageService.upload(file, userEmail);
+        switch (label) {
+            case legal_representative_id_doc -> profile.getKyb().setIdDocFileId(uploaded.id());
+            case kbis -> profile.getKyb().setKbisFileId(uploaded.id());
+            case proof_of_address -> profile.getKyb().setProofOfAddressFileId(uploaded.id());
+            case rib -> profile.getKyb().setRibFileId(uploaded.id());
+        }
+
+        return toResponse(repairerRepo.save(profile));
+    }
+
+    // Admin actions
+
+    public List<RepairerProfileResponse> findPending() {
+        return repairerRepo.findByStatus(RepairerStatus.PENDING).stream()
+                .map(this::toResponse)
+                .toList();
+    }
+
+    @Transactional
+    public RepairerProfileResponse verify(UUID profileId) {
+        RepairerProfile profile = repairerRepo.findById(profileId)
+                .orElseThrow(() -> new ResourceNotFoundException("Profil retoucheur introuvable : " + profileId));
+        profile.setStatus(RepairerStatus.VERIFIED);
+        RepairerProfileResponse response = toResponse(repairerRepo.save(profile));
+        if (profile.getUser() != null) {
+            mailService.sendVerified(profile.getUser().getEmail(), profile.getUser().getName());
+        }
+        return response;
+    }
+
+    @Transactional
+    public RepairerProfileResponse reject(UUID profileId, RejectionRequest request) {
+        RepairerProfile profile = repairerRepo.findById(profileId)
+                .orElseThrow(() -> new ResourceNotFoundException("Profil retoucheur introuvable : " + profileId));
+        profile.setStatus(RepairerStatus.REJECTED);
+        RepairerProfileResponse response = toResponse(repairerRepo.save(profile));
+        if (profile.getUser() != null) {
+            mailService.sendRejected(profile.getUser().getEmail(), profile.getUser().getName(), request.reason());
+        }
+        return response;
     }
 
     @Transactional(readOnly = true)
@@ -157,7 +231,8 @@ public class RepairerOnboardingService {
                 p.getRegion(),
                 reviewRepo.averageRating(p),
                 reviewRepo.countByRepairerProfile(p),
-                p.getCreatedAt()
+                p.getCreatedAt(),
+                kybMapper.toResponse(p.getKyb())
         );
     }
 }

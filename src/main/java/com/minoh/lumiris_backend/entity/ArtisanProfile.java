@@ -115,4 +115,7 @@ public class ArtisanProfile extends Auditable {
 
     @Column(nullable = false)
     private boolean published = false;
+
+    @Embedded
+    private KybDetails kyb = new KybDetails();
 }

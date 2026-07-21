@@ -55,4 +55,7 @@ public class RepairerProfile extends Auditable {
     private String region;
 
     private Point location;
+
+    @Embedded
+    private KybDetails kyb = new KybDetails();
 }

@@ -1,8 +1,8 @@
 package com.minoh.lumiris_backend.controller;
 
 import com.minoh.lumiris_backend.dto.in.RejectionRequest;
-import com.minoh.lumiris_backend.dto.out.ArtisanProfileResponse;
-import com.minoh.lumiris_backend.service.ArtisanOnboardingService;
+import com.minoh.lumiris_backend.dto.out.RepairerProfileResponse;
+import com.minoh.lumiris_backend.service.RepairerOnboardingService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -11,24 +11,24 @@ import java.util.List;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/admin/artisans")
+@RequestMapping("/api/admin/repairers")
 @RequiredArgsConstructor
-public class AdminArtisanController {
+public class AdminRepairerController {
 
-    private final ArtisanOnboardingService onboardingService;
+    private final RepairerOnboardingService onboardingService;
 
     @GetMapping
-    ResponseEntity<List<ArtisanProfileResponse>> listPending() {
+    ResponseEntity<List<RepairerProfileResponse>> listPending() {
         return ResponseEntity.ok(onboardingService.findPending());
     }
 
     @PatchMapping("/{id}/verify")
-    ResponseEntity<ArtisanProfileResponse> verify(@PathVariable UUID id) {
+    ResponseEntity<RepairerProfileResponse> verify(@PathVariable UUID id) {
         return ResponseEntity.ok(onboardingService.verify(id));
     }
 
     @PatchMapping("/{id}/reject")
-    ResponseEntity<ArtisanProfileResponse> reject(
+    ResponseEntity<RepairerProfileResponse> reject(
             @PathVariable UUID id,
             @RequestBody(required = false) RejectionRequest request
     ) {

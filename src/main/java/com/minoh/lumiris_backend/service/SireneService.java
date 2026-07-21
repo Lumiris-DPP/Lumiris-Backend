@@ -18,7 +18,15 @@ public class SireneService {
                 .build();
     }
 
-    public record SireneData(String companyName, String nafCode, String rawJson) {}
+    public record SireneData(
+            String companyName,
+            String nafCode,
+            String rawJson,
+            String siren,
+            String siegeAddress,
+            String natureJuridique,
+            String dirigeantsJson
+    ) {}
 
     public SireneData validate(String siret) {
         String rawJson = restClient.get()
@@ -38,10 +46,16 @@ public class SireneService {
         }
 
         JsonNode match = root.path("results").get(0);
+        JsonNode siege = match.path("siege");
+        JsonNode dirigeants = match.path("dirigeants");
         return new SireneData(
                 match.path("nom_complet").asText(null),
                 match.path("activite_principale").asText(null),
-                match.toString()
+                match.toString(),
+                match.path("siren").asText(null),
+                siege.path("adresse").asText(null),
+                match.path("nature_juridique").asText(null),
+                dirigeants.isMissingNode() ? null : dirigeants.toString()
         );
     }
 }

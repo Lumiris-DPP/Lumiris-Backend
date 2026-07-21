@@ -44,6 +44,15 @@ class RepairerOnboardingServiceTest {
     @Mock
     private GeocodingService geocodingService;
 
+    @Mock
+    private KybMapper kybMapper;
+
+    @Mock
+    private StorageService storageService;
+
+    @Mock
+    private MailService mailService;
+
     @InjectMocks
     private RepairerOnboardingService service;
 
@@ -60,15 +69,17 @@ class RepairerOnboardingServiceTest {
     }
 
     @Test
-    void register_setsVerifiedStatusAndCompanyNameFromSirene() {
+    void register_setsPendingStatusAndCompanyNameFromSirene() {
         when(repairerRepo.findByUser(user)).thenReturn(Optional.empty());
         when(sireneService.validate("73282932000074"))
-                .thenReturn(new SireneService.SireneData("Atelier Réparation SARL", "95.29Z", "{}"));
+                .thenReturn(new SireneService.SireneData(
+                        "Atelier Réparation SARL", "95.29Z", "{}", "732829320", "1 rue Test 75001 Paris", "5499", null));
         when(repairerRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         RepairerProfileResponse response = service.register("repairer@lumiris.com", new RepairerRegisterRequest("73282932000074"));
 
-        assertThat(response.status()).isEqualTo(RepairerStatus.VERIFIED);
+        // KYB simplifié à l'inscription, mais reste en attente d'un dossier KYB complet + revue admin.
+        assertThat(response.status()).isEqualTo(RepairerStatus.PENDING);
         assertThat(response.companyName()).isEqualTo("Atelier Réparation SARL");
         assertThat(response.displayName()).isEqualTo("Atelier Réparation SARL");
     }
@@ -95,7 +106,8 @@ class RepairerOnboardingServiceTest {
         existing.setDisplayName("Déjà rempli");
         when(repairerRepo.findByUser(user)).thenReturn(Optional.of(existing));
         when(sireneService.validate("73282932000074"))
-                .thenReturn(new SireneService.SireneData("Atelier Réparation SARL", "95.29Z", "{}"));
+                .thenReturn(new SireneService.SireneData(
+                        "Atelier Réparation SARL", "95.29Z", "{}", "732829320", "1 rue Test 75001 Paris", "5499", null));
         when(repairerRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         RepairerProfileResponse response = service.register("repairer@lumiris.com", new RepairerRegisterRequest("73282932000074"));

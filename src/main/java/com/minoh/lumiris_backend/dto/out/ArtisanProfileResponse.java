@@ -33,5 +33,6 @@ public record ArtisanProfileResponse(
         String region,
         String websiteUrl,
         Map<String, String> links,
-        List<ArtisanPhotoResponse> photos
+        List<ArtisanPhotoResponse> photos,
+        KybDetailsResponse kyb
 ) {}

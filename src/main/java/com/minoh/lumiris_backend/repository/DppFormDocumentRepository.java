@@ -1,5 +1,6 @@
 package com.minoh.lumiris_backend.repository;
 
+import com.minoh.lumiris_backend.entity.DocumentType;
 import com.minoh.lumiris_backend.entity.DppForm;
 import com.minoh.lumiris_backend.entity.DppFormDocument;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -16,4 +17,9 @@ public interface DppFormDocumentRepository extends JpaRepository<DppFormDocument
     @Modifying
     @Query("delete from DppFormDocument d where d.dppForm = :form")
     void deleteByDppForm(@Param("form") DppForm form);
+
+    // Same rationale, narrowed to one type: re-uploading a document replaces the stored one.
+    @Modifying
+    @Query("delete from DppFormDocument d where d.dppForm = :form and d.documentType = :type")
+    void deleteByDppFormAndDocumentType(@Param("form") DppForm form, @Param("type") DocumentType type);
 }

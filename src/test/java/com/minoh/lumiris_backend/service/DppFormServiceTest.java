@@ -5,8 +5,10 @@ import com.minoh.lumiris_backend.dto.out.DppFormCreatedResponse;
 import com.minoh.lumiris_backend.entity.DppForm;
 import com.minoh.lumiris_backend.dto.out.DppVerificationResponse;
 import com.minoh.lumiris_backend.entity.BlockchainAnchorStatus;
+import com.minoh.lumiris_backend.entity.DppStatus;
 import com.minoh.lumiris_backend.entity.User;
 import com.minoh.lumiris_backend.exception.ResourceNotFoundException;
+import com.minoh.lumiris_backend.exception.SubscriptionRequiredException;
 import com.minoh.lumiris_backend.mapper.DppFormMapper;
 import com.minoh.lumiris_backend.dto.out.IrisScoreResponse;
 import com.minoh.lumiris_backend.repository.DppFormRepository;
@@ -34,8 +36,10 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -146,6 +150,58 @@ class DppFormServiceTest {
 
         assertThatThrownBy(() -> service.create(null, Collections.emptyMap(), "unknown@test.com", false))
                 .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    // ── billing gate ──────────────────────────────────────────────────────────
+
+    @Test
+    void create_draft_shouldNotRequireSubscription() {
+        DppFormRequest request = new DppFormRequest(
+                "Brouillon", null, null, null,
+                null, null,
+                List.of(), List.of(), null,
+                null, null, null, null, false,
+                null, null, false, null, 1
+        );
+
+        DppFormCreatedResponse response = service.create(request, Collections.emptyMap(), USER_EMAIL, true);
+
+        verify(quotaService, never()).assertCanCreate(any());
+        assertThat(response.id()).isNotNull();
+    }
+
+    @Test
+    void create_nonDraft_shouldRequireSubscription() {
+        doThrow(new SubscriptionRequiredException("Abonnement requis"))
+                .when(quotaService).assertCanCreate(user);
+
+        DppFormRequest request = new DppFormRequest(
+                "Pull Merino", "Un pull doux", "top", "FR",
+                List.of("S"), List.of("Écru"),
+                List.of(), List.of(), "none",
+                "2026-01-01", "LOT-001", null, "SKU-001", true,
+                30, "2 ans", true, "Rapporter en boutique", 1
+        );
+
+        assertThatThrownBy(() -> service.create(request, Collections.emptyMap(), USER_EMAIL, false))
+                .isInstanceOf(SubscriptionRequiredException.class);
+        verify(dppFormRepository, never()).save(any());
+    }
+
+    @Test
+    void publish_shouldRequireSubscription() {
+        UUID id = UUID.randomUUID();
+        DppForm form = new DppForm();
+        form.setId(id);
+        form.setUser(user);
+        form.setStatus(DppStatus.DRAFT);
+        when(dppFormRepository.findById(id)).thenReturn(Optional.of(form));
+        doThrow(new SubscriptionRequiredException("Abonnement requis"))
+                .when(quotaService).assertCanCreate(user);
+
+        assertThatThrownBy(() -> service.publish(id, USER_EMAIL))
+                .isInstanceOf(SubscriptionRequiredException.class);
+        verify(dppFormRepository, never()).save(any());
     }
 
     // ── verify ────────────────────────────────────────────────────────────────

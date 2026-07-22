@@ -236,6 +236,9 @@
 					<user>${env.SPRING_DATASOURCE_USERNAME}</user>
 					<!--suppress UnresolvedMavenProperty -->
 					<password>${env.SPRING_DATASOURCE_PASSWORD}</password>
+					<!-- Flyway 10+ disables clean by default. Re-enable it for the
+					     `make mvn flyway:clean` dev workflow (local DB reset only). -->
+					<cleanDisabled>false</cleanDisabled>
 				</configuration>
 			</plugin>
 		</plugins>

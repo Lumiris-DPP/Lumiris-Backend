@@ -57,8 +57,8 @@ help:
 	@echo "    start     Start containers in background"
 	@echo "    stop      Stop containers without removing them"
 	@echo "    down      Stop and remove containers"
-	@echo "    fresh     Full reset: remove containers + volumes, then restart"
-	@echo "    fresh-seed  Full reset, then run the app with demo seeds (db/seed)"
+	@echo "    fresh     DB reset: flyway clean + migrate (keeps containers)"
+	@echo "    fresh-seed  DB clean, then run the app with demo seeds (db/seed)"
 	@echo "    logs      Follow PostgreSQL logs"
 	@echo ""
 	@echo "  App"
@@ -95,11 +95,12 @@ stop:
 down:
 	@$(DC) down
 
-fresh:
-	@$(DC) down -v
-	@$(DC) up -d
+fresh: start
+	@$(MVN) flyway:clean
+	@$(MVN) flyway:migrate
 
-fresh-seed: fresh
+fresh-seed: start
+	@$(MVN) flyway:clean
 	@FLYWAY_LOCATIONS=classpath:db/migration,classpath:db/seed $(MAKE) run
 
 logs:

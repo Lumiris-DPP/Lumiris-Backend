@@ -253,7 +253,9 @@ public class RepairerOnboardingService {
                 (String) row[6],
                 (String) row[7],
                 (String) row[8],
-                ((Number) row[9]).doubleValue() / 1000.0
+                ((Number) row[9]).doubleValue() / 1000.0,
+                ((Number) row[10]).doubleValue(),
+                ((Number) row[11]).doubleValue()
         );
     }
 

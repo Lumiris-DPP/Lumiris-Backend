@@ -13,5 +13,7 @@ public record RepairerSearchResult(
         String address,
         String city,
         String region,
-        double distanceKm
+        double distanceKm,
+        double lat,
+        double lng
 ) {}

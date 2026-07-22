@@ -88,7 +88,7 @@ class RepairerOnboardingServiceTest {
     void search_convertsDistanceFromMetersToKilometers() {
         UUID id = UUID.randomUUID();
         // Postgres text[] columns surface as String[] (JDBC array) in a native query row, not List.
-        Object[] row = {id, "Atelier Test", "Atelier Test SARL", new String[]{"couture"}, new String[]{"Paris"}, "Lun-Ven", "1 rue Test", "Paris", "Île-de-France", 2500.0};
+        Object[] row = {id, "Atelier Test", "Atelier Test SARL", new String[]{"couture"}, new String[]{"Paris"}, "Lun-Ven", "1 rue Test", "Paris", "Île-de-France", 2500.0, 48.86, 2.34};
         when(repairerRepo.searchNearby(48.85, 2.35, null, 20_000.0)).thenReturn(Collections.singletonList(row));
 
         List<RepairerSearchResult> results = service.search(48.85, 2.35, null, null);
@@ -97,6 +97,8 @@ class RepairerOnboardingServiceTest {
         assertThat(results.get(0).id()).isEqualTo(id);
         assertThat(results.get(0).specialties()).containsExactly("couture");
         assertThat(results.get(0).distanceKm()).isEqualTo(2.5);
+        assertThat(results.get(0).lat()).isEqualTo(48.86);
+        assertThat(results.get(0).lng()).isEqualTo(2.34);
     }
 
     @Test

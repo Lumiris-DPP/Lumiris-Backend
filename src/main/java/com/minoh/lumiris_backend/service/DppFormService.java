@@ -122,9 +122,10 @@ public class DppFormService {
                 form.setBlockchainAnchorStatus(BlockchainAnchorStatus.PENDING);
             }
 
-            attachUploads(form, uploadedIds, false);
+            attachMainPhoto(form, uploadedIds);
 
             DppForm savedForm = dppFormRepository.save(form);
+            saveDocuments(savedForm, uploadedIds, false);
 
             if (!draft) {
                 Set<DocumentType> uploadedDocTypes = uploadedIds.keySet().stream()
@@ -154,7 +155,8 @@ public class DppFormService {
             dppCareInstructionRepository.deleteByDppForm(form);
             saveChildrenDirect(form, request);
 
-            attachUploads(form, uploadedIds, true);
+            attachMainPhoto(form, uploadedIds);
+            saveDocuments(form, uploadedIds, true);
 
             dppFormRepository.save(form);
             return new DppFormCreatedResponse(form.getId());
@@ -220,30 +222,35 @@ public class DppFormService {
         return uploadedIds;
     }
 
-    /** Attach uploaded parts to the form; when {@code replaceExisting}, a part supersedes the stored document of the same type. */
-    private void attachUploads(DppForm form, Map<String, UUID> uploadedIds, boolean replaceExisting) {
+    /** The main photo is carried by the form itself, so it must be applied before the form is saved. */
+    private void attachMainPhoto(DppForm form, Map<String, UUID> uploadedIds) {
+        UUID photoId = uploadedIds.get("productPhoto");
+        if (photoId != null) {
+            form.setMainPhotoFile(storedFileRepository.getReferenceById(photoId));
+        }
+    }
+
+    /**
+     * Persist uploaded documents straight through their repo (the child @ManyToOne owns the FK);
+     * when {@code replaceExisting}, a part supersedes the stored document of the same type.
+     * Going through {@code form.getDocuments()} instead would insert an empty row with a null
+     * dpp_form_id: on an unloaded lazy collection Hibernate queues the add and flushes it without
+     * the entity's state — the same trap materials and care instructions already avoid.
+     * The form must already be persisted.
+     */
+    private void saveDocuments(DppForm form, Map<String, UUID> uploadedIds, boolean replaceExisting) {
         uploadedIds.forEach((partName, fileId) -> {
-            StoredFile storedFile = storedFileRepository.getReferenceById(fileId);
-            if ("productPhoto".equals(partName)) {
-                form.setMainPhotoFile(storedFile);
-                return;
-            }
+            if ("productPhoto".equals(partName)) return;
             DocumentType.fromPartName(partName).ifPresent(docType -> {
                 if (replaceExisting) {
-                    List<DppFormDocument> stale = form.getDocuments().stream()
-                            .filter(d -> d.getDocumentType() == docType)
-                            .toList();
-                    stale.forEach(d -> {
-                        form.getDocuments().remove(d);
-                        dppFormDocumentRepository.delete(d);
-                    });
+                    dppFormDocumentRepository.deleteByDppFormAndDocumentType(form, docType);
                 }
                 DppFormDocument doc = new DppFormDocument();
                 doc.setDppForm(form);
-                doc.setFile(storedFile);
+                doc.setFile(storedFileRepository.getReferenceById(fileId));
                 doc.setDocumentType(docType);
                 doc.setVisibility(docType.defaultVisibility());
-                form.getDocuments().add(doc);
+                dppFormDocumentRepository.save(doc);
             });
         });
     }

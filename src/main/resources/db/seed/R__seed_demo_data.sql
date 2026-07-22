@@ -22,9 +22,11 @@ ON CONFLICT (email) DO NOTHING;
 -- le seed évolue et re-tourne sur une base déjà peuplée.
 -- ============================================================================
 INSERT INTO artisan_profiles (user_id, display_name, atelier_name, slug, city, region, tier, passport_limit,
-                              status, siret, company_name, naf_code, declaration_signed, signature_timestamp, joined_at)
+                              status, siret, company_name, naf_code, declaration_signed, signature_timestamp, joined_at,
+                              published, specialties, story)
 SELECT id, 'Artisan Démo', 'Atelier Démo', 'atelier-demo', 'Paris', 'Île-de-France', 'Solo', 50,
-       'VERIFIED', '73282932000074', 'Atelier Démo SARL', '14.13Z', true, NOW(), NOW()
+       'VERIFIED', '73282932000074', 'Atelier Démo SARL', '14.13Z', true, NOW(), NOW(),
+       true, ARRAY['couture', 'maroquinerie'], 'Atelier de démonstration LUMIRIS, spécialisé en couture et petite maroquinerie.'
 FROM users WHERE email = 'artisan@lumiris.com'
 ON CONFLICT (user_id) DO UPDATE SET
     status = EXCLUDED.status,
@@ -32,7 +34,10 @@ ON CONFLICT (user_id) DO UPDATE SET
     company_name = EXCLUDED.company_name,
     naf_code = EXCLUDED.naf_code,
     declaration_signed = EXCLUDED.declaration_signed,
-    signature_timestamp = EXCLUDED.signature_timestamp;
+    signature_timestamp = EXCLUDED.signature_timestamp,
+    published = EXCLUDED.published,
+    specialties = EXCLUDED.specialties,
+    story = EXCLUDED.story;
 
 -- ============================================================================
 -- Profil retoucheur démo : KYB simplifié (VERIFIED direct, pas de déclaration).
@@ -67,4 +72,23 @@ FROM (VALUES
 ) AS v(display_name, company_name, specialties, zones, schedule, address, city, lat, lng)
 WHERE NOT EXISTS (
     SELECT 1 FROM repairer_profiles rp WHERE rp.company_name = v.company_name AND rp.user_id IS NULL
+);
+
+-- ============================================================================
+-- Avis de démo — la fonctionnalité (POST /v1/repairers/{id}/reviews, public)
+-- n'avait aucune donnée de démo, la rendant invisible en local. Identifiés par
+-- (repairer, reviewer_name) pour l'idempotence.
+-- ============================================================================
+INSERT INTO repairer_reviews (repairer_profile_id, rating, comment, reviewer_name)
+SELECT rp.id, v.rating, v.comment, v.reviewer_name
+FROM repairer_profiles rp
+JOIN (VALUES
+    ('Atelier Réparation Démo', 5, 'Travail impeccable, mon pantalon est comme neuf.', 'Camille D.'),
+    ('Atelier Réparation Démo', 4, 'Bon accueil, un peu d''attente mais le résultat est là.', 'Yanis B.'),
+    ('Cordonnerie du Marais SARL', 5, 'Ressemelage parfait, prix honnête.', 'Sophie L.'),
+    ('Cordonnerie du Marais SARL', 4, 'Très professionnel, je recommande.', 'Marc T.'),
+    ('Retouche Express Bastille EURL', 5, 'Retouche rapide et soignée, merci !', 'Nadia K.')
+) AS v(company_name, rating, comment, reviewer_name) ON v.company_name = rp.company_name
+WHERE NOT EXISTS (
+    SELECT 1 FROM repairer_reviews rr WHERE rr.repairer_profile_id = rp.id AND rr.reviewer_name = v.reviewer_name
 );

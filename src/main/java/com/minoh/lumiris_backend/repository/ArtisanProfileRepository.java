@@ -13,4 +13,5 @@ public interface ArtisanProfileRepository extends JpaRepository<ArtisanProfile, 
     Optional<ArtisanProfile> findByUser(User user);
     List<ArtisanProfile> findByStatus(ArtisanStatus status);
     Optional<ArtisanProfile> findBySlug(String slug);
+    List<ArtisanProfile> findByPublishedTrueAndStatus(ArtisanStatus status);
 }

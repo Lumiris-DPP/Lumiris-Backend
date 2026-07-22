@@ -9,12 +9,19 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/v1/artisans")
 @RequiredArgsConstructor
 public class PublicArtisanController {
 
     private final ArtisanVitrineService vitrineService;
+
+    @GetMapping
+    ResponseEntity<List<ArtisanPublicProfileResponse>> listPublished() {
+        return ResponseEntity.ok(vitrineService.findAllPublished());
+    }
 
     @GetMapping("/{slug}")
     ResponseEntity<ArtisanPublicProfileResponse> findBySlug(@PathVariable String slug) {

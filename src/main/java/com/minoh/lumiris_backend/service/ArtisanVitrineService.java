@@ -105,6 +105,19 @@ public class ArtisanVitrineService {
                 .filter(p -> p.getStatus() == ArtisanStatus.VERIFIED)
                 .orElseThrow(() -> new ResourceNotFoundException("Artisan introuvable"));
 
+        return toPublicResponse(profile);
+    }
+
+    // Public directory listing (no geo-search: artisans have no stored coordinates, unlike
+    // repairers) — every published, verified atelier, for VISION's /local hub.
+    @Transactional(readOnly = true)
+    public List<ArtisanPublicProfileResponse> findAllPublished() {
+        return artisanRepo.findByPublishedTrueAndStatus(ArtisanStatus.VERIFIED).stream()
+                .map(this::toPublicResponse)
+                .toList();
+    }
+
+    private ArtisanPublicProfileResponse toPublicResponse(ArtisanProfile profile) {
         List<String> photoUrls = photoRepo.findByArtisanProfileOrderByPosition(profile).stream()
                 .map(photo -> storageService.getPresignedUrl(photo.getFile().getId()))
                 .toList();

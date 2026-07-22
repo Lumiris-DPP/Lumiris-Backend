@@ -22,7 +22,8 @@ public interface RepairerProfileRepository extends JpaRepository<RepairerProfile
     @Query(value = """
             SELECT r.id, r.display_name, r.company_name, r.specialties, r.zones, r.schedule,
                    r.address, r.city, r.region,
-                   ST_Distance(r.location::geography, ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography) AS distance_m
+                   ST_Distance(r.location::geography, ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography) AS distance_m,
+                   ST_Y(r.location) AS lat, ST_X(r.location) AS lng
             FROM repairer_profiles r
             WHERE r.status = 'VERIFIED'
               AND r.location IS NOT NULL

@@ -1,17 +1,21 @@
 package com.minoh.lumiris_backend.service;
 
 import com.minoh.lumiris_backend.dto.in.DppFormRequest;
+import com.minoh.lumiris_backend.dto.in.MaterialRequest;
 import com.minoh.lumiris_backend.dto.out.DppFormCreatedResponse;
 import com.minoh.lumiris_backend.entity.DppForm;
 import com.minoh.lumiris_backend.dto.out.DppVerificationResponse;
 import com.minoh.lumiris_backend.entity.BlockchainAnchorStatus;
+import com.minoh.lumiris_backend.entity.DppMaterial;
 import com.minoh.lumiris_backend.entity.DppStatus;
 import com.minoh.lumiris_backend.entity.User;
 import com.minoh.lumiris_backend.exception.ResourceNotFoundException;
 import com.minoh.lumiris_backend.exception.SubscriptionRequiredException;
 import com.minoh.lumiris_backend.mapper.DppFormMapper;
 import com.minoh.lumiris_backend.dto.out.IrisScoreResponse;
+import com.minoh.lumiris_backend.repository.DppCareInstructionRepository;
 import com.minoh.lumiris_backend.repository.DppFormRepository;
+import com.minoh.lumiris_backend.repository.DppMaterialRepository;
 import com.minoh.lumiris_backend.repository.IrisScoreRepository;
 import com.minoh.lumiris_backend.repository.StoredFileRepository;
 import com.minoh.lumiris_backend.repository.UserRepository;
@@ -22,6 +26,7 @@ import com.minoh.lumiris_backend.util.DppHashUtil;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Spy;
@@ -80,6 +85,12 @@ class DppFormServiceTest {
 
     @Mock
     private QuotaService quotaService;
+
+    @Mock
+    private DppMaterialRepository dppMaterialRepository;
+
+    @Mock
+    private DppCareInstructionRepository dppCareInstructionRepository;
 
     @InjectMocks
     private DppFormService service;
@@ -202,6 +213,54 @@ class DppFormServiceTest {
         assertThatThrownBy(() -> service.publish(id, USER_EMAIL))
                 .isInstanceOf(SubscriptionRequiredException.class);
         verify(dppFormRepository, never()).save(any());
+    }
+
+    // ── géocodage des matières ────────────────────────────────────────────────
+
+    private static DppFormRequest requestWithMaterial() {
+        return new DppFormRequest(
+                "Pull Merino", null, "top", "FR",
+                null, null,
+                List.of(new MaterialRequest("wool", 100, "France")), List.of(), null,
+                "2026-01-01", null, null, null, false,
+                null, null, false, null, 1
+        );
+    }
+
+    @Test
+    void update_shouldGeocodeMaterialsToo() {
+        UUID id = UUID.randomUUID();
+        DppForm form = new DppForm();
+        form.setId(id);
+        form.setUser(user);
+        form.setStatus(DppStatus.DRAFT);
+        when(dppFormRepository.findById(id)).thenReturn(Optional.of(form));
+        when(geocodingService.geocode("France"))
+                .thenReturn(Optional.of(new GeocodingService.Coordinates(46.6, 1.88)));
+
+        service.update(id, requestWithMaterial(), Collections.emptyMap(), USER_EMAIL);
+
+        ArgumentCaptor<DppMaterial> saved = ArgumentCaptor.forClass(DppMaterial.class);
+        verify(dppMaterialRepository).save(saved.capture());
+        assertThat(saved.getValue().getLatitude()).isEqualTo(46.6);
+        assertThat(saved.getValue().getLongitude()).isEqualTo(1.88);
+    }
+
+    @Test
+    void createDraft_shouldGeocodeMaterials() {
+        when(geocodingService.geocode("France"))
+                .thenReturn(Optional.of(new GeocodingService.Coordinates(46.6, 1.88)));
+
+        service.create(requestWithMaterial(), Collections.emptyMap(), USER_EMAIL, true);
+
+        ArgumentCaptor<DppForm> saved = ArgumentCaptor.forClass(DppForm.class);
+        verify(dppFormRepository).save(saved.capture());
+        assertThat(saved.getValue().getMaterials())
+                .singleElement()
+                .satisfies(m -> {
+                    assertThat(m.getLatitude()).isEqualTo(46.6);
+                    assertThat(m.getLongitude()).isEqualTo(1.88);
+                });
     }
 
     // ── verify ────────────────────────────────────────────────────────────────

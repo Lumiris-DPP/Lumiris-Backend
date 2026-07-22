@@ -258,14 +258,8 @@ public class DppFormService {
     /** Persist materials and care instructions straight through their repos (owning side sets the FK). */
     private void saveChildrenDirect(DppForm form, DppFormRequest request) {
         if (request.materials() != null) {
-            request.materials().forEach(m -> {
-                DppMaterial material = new DppMaterial();
-                material.setDppForm(form);
-                material.setFiber(m.fiber());
-                material.setPercentage(m.percentage());
-                material.setOriginCountry(m.originCountry());
-                dppMaterialRepository.save(material);
-            });
+            // Même fabrique que la création : les coordonnées géocodées suivent chaque écriture.
+            request.materials().forEach(m -> dppMaterialRepository.save(dppFormMapper.toMaterial(form, m)));
         }
         if (request.careInstructions() != null) {
             request.careInstructions().forEach(code -> {

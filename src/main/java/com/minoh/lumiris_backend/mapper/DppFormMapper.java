@@ -1,6 +1,7 @@
 package com.minoh.lumiris_backend.mapper;
 
 import com.minoh.lumiris_backend.dto.in.DppFormRequest;
+import com.minoh.lumiris_backend.dto.in.MaterialRequest;
 import com.minoh.lumiris_backend.dto.out.DppFormDocumentResponse;
 import com.minoh.lumiris_backend.dto.out.DppFormResponse;
 import com.minoh.lumiris_backend.dto.out.DppFormSummaryResponse;
@@ -60,20 +61,27 @@ public class DppFormMapper {
         form.setCareNotes(request.careNotes());
     }
 
+    /**
+     * Fabrique unique d'une matière : le géocodage du pays d'origine doit valoir pour toute
+     * écriture (création comme mise à jour d'un brouillon), sans quoi un brouillon réenregistré
+     * perdrait ses coordonnées et la carte des origines serait vide à la publication.
+     */
+    public DppMaterial toMaterial(DppForm form, MaterialRequest request) {
+        DppMaterial material = new DppMaterial();
+        material.setDppForm(form);
+        material.setFiber(request.fiber());
+        material.setPercentage(request.percentage());
+        material.setOriginCountry(request.originCountry());
+        geocodingService.geocode(request.originCountry()).ifPresent(coordinates -> {
+            material.setLatitude(coordinates.latitude());
+            material.setLongitude(coordinates.longitude());
+        });
+        return material;
+    }
+
     public void addChildren(DppForm form, DppFormRequest request) {
         if (request.materials() != null) {
-            request.materials().forEach(m -> {
-                DppMaterial material = new DppMaterial();
-                material.setDppForm(form);
-                material.setFiber(m.fiber());
-                material.setPercentage(m.percentage());
-                material.setOriginCountry(m.originCountry());
-                geocodingService.geocode(m.originCountry()).ifPresent(coordinates -> {
-                    material.setLatitude(coordinates.latitude());
-                    material.setLongitude(coordinates.longitude());
-                });
-                form.getMaterials().add(material);
-            });
+            request.materials().forEach(m -> form.getMaterials().add(toMaterial(form, m)));
         }
 
         if (request.careInstructions() != null) {

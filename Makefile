@@ -9,7 +9,12 @@ MVN := ./mvnw
 export SPRING_DATASOURCE_URL
 export SPRING_DATASOURCE_USERNAME
 export SPRING_DATASOURCE_PASSWORD
+# Only export when set: an empty FLYWAY_LOCATIONS overrides the flyway-maven
+# plugin default (filesystem:src/main/resources/db/migration) with `classpath:`,
+# which makes `make mvn flyway:*` miss every migration ("did not follow convention").
+ifdef FLYWAY_LOCATIONS
 export FLYWAY_LOCATIONS
+endif
 export CORS_ALLOWED_ORIGINS
 export JWT_SECRET
 

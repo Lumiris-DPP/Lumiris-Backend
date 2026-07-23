@@ -7,6 +7,16 @@ spring:
         username: ${SPRING_DATASOURCE_USERNAME}
         password: ${SPRING_DATASOURCE_PASSWORD}
 
+    data:
+        redis:
+            host: ${REDIS_HOST:localhost}
+            port: ${REDIS_PORT:6379}
+            password: ${REDIS_PASSWORD:}
+            timeout: 2s
+
+    cache:
+        type: redis
+
     servlet:
         multipart:
             max-file-size: 20MB
@@ -95,3 +105,9 @@ management:
         metrics:
             export:
                 enabled: true
+
+sentry:
+    dsn: ${SENTRY_DSN:}
+    environment: ${SENTRY_ENVIRONMENT:production}
+    send-default-pii: false
+    traces-sample-rate: 0.1

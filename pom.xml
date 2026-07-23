@@ -19,6 +19,7 @@
 		<testcontainers.version>1.20.4</testcontainers.version>
 		<jjwt.version>0.12.6</jjwt.version>
 		<stripe.version>28.4.0</stripe.version>
+		<sentry.version>8.28.0</sentry.version>
 	</properties>
 
 	<dependencies>
@@ -47,10 +48,27 @@
 			<scope>runtime</scope>
 		</dependency>
 
+		<!-- Sentry error monitoring (Spring Boot 4 starter; no-op when SENTRY_DSN is empty) -->
+		<dependency>
+			<groupId>io.sentry</groupId>
+			<artifactId>sentry-spring-boot-4</artifactId>
+			<version>${sentry.version}</version>
+		</dependency>
+
 		<!-- JPA -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-data-jpa</artifactId>
+		</dependency>
+
+		<!-- Redis (cache-aside for slow external lookups: SIRENE, …) -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-data-redis</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-cache</artifactId>
 		</dependency>
 
 		<!-- JWT -->

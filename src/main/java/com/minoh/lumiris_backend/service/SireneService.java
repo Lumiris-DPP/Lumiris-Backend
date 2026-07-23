@@ -2,6 +2,7 @@ package com.minoh.lumiris_backend.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
@@ -28,6 +29,7 @@ public class SireneService {
             String dirigeantsJson
     ) {}
 
+    @Cacheable(cacheNames = "sirene", key = "#siret")
     public SireneData validate(String siret) {
         String rawJson = restClient.get()
                 .uri("/search?q={siret}", siret)

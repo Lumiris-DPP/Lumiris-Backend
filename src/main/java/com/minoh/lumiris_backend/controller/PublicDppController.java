@@ -9,6 +9,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -21,9 +22,16 @@ public class PublicDppController {
     private final DppFormService dppFormService;
     private final DppEventService dppEventService;
 
+    /**
+     * @param k token de laissez-passer, optionnel. Porté par le QR d'accès élargi.
+     *          Si absent alors redirection vers le DPP du périmètre public.
+     */
     @GetMapping("/{code}")
-    public ResponseEntity<DppFormPublicResponse> findByPublicCode(@PathVariable String code) {
-        return ResponseEntity.ok(dppFormService.findByPublicCode(code));
+    public ResponseEntity<DppFormPublicResponse> findByPublicCode(
+            @PathVariable String code,
+            @RequestParam(required = false) String k
+    ) {
+        return ResponseEntity.ok(dppFormService.findByPublicCode(code, k));
     }
 
     @GetMapping("/{code}/events")

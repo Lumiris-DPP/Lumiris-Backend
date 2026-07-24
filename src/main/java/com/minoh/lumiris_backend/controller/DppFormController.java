@@ -2,6 +2,7 @@ package com.minoh.lumiris_backend.controller;
 
 import com.minoh.lumiris_backend.dto.in.DppFormRequest;
 import com.minoh.lumiris_backend.dto.in.DppScoreInput;
+import com.minoh.lumiris_backend.dto.out.DppAccessTokenResponse;
 import com.minoh.lumiris_backend.dto.out.DppFormCreatedResponse;
 import com.minoh.lumiris_backend.dto.out.DppFormResponse;
 import com.minoh.lumiris_backend.dto.out.DppFormSummaryResponse;
@@ -130,6 +131,14 @@ public class DppFormController {
             @AuthenticationPrincipal UserDetails principal
     ) {
         return ResponseEntity.ok(dppFormService.findById(id, principal.getUsername()));
+    }
+
+    @GetMapping("/{id}/access-tokens")
+    ResponseEntity<List<DppAccessTokenResponse>> listAccessTokens(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal UserDetails principal
+    ) {
+        return ResponseEntity.ok(dppFormService.listAccessTokens(id, principal.getUsername()));
     }
 
     @GetMapping("/{id}/verify")

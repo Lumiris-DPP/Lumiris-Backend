@@ -13,6 +13,14 @@ import com.minoh.lumiris_backend.exception.ResourceNotFoundException;
 import com.minoh.lumiris_backend.exception.SubscriptionRequiredException;
 import com.minoh.lumiris_backend.mapper.DppFormMapper;
 import com.minoh.lumiris_backend.dto.out.IrisScoreResponse;
+import com.minoh.lumiris_backend.dto.out.DppFormDocumentResponse;
+import com.minoh.lumiris_backend.entity.DppAccessLevel;
+import com.minoh.lumiris_backend.entity.DppDocumentVisibility;
+import com.minoh.lumiris_backend.entity.DppFormDocument;
+import com.minoh.lumiris_backend.entity.DocumentType;
+import com.minoh.lumiris_backend.entity.StoredFile;
+import com.minoh.lumiris_backend.dto.out.DppFormPublicResponse;
+import com.minoh.lumiris_backend.repository.ArtisanProfileRepository;
 import com.minoh.lumiris_backend.repository.DppCareInstructionRepository;
 import com.minoh.lumiris_backend.repository.DppFormRepository;
 import com.minoh.lumiris_backend.repository.DppMaterialRepository;
@@ -91,6 +99,15 @@ class DppFormServiceTest {
 
     @Mock
     private DppCareInstructionRepository dppCareInstructionRepository;
+
+    @Mock
+    private ArtisanProfileRepository artisanProfileRepository;
+
+    @Mock
+    private AtelierStatsService atelierStatsService;
+
+    @Mock
+    private DppAccessTokenService accessTokenService;
 
     @InjectMocks
     private DppFormService service;
@@ -261,6 +278,104 @@ class DppFormServiceTest {
                     assertThat(m.getLatitude()).isEqualTo(46.6);
                     assertThat(m.getLongitude()).isEqualTo(1.88);
                 });
+    }
+
+    // ── cloisonnement des documents ───────────────────────────────────────────
+
+    @Test
+    void findByPublicCode_shouldOnlyExposePublicDocuments() {
+        DppForm form = formWithOneDocumentPerVisibility("SEED0001");
+        when(dppFormRepository.findByPublicCode("SEED0001")).thenReturn(Optional.of(form));
+        when(artisanProfileRepository.findByUser(user)).thenReturn(Optional.empty());
+        when(irisScoreRepository.findByDppFormId(form.getId())).thenReturn(Optional.empty());
+        when(accessTokenService.resolve("SEED0001", null)).thenReturn(DppAccessLevel.PUBLIC);
+
+        DppFormPublicResponse response = service.findByPublicCode("SEED0001", null);
+
+        assertThat(response.dpp().documents())
+                .singleElement()
+                .satisfies(d -> assertThat(d.visibility()).isEqualTo("PUBLIC_USERS"));
+        assertThat(response.accessLevel()).isEqualTo(DppAccessLevel.PUBLIC);
+    }
+
+    @Test
+    void findByPublicCode_shouldWidenToCircularDocuments_whenTheTokenResolves() {
+        DppForm form = formWithOneDocumentPerVisibility("SEED0001");
+        when(dppFormRepository.findByPublicCode("SEED0001")).thenReturn(Optional.of(form));
+        when(artisanProfileRepository.findByUser(user)).thenReturn(Optional.empty());
+        when(irisScoreRepository.findByDppFormId(form.getId())).thenReturn(Optional.empty());
+        when(accessTokenService.resolve("SEED0001", "tok")).thenReturn(DppAccessLevel.CIRCULAR_OPERATORS);
+
+        DppFormPublicResponse response = service.findByPublicCode("SEED0001", "tok");
+
+        // Cumulatif jusqu'au niveau accordé, et pas un cran de plus.
+        assertThat(response.dpp().documents())
+                .extracting(DppFormDocumentResponse::visibility)
+                .containsExactlyInAnyOrder("PUBLIC_USERS", "CIRCULAR_OPERATORS");
+        verify(storageService, never()).getPresignedUrl(documentFileId(form, DppDocumentVisibility.AUTHORITIES));
+    }
+
+    /**
+     * Une URL présignée émise est un accès accordé : la signer pour un document hors périmètre
+     * suffit à le divulguer, que le front l'affiche ou non.
+     */
+    @Test
+    void findByPublicCode_shouldNotSignUrlsForRestrictedDocuments() {
+        DppForm form = formWithOneDocumentPerVisibility("SEED0001");
+        when(dppFormRepository.findByPublicCode("SEED0001")).thenReturn(Optional.of(form));
+        when(artisanProfileRepository.findByUser(user)).thenReturn(Optional.empty());
+        when(irisScoreRepository.findByDppFormId(form.getId())).thenReturn(Optional.empty());
+
+        when(accessTokenService.resolve("SEED0001", null)).thenReturn(DppAccessLevel.PUBLIC);
+
+        service.findByPublicCode("SEED0001", null);
+
+        UUID publicFileId = documentFileId(form, DppDocumentVisibility.PUBLIC_USERS);
+        verify(storageService).getPresignedUrl(publicFileId);
+        verify(storageService, never()).getPresignedUrl(documentFileId(form, DppDocumentVisibility.CIRCULAR_OPERATORS));
+        verify(storageService, never()).getPresignedUrl(documentFileId(form, DppDocumentVisibility.AUTHORITIES));
+    }
+
+    @Test
+    void findById_shouldExposeEveryDocumentToTheOwner() {
+        DppForm form = formWithOneDocumentPerVisibility("SEED0001");
+        when(dppFormRepository.findById(form.getId())).thenReturn(Optional.of(form));
+        when(artisanProfileRepository.findByUser(user)).thenReturn(Optional.empty());
+
+        assertThat(service.findById(form.getId(), USER_EMAIL).documents()).hasSize(3);
+    }
+
+    private DppForm formWithOneDocumentPerVisibility(String publicCode) {
+        DppForm form = new DppForm();
+        form.setId(UUID.randomUUID());
+        form.setUser(user);
+        form.setPublicCode(publicCode);
+        form.getDocuments().add(document(form, DocumentType.CARE_GUIDE, DppDocumentVisibility.PUBLIC_USERS));
+        form.getDocuments().add(document(form, DocumentType.REPAIR_MANUAL, DppDocumentVisibility.CIRCULAR_OPERATORS));
+        form.getDocuments().add(document(form, DocumentType.SALE_INVOICE, DppDocumentVisibility.AUTHORITIES));
+        return form;
+    }
+
+    private static DppFormDocument document(DppForm form, DocumentType type, DppDocumentVisibility visibility) {
+        StoredFile file = new StoredFile();
+        file.setId(UUID.randomUUID());
+        file.setOriginalFilename(type.partName + ".pdf");
+
+        DppFormDocument doc = new DppFormDocument();
+        doc.setDppForm(form);
+        doc.setFile(file);
+        doc.setDocumentType(type);
+        doc.setVisibility(visibility);
+        return doc;
+    }
+
+    private static UUID documentFileId(DppForm form, DppDocumentVisibility visibility) {
+        return form.getDocuments().stream()
+                .filter(d -> d.getVisibility() == visibility)
+                .findFirst()
+                .orElseThrow()
+                .getFile()
+                .getId();
     }
 
     // ── verify ────────────────────────────────────────────────────────────────

@@ -2,6 +2,7 @@ package com.minoh.lumiris_backend.service;
 
 import com.minoh.lumiris_backend.dto.in.DppFormRequest;
 import com.minoh.lumiris_backend.dto.in.DppScoreInput;
+import com.minoh.lumiris_backend.dto.out.DppAccessTokenResponse;
 import com.minoh.lumiris_backend.dto.out.DppFormCreatedResponse;
 import com.minoh.lumiris_backend.dto.out.DppFormDocumentResponse;
 import com.minoh.lumiris_backend.dto.out.DppFormPublicResponse;
@@ -39,6 +40,8 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.security.SecureRandom;
+import java.util.Arrays;
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -72,6 +75,7 @@ public class DppFormService {
     private final DppHashUtil dppHashUtil;
     private final BlockchainService blockchainService;
     private final QuotaService quotaService;
+    private final DppAccessTokenService accessTokenService;
 
     // Invariants minimaux d'un passeport PUBLIÉ (un brouillon reste volontairement tolérant). Défense
     // en profondeur : le front valide déjà, mais un publish direct / hors UI ne doit pas créer un
@@ -339,15 +343,8 @@ public class DppFormService {
                 ? storageService.getPresignedUrl(form.getMainPhotoFile().getId())
                 : null;
 
-        List<DppFormDocumentResponse> documents = form.getDocuments().stream()
-                .map(d -> new DppFormDocumentResponse(
-                        d.getFile().getId(),
-                        d.getDocumentType().name(),
-                        d.getVisibility().name(),
-                        d.getFile().getOriginalFilename(),
-                        storageService.getPresignedUrl(d.getFile().getId())
-                ))
-                .toList();
+        // Le propriétaire voit ses propres documents, toutes visibilités confondues.
+        List<DppFormDocumentResponse> documents = mapDocuments(form, EnumSet.allOf(DppDocumentVisibility.class));
 
         String artisanSlug = artisanProfileRepository.findByUser(form.getUser())
                 .map(ArtisanProfile::getSlug)
@@ -387,7 +384,7 @@ public class DppFormService {
     }
 
     @Transactional(readOnly = true)
-    public DppFormPublicResponse findByPublicCode(String publicCode) {
+    public DppFormPublicResponse findByPublicCode(String publicCode, String accessToken) {
         DppForm form = dppFormRepository.findByPublicCode(publicCode)
                 .orElseThrow(() -> new ResourceNotFoundException("DPP not found"));
 
@@ -395,19 +392,13 @@ public class DppFormService {
         Hibernate.initialize(form.getCareInstructions());
         Hibernate.initialize(form.getDocuments());
 
+        DppAccessLevel accessLevel = accessTokenService.resolve(publicCode, accessToken);
+
         String mainPhotoUrl = form.getMainPhotoFile() != null
                 ? storageService.getPresignedUrl(form.getMainPhotoFile().getId())
                 : null;
 
-        List<DppFormDocumentResponse> documents = form.getDocuments().stream()
-                .map(d -> new DppFormDocumentResponse(
-                        d.getFile().getId(),
-                        d.getDocumentType().name(),
-                        d.getVisibility().name(),
-                        d.getFile().getOriginalFilename(),
-                        storageService.getPresignedUrl(d.getFile().getId())
-                ))
-                .toList();
+        List<DppFormDocumentResponse> documents = mapDocuments(form, accessLevel.visibilities());
 
         String artisanSlug = artisanProfileRepository.findByUser(form.getUser())
                 .filter(ArtisanProfile::isPublished)
@@ -434,7 +425,46 @@ public class DppFormService {
 
         atelierStatsService.trackScan(form);
 
-        return new DppFormPublicResponse(dppResponse, scoreResponse, artisanSlug);
+        return new DppFormPublicResponse(dppResponse, scoreResponse, artisanSlug, accessLevel);
+    }
+
+    /** Les trois QR d'un passeport publié : permanents, dérivés du code public, rien à générer. */
+    @Transactional(readOnly = true)
+    public List<DppAccessTokenResponse> listAccessTokens(UUID id, String userEmail) {
+        User user = userRepository.findByEmail(userEmail)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        DppForm form = dppFormRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("DPP not found"));
+        if (!form.getUser().getId().equals(user.getId())) {
+            throw new ResourceNotFoundException("DPP not found");
+        }
+        // Un brouillon n'a pas de code public : les QR n'auraient aucune cible.
+        if (form.getPublicCode() == null) {
+            throw new ConflictException("Publiez le passeport pour obtenir ses QR codes.");
+        }
+
+        return Arrays.stream(DppAccessLevel.values())
+                .map(level -> new DppAccessTokenResponse(
+                        level, accessTokenService.tokenFor(form.getPublicCode(), level)))
+                .toList();
+    }
+
+    /**
+     * Ne cartographie que les documents dont la visibilité est couverte par {@code scopes}, et ne
+     * signe une URL MinIO que pour ceux-là. Le filtrage doit rester ici : une URL présignée émise
+     * est un accès accordé, qu'un front la masque ensuite ou non.
+     */
+    private List<DppFormDocumentResponse> mapDocuments(DppForm form, Set<DppDocumentVisibility> scopes) {
+        return form.getDocuments().stream()
+                .filter(d -> scopes.contains(d.getVisibility()))
+                .map(d -> new DppFormDocumentResponse(
+                        d.getFile().getId(),
+                        d.getDocumentType().name(),
+                        d.getVisibility().name(),
+                        d.getFile().getOriginalFilename(),
+                        storageService.getPresignedUrl(d.getFile().getId())
+                ))
+                .toList();
     }
 
     private String generateUniquePublicCode() {

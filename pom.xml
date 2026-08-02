@@ -17,7 +17,7 @@
 	<properties>
 		<java.version>21</java.version>
 		<testcontainers.version>1.20.4</testcontainers.version>
-		<jjwt.version>0.12.6</jjwt.version>
+		<jjwt.version>0.13.0</jjwt.version>
 		<stripe.version>28.4.0</stripe.version>
 		<sentry.version>8.28.0</sentry.version>
 		<tomcat.version>11.0.22</tomcat.version>

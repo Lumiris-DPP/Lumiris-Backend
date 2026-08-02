@@ -20,6 +20,8 @@
 		<jjwt.version>0.12.6</jjwt.version>
 		<stripe.version>28.4.0</stripe.version>
 		<sentry.version>8.28.0</sentry.version>
+		<tomcat.version>11.0.22</tomcat.version>
+		<bouncycastle.version>1.84</bouncycastle.version>
 	</properties>
 
 	<dependencies>
@@ -220,6 +222,11 @@
 				<version>${testcontainers.version}</version>
 				<type>pom</type>
 				<scope>import</scope>
+			</dependency>
+			<dependency>
+				<groupId>org.bouncycastle</groupId>
+				<artifactId>bcprov-jdk18on</artifactId>
+				<version>${bouncycastle.version}</version>
 			</dependency>
 		</dependencies>
 	</dependencyManagement>

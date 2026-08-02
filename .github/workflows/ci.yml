@@ -123,14 +123,9 @@ jobs:
 
   dependency-review:
     name: Dependency review
-    # The dependency graph this action reads is only available on public repos
-    # unless GitHub Advanced Security is enabled.
-    if: github.event_name == 'pull_request' && github.event.repository.visibility == 'public'
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    # Advisory until an org owner switches on Dependency graph in
-    # Settings → Security & analysis; the action hard-errors without it.
-    continue-on-error: true
     permissions:
       contents: read
       pull-requests: write

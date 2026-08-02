@@ -1,0 +1,17 @@
+.git
+.github
+target
+.idea
+.vscode
+.settings
+.classpath
+.project
+*.iml
+.env
+.env.*
+!.env.example
+postman
+README.md
+HELP.md
+Makefile
+docker-compose.yaml

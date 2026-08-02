@@ -21,7 +21,7 @@
 		<stripe.version>28.4.0</stripe.version>
 		<sentry.version>8.28.0</sentry.version>
 		<tomcat.version>11.0.22</tomcat.version>
-		<bouncycastle.version>1.84</bouncycastle.version>
+		<bouncycastle.version>1.85</bouncycastle.version>
 	</properties>
 
 	<dependencies>

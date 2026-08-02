@@ -1,18 +1,22 @@
-# Stage 1: Download dependencies
-FROM eclipse-temurin:21-jdk-alpine AS dependencies
-RUN apk add --no-cache maven
+# syntax=docker/dockerfile:1.7
+ARG JAVA_VERSION=21
+ARG MAVEN_IMAGE=maven:3.9-eclipse-temurin-21-alpine
+
+FROM ${MAVEN_IMAGE} AS dependencies
 WORKDIR /build
 COPY pom.xml .
-RUN mvn dependency:go-offline
+RUN mvn -B -ntp dependency:go-offline
 
-# Stage 2: Build the application
 FROM dependencies AS builder
 COPY src ./src
-RUN mvn clean package -DskipTests
+RUN mvn -B -ntp clean package -DskipTests
 
-# Stage 3: Run the application
-FROM eclipse-temurin:21-jre-alpine AS runtime
+FROM eclipse-temurin:${JAVA_VERSION}-jre-alpine AS runtime
+RUN addgroup -S -g 10001 lumiris && adduser -S -u 10001 -G lumiris lumiris
 WORKDIR /app
-COPY --from=builder /build/target/*.jar app.jar
+COPY --from=builder --chown=lumiris:lumiris /build/target/lumiris-backend-*.jar app.jar
+USER 10001:10001
 EXPOSE 8080
+HEALTHCHECK --interval=15s --timeout=5s --start-period=60s --retries=10 \
+    CMD ["wget", "-qO-", "http://localhost:8080/actuator/health/readiness"]
 ENTRYPOINT ["java", "-jar", "app.jar"]

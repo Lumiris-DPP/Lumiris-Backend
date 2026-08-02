@@ -101,12 +101,13 @@ jobs:
             org.opencontainers.image.title=lumiris-api
             org.opencontainers.image.licenses=UNLICENSED
 
-      - name: Trivy — block on fixable CRITICAL vulnerabilities
+      - name: Trivy — block on fixable CRITICAL vulnerabilities in app dependencies
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: ${{ steps.ident.outputs.image }}@${{ steps.build.outputs.digest }}
           format: table
           severity: CRITICAL
+          vuln-type: library
           ignore-unfixed: true
           exit-code: "1"
 

@@ -123,7 +123,10 @@ jobs:
 
   dependency-review:
     name: Dependency review
-    if: github.event_name == 'pull_request'
+    # On a private repo the action needs GitHub Advanced Security on top of the
+    # dependency graph, so it only becomes a gate if this repo goes public.
+    # Dependabot alerts cover the same dependencies meanwhile.
+    if: github.event_name == 'pull_request' && github.event.repository.visibility == 'public'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

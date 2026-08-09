@@ -32,6 +32,8 @@ public class StoredFile extends Auditable {
     private long sizeBytes;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "uploaded_by", nullable = false)
+    // Nullable : un compte supprimé (RGPD) détache ses fichiers sans les effacer — un document
+    // de passeport ou une preuve de litige doit survivre à son auteur.
+    @JoinColumn(name = "uploaded_by")
     private User uploadedBy;
 }

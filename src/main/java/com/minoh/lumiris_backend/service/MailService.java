@@ -38,6 +38,10 @@ public class MailService {
         send(to, "Votre inscription Lumiris n'a pas pu être validée", body);
     }
 
+    public void sendNotification(String to, String title, String body) {
+        send(to, title, body + "\n\nRetrouvez le détail dans votre espace Lumiris.\nL'équipe Lumiris");
+    }
+
     private void send(String to, String subject, String body) {
         try {
             SimpleMailMessage message = new SimpleMailMessage();

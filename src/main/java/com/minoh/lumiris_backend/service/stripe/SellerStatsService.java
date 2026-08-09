@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 // LUMIRIS-22 · Agrégats du tableau de bord vendeur (ATELIER) : ventes, CA net, garde-robe, vues.
@@ -23,8 +24,8 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class SellerStatsService {
 
-    // Une commande "vendue" = payée puis (éventuellement) honorée.
-    private static final List<OrderStatus> SOLD = List.of(OrderStatus.PAID, OrderStatus.FULFILLED);
+    // Une commande "vendue" = encaissée et non remboursée, à tout stade du cycle de vie.
+    private static final Set<OrderStatus> SOLD = OrderStatus.sold();
 
     private final MarketplaceOrderRepository orderRepository;
     private final MarketplaceProductRepository productRepository;
@@ -67,7 +68,7 @@ public class SellerStatsService {
     public SellerEarningsResponse getEarnings(String userEmail) {
         User artisan = requireArtisan(userEmail);
         return new SellerEarningsResponse(
-                orderRepository.heldNetCentsBySeller(artisan.getId()),
+                orderRepository.heldNetCentsBySeller(artisan.getId(), SOLD),
                 orderRepository.releasedNetCentsBySeller(artisan.getId()),
                 "EUR"
         );

@@ -39,6 +39,13 @@ public class PublicMarketplaceController {
         return ResponseEntity.ok(marketplaceService.suggest(request));
     }
 
+    // Fiches d'un panier en un appel (`?ids=a,b,c`). Les produits devenus indisponibles sont
+    // simplement absents de la réponse : le panier en déduit ce qu'il doit retirer, et le dire.
+    @GetMapping("/products")
+    ResponseEntity<List<MarketplaceItemResponse>> productsByIds(@RequestParam List<UUID> ids) {
+        return ResponseEntity.ok(marketplaceService.getPublishedByIds(ids));
+    }
+
     // Fiche produit publiée unitaire (deep-link VISION) — 404 si non publiée / vendeur non encaissable.
     @GetMapping("/products/{id}")
     ResponseEntity<MarketplaceItemResponse> product(@PathVariable UUID id) {

@@ -68,7 +68,7 @@ public class MarketplaceService {
         boolean plus = atelierPlusResolver.isAtelierPlus(artisan.getId());
         // Ventes réglées par produit (pour la colonne "Ventes" du catalogue vendeur).
         Map<UUID, Long> salesByProduct = orderRepository
-                .salesCountByProduct(artisan.getId(), java.util.List.of(OrderStatus.PAID, OrderStatus.FULFILLED))
+                .salesCountByProduct(artisan.getId(), OrderStatus.sold())
                 .stream()
                 .collect(Collectors.toMap(r -> (UUID) r[0], r -> (Long) r[1]));
         return fetch(productRepository.findScoredByArtisanProfileId(artisan.getArtisanProfile().getId()))
@@ -199,6 +199,21 @@ public class MarketplaceService {
     @Transactional(readOnly = true)
     public MarketplaceItemResponse getPublished(UUID id) {
         return firstPayable(productRepository.findScoredPublishedById(id));
+    }
+
+    // Fiches d'un panier, en une requête. Renvoie SEULEMENT celles encore achetables : le front
+    // compare aux identifiants demandés pour signaler nommément ce qui a disparu, au lieu d'afficher
+    // un compteur anonyme d'articles « retirés ».
+    @Transactional(readOnly = true)
+    public List<MarketplaceItemResponse> getPublishedByIds(List<UUID> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return List.of();
+        }
+        List<ScoredProduct> rows = retainPayable(fetch(productRepository.findScoredPublishedByIds(ids)));
+        Set<UUID> plusIds = atelierPlusResolver.atelierPlusUserIds(userIdsOf(rows));
+        return rows.stream()
+                .map(sp -> mapper.toResponse(sp.product(), sp.score(), plusIds.contains(sp.artisanUserId())))
+                .toList();
     }
 
     // Pont scan → achat : produit publié (et achetable) lié à un passeport scanné, ou 404.

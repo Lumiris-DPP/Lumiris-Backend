@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -24,6 +25,11 @@ public interface MarketplaceProductRepository extends JpaRepository<MarketplaceP
     @Query("update MarketplaceProduct p set p.stock = p.stock - :qty where p.id = :id and p.stock >= :qty")
     int decrementStock(@Param("id") UUID id, @Param("qty") int qty);
 
+    // Remise en stock après remboursement : la pièce n'a jamais changé de propriétaire durablement.
+    @Modifying
+    @Query("update MarketplaceProduct p set p.stock = p.stock + :qty where p.id = :id")
+    int incrementStock(@Param("id") UUID id, @Param("qty") int qty);
+
     // Fiche produit publiée unitaire (VISION) — évite de scanner tout le catalogue pour un deep-link.
     @Query("""
             select p, s
@@ -34,6 +40,19 @@ public interface MarketplaceProductRepository extends JpaRepository<MarketplaceP
               and p.status = com.minoh.lumiris_backend.entity.MarketplaceProductStatus.PUBLISHED
             """)
     List<Object[]> findScoredPublishedById(@Param("id") UUID id);
+
+    // Hydratation du panier : les seules fiches dont l'acheteur a besoin, plutôt que tout le
+    // catalogue. Un produit dépublié entre-temps sort du résultat — c'est ce qui permet au panier
+    // de dire lequel est devenu indisponible.
+    @Query("""
+            select p, s
+            from MarketplaceProduct p
+            join fetch p.artisanProfile
+            left join IrisScore s on s.dppForm.id = p.dppForm.id
+            where p.id in :ids
+              and p.status = com.minoh.lumiris_backend.entity.MarketplaceProductStatus.PUBLISHED
+            """)
+    List<Object[]> findScoredPublishedByIds(@Param("ids") Collection<UUID> ids);
 
     // Pont scan → achat : le produit publié lié à un passeport scanné (unifie les 2 modèles d'achat).
     @Query("""

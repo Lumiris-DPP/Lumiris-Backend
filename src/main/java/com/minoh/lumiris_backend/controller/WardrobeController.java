@@ -2,57 +2,39 @@ package com.minoh.lumiris_backend.controller;
 
 import com.minoh.lumiris_backend.config.security.CurrentUserEmail;
 import com.minoh.lumiris_backend.dto.in.CartIntentRequest;
-import com.minoh.lumiris_backend.dto.out.OrderGroupResponse;
-import com.minoh.lumiris_backend.dto.out.OrderResponse;
 import com.minoh.lumiris_backend.dto.out.PaymentIntentResponse;
 import com.minoh.lumiris_backend.dto.out.WardrobeItemResponse;
+import com.minoh.lumiris_backend.service.BuyerOrderService;
 import com.minoh.lumiris_backend.service.stripe.DirectSaleService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
-import java.util.UUID;
 
-// LUMIRIS-22 · Garde-Robe de l'acheteur (pièces achetées en direct) + ses commandes.
+// LUMIRIS-22 · Garde-Robe de l'acheteur (pièces achetées en direct) et entrée du paiement.
+// Le suivi des commandes elles-mêmes vit dans OrderController.
 @RestController
 @RequiredArgsConstructor
 public class WardrobeController {
 
     private final DirectSaleService directSaleService;
+    private final BuyerOrderService buyerOrderService;
 
-    // Panier → PaymentIntent Connect (paiement embarqué via Payment Element, sans redirection).
+    // Panier → PaymentIntent (paiement embarqué via Payment Element, sans redirection). Le panier
+    // peut couvrir plusieurs ateliers : un colis et un reversement par atelier.
     @PostMapping("/api/marketplace/checkout/intent")
     ResponseEntity<PaymentIntentResponse> checkoutIntent(@Valid @RequestBody CartIntentRequest request,
                                                          @CurrentUserEmail String email) {
-        return ResponseEntity.ok(directSaleService.createCartPaymentIntent(email, request.items()));
+        return ResponseEntity.ok(directSaleService.createCartPaymentIntent(email, request));
     }
 
     @GetMapping("/api/wardrobe")
     ResponseEntity<List<WardrobeItemResponse>> wardrobe(@CurrentUserEmail String email) {
-        return ResponseEntity.ok(directSaleService.getWardrobe(email));
-    }
-
-    @GetMapping("/api/orders")
-    ResponseEntity<List<OrderResponse>> orders(@CurrentUserEmail String email) {
-        return ResponseEntity.ok(directSaleService.getMyOrders(email));
-    }
-
-    // Commande unitaire (écran de confirmation VISION) — l'acheteur suit l'état de SA commande.
-    @GetMapping("/api/orders/{id}")
-    ResponseEntity<OrderResponse> order(@PathVariable UUID id, @CurrentUserEmail String email) {
-        return ResponseEntity.ok(directSaleService.getMyOrder(email, id));
-    }
-
-    // Groupe de commande par PaymentIntent (confirmation) — toutes les lignes + montant exact débité.
-    @GetMapping("/api/orders/group/{paymentIntentId}")
-    ResponseEntity<OrderGroupResponse> orderGroup(@PathVariable String paymentIntentId,
-                                                  @CurrentUserEmail String email) {
-        return ResponseEntity.ok(directSaleService.getMyOrderGroup(email, paymentIntentId));
+        return ResponseEntity.ok(buyerOrderService.getWardrobe(email));
     }
 }

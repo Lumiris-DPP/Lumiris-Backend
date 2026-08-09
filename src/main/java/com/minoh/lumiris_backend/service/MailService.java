@@ -53,6 +53,10 @@ public class MailService {
                 "La demande est désormais close.\n\nL'équipe Lumiris");
     }
 
+    public void sendNotification(String to, String title, String body) {
+        send(to, title, body + "\n\nRetrouvez le détail dans votre espace Lumiris.\nL'équipe Lumiris");
+    }
+
     private void send(String to, String subject, String body) {
         try {
             SimpleMailMessage message = new SimpleMailMessage();

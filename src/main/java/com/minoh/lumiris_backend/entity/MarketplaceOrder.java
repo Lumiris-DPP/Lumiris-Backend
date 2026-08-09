@@ -44,8 +44,11 @@ public class MarketplaceOrder extends Auditable {
     @Column(name = "amount_total_cents", nullable = false)
     private int amountTotalCents = 0;
 
-    // Frais de port du panier (portés par la 1re ligne, 0 sur les autres) — permet de reconstituer
-    // le montant réellement débité (articles + livraison) sur l'écran de confirmation.
+    @Column(nullable = false)
+    private int quantity = 1;
+
+    // Frais de port du panier (portés par la 1re ligne de chaque atelier, 0 sur les autres) —
+    // permet de reconstituer le montant réellement débité (articles + livraison).
     @Column(name = "shipping_cents", nullable = false)
     private int shippingCents = 0;
 
@@ -78,4 +81,100 @@ public class MarketplaceOrder extends Auditable {
     // Date de libération des fonds au vendeur (Transfer créé).
     @Column(name = "released_at")
     private Instant releasedAt;
+
+    // ── Adresse de livraison (saisie au checkout, indispensable au vendeur pour expédier) ──
+    @Column(name = "ship_to_name", length = 200)
+    private String shipToName;
+
+    @Column(name = "ship_to_line1", length = 300)
+    private String shipToLine1;
+
+    @Column(name = "ship_to_line2", length = 300)
+    private String shipToLine2;
+
+    @Column(name = "ship_to_postal_code", length = 20)
+    private String shipToPostalCode;
+
+    @Column(name = "ship_to_city", length = 120)
+    private String shipToCity;
+
+    @Column(name = "ship_to_country", length = 2)
+    private String shipToCountry = "FR";
+
+    @Column(name = "ship_to_phone", length = 40)
+    private String shipToPhone;
+
+    // ── Expédition ──────────────────────────────────────────────────────────
+    @Column(length = 80)
+    private String carrier;
+
+    @Column(name = "tracking_number", length = 120)
+    private String trackingNumber;
+
+    @Column(name = "tracking_url", length = 500)
+    private String trackingUrl;
+
+    @Column(name = "shipped_at")
+    private Instant shippedAt;
+
+    @Column(name = "delivered_at")
+    private Instant deliveredAt;
+
+    @Column(name = "completed_at")
+    private Instant completedAt;
+
+    // ── Retour ──────────────────────────────────────────────────────────────
+    // Échéance au-delà de laquelle plus aucun retour n'est recevable (livraison + fenêtre légale).
+    @Column(name = "return_deadline")
+    private Instant returnDeadline;
+
+    @Column(name = "return_requested_at")
+    private Instant returnRequestedAt;
+
+    @Column(name = "return_reason", length = 2000)
+    private String returnReason;
+
+    @Column(name = "return_decided_at")
+    private Instant returnDecidedAt;
+
+    @Column(name = "return_decision_note", length = 2000)
+    private String returnDecisionNote;
+
+    @Column(name = "return_received_at")
+    private Instant returnReceivedAt;
+
+    // ── Remboursement ───────────────────────────────────────────────────────
+    @Column(name = "stripe_refund_id")
+    private String stripeRefundId;
+
+    // Montant réellement remboursé à l'acheteur (peut être partiel : frais de retour retenus, …).
+    @Column(name = "refunded_cents", nullable = false)
+    private int refundedCents = 0;
+
+    @Column(name = "refunded_at")
+    private Instant refundedAt;
+
+    @Column(name = "refund_reason", length = 2000)
+    private String refundReason;
+
+    // Reprise des fonds déjà reversés au vendeur, quand le remboursement suit la libération.
+    @Column(name = "stripe_transfer_reversal_id")
+    private String stripeTransferReversalId;
+
+    // ── Litige ──────────────────────────────────────────────────────────────
+    @Enumerated(EnumType.STRING)
+    @Column(name = "dispute_status", nullable = false, length = 16)
+    private DisputeStatus disputeStatus = DisputeStatus.NONE;
+
+    @Column(name = "dispute_opened_at")
+    private Instant disputeOpenedAt;
+
+    @Column(name = "dispute_reason", length = 2000)
+    private String disputeReason;
+
+    @Column(name = "dispute_resolution", length = 2000)
+    private String disputeResolution;
+
+    @Column(name = "dispute_closed_at")
+    private Instant disputeClosedAt;
 }

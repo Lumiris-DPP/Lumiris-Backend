@@ -28,7 +28,6 @@ public class StripeWebhookService {
     private final SubscriptionService subscriptionService;
     private final DirectSaleService directSaleService;
     private final SellerConnectService sellerConnectService;
-    private final SellerPayoutService sellerPayoutService;
 
     public void handle(String payload, String signatureHeader) {
         if (!properties.hasWebhookSecret()) {
@@ -67,14 +66,14 @@ public class StripeWebhookService {
                 }
             }
             case "checkout.session.completed" -> handleCheckoutCompleted(event);
-            // LUMIRIS-22 : achat direct in-app payé (Payment Element) → fulfillment (Garde-Robe + facture),
-            // puis reversement AUTOMATIQUE du net au vendeur (la plateforme ne conserve que la commission).
+            // LUMIRIS-22/24 : achat direct in-app payé (Payment Element) → fulfillment (Garde-Robe +
+            // facture) et entrée dans le cycle de vie. Les fonds restent RETENUS : ils ne sont reversés
+            // à l'atelier qu'à la livraison, pour qu'un remboursement reste possible entre-temps.
             case "payment_intent.succeeded" -> {
                 StripeObject object = deserialize(event);
                 if (object instanceof PaymentIntent pi && pi.getMetadata() != null
                         && "marketplace".equals(pi.getMetadata().get("order_type"))) {
                     directSaleService.fulfillByPaymentIntent(pi.getId());
-                    sellerPayoutService.autoReleaseByPaymentIntent(pi.getId());
                 }
             }
             // LUMIRIS-22 : état d'un compte vendeur Connect (charges/payouts activés après onboarding).

@@ -93,12 +93,28 @@ public interface MarketplaceOrderRepository extends JpaRepository<MarketplaceOrd
 
     // Commandes payées jamais expédiées : le vendeur doit être relancé avant que l'acheteur
     // n'ouvre un litige de son côté.
+    // L'origine est la date d'expédition PROMISE, pas la date d'achat : un atelier qui a annoncé
+    // 10 jours de préparation, ou qui est en congés, n'est pas en retard. Une seule relance par
+    // commande, et jamais sur une commande gelée par un litige.
     @Query("""
             select o from MarketplaceOrder o
             where o.status = com.minoh.lumiris_backend.entity.OrderStatus.PAID
-              and o.createdAt < :threshold
+              and o.shipReminderSentAt is null
+              and o.disputeStatus <> com.minoh.lumiris_backend.entity.DisputeStatus.OPEN
+              and o.shipDueAt < :threshold
             """)
-    List<MarketplaceOrder> findUnshippedSince(@Param("threshold") Instant threshold);
+    List<MarketplaceOrder> findOverdueUnshipped(@Param("threshold") Instant threshold);
+
+    // Échéancier de versement : les commandes encaissées dont les fonds sont encore retenus.
+    // Même périmètre que heldNetCentsBySeller, mais détaillé ligne à ligne et daté.
+    @Query("""
+            select o from MarketplaceOrder o
+            where o.seller.id = :sellerId
+              and o.status in :statuses
+              and o.stripeTransferId is null
+            """)
+    List<MarketplaceOrder> findUnreleasedBySeller(@Param("sellerId") UUID sellerId,
+                                                  @Param("statuses") Collection<OrderStatus> statuses);
 
     // Versements en échec : la commande est livrée ou clôturée mais aucun transfert n'a abouti
     // (compte vendeur non activé au moment du versement, incident Stripe). Sans reprise, l'argent

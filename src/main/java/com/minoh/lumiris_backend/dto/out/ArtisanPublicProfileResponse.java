@@ -1,5 +1,6 @@
 package com.minoh.lumiris_backend.dto.out;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
@@ -19,5 +20,6 @@ public record ArtisanPublicProfileResponse(
         boolean epvLabeled,
         boolean ofgLabeled,
         boolean gotsLabeled,
-        boolean oekoTexLabeled
+        boolean oekoTexLabeled,
+        Instant pausedUntil
 ) {}

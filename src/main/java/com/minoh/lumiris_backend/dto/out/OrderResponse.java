@@ -13,6 +13,7 @@ import java.util.UUID;
 public record OrderResponse(
         UUID id,
         String productName,
+        String variantLabel,
         String productPhotoUrl,
         String sellerName,
         int quantity,
@@ -28,6 +29,7 @@ public record OrderResponse(
         String carrier,
         String trackingNumber,
         String trackingUrl,
+        Instant shipDueAt,
         Instant shippedAt,
         Instant deliveredAt,
         Instant returnDeadline,
@@ -43,6 +45,7 @@ public record OrderResponse(
         return new OrderResponse(
                 o.getId(),
                 o.getProduct() != null ? o.getProduct().getName() : null,
+                o.getVariantLabel(),
                 o.getProduct() != null ? o.getProduct().getPhotoUrl() : null,
                 o.getSeller() != null && o.getSeller().getArtisanProfile() != null
                         ? o.getSeller().getArtisanProfile().getDisplayName() : null,
@@ -59,6 +62,7 @@ public record OrderResponse(
                 o.getCarrier(),
                 o.getTrackingNumber(),
                 o.getTrackingUrl(),
+                o.getShipDueAt(),
                 o.getShippedAt(),
                 o.getDeliveredAt(),
                 o.getReturnDeadline(),

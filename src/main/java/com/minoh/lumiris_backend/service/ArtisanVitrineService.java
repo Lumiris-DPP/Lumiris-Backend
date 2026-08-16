@@ -10,6 +10,7 @@ import com.minoh.lumiris_backend.entity.ArtisanProfilePhoto;
 import com.minoh.lumiris_backend.entity.ArtisanStatus;
 import com.minoh.lumiris_backend.entity.User;
 import com.minoh.lumiris_backend.exception.ArtisanNotVerifiedException;
+import com.minoh.lumiris_backend.exception.BillingValidationException;
 import com.minoh.lumiris_backend.exception.ResourceNotFoundException;
 import com.minoh.lumiris_backend.repository.ArtisanProfilePhotoRepository;
 import com.minoh.lumiris_backend.repository.ArtisanProfileRepository;
@@ -21,6 +22,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.text.Normalizer;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import java.util.regex.Pattern;
@@ -35,8 +38,13 @@ public class ArtisanVitrineService {
     private final UserRepository userRepo;
     private final StorageService storageService;
     private final ArtisanOnboardingService onboardingService;
+    private final PreparationDelayResolver preparationDelayResolver;
 
     private static final Pattern NON_SLUG_CHARS = Pattern.compile("[^a-z0-9]+");
+
+    // Au-delà, ce ne sont plus des congés mais une fermeture : le délai annoncé à l'acheteur
+    // deviendrait une promesse que personne ne peut tenir.
+    private static final Duration MAX_PAUSE = Duration.ofDays(180);
 
     @Transactional
     public ArtisanProfileResponse updateProfile(String userEmail, ArtisanVitrineUpdateRequest request) {
@@ -98,6 +106,26 @@ public class ArtisanVitrineService {
         return onboardingService.toResponse(artisanRepo.save(profile));
     }
 
+    // Congés : les pièces restent achetables, le délai d'expédition annoncé est simplement allongé
+    // jusqu'à la date de retour. Aucun statut produit n'est touché, donc rien à restaurer au retour.
+    @Transactional
+    public ArtisanProfileResponse pause(String userEmail, Instant until) {
+        ArtisanProfile profile = findProfile(userEmail);
+        if (until.isAfter(Instant.now().plus(MAX_PAUSE))) {
+            throw new BillingValidationException(
+                    "Une pause ne peut pas dépasser 180 jours. Archivez vos annonces pour une fermeture plus longue.");
+        }
+        profile.setPausedUntil(until);
+        return onboardingService.toResponse(artisanRepo.save(profile));
+    }
+
+    @Transactional
+    public ArtisanProfileResponse resume(String userEmail) {
+        ArtisanProfile profile = findProfile(userEmail);
+        profile.setPausedUntil(null);
+        return onboardingService.toResponse(artisanRepo.save(profile));
+    }
+
     @Transactional(readOnly = true)
     public ArtisanPublicProfileResponse findPublicBySlug(String slug) {
         ArtisanProfile profile = artisanRepo.findBySlug(slug)
@@ -138,7 +166,8 @@ public class ArtisanVitrineService {
                 profile.isEpvLabeled(),
                 profile.isOfgLabeled(),
                 profile.isGotsLabeled(),
-                profile.isOekoTexLabeled()
+                profile.isOekoTexLabeled(),
+                preparationDelayResolver.activePauseUntil(profile, Instant.now())
         );
     }
 

@@ -126,4 +126,9 @@ public class ArtisanProfile extends Auditable {
     private void initKyb() {
         if (kyb == null) kyb = new KybDetails();
     }
+
+    // Congés : les pièces restent achetables, le délai d'expédition annoncé est allongé jusqu'à
+    // cette date. La pause se termine d'elle-même quand la date passe — aucun job de reprise.
+    @Column(name = "paused_until")
+    private Instant pausedUntil;
 }

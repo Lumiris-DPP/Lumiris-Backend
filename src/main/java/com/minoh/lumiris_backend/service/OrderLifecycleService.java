@@ -12,7 +12,7 @@ import com.minoh.lumiris_backend.exception.BillingValidationException;
 import com.minoh.lumiris_backend.exception.ResourceNotFoundException;
 import com.minoh.lumiris_backend.exception.RoleNotAllowedException;
 import com.minoh.lumiris_backend.repository.MarketplaceOrderRepository;
-import com.minoh.lumiris_backend.repository.MarketplaceProductRepository;
+import com.minoh.lumiris_backend.repository.MarketplaceProductVariantRepository;
 import com.minoh.lumiris_backend.repository.OrderEventRepository;
 import com.minoh.lumiris_backend.repository.StoredFileRepository;
 import com.minoh.lumiris_backend.repository.UserRepository;
@@ -43,7 +43,7 @@ public class OrderLifecycleService {
     private static final Logger log = LoggerFactory.getLogger(OrderLifecycleService.class);
 
     private final MarketplaceOrderRepository orderRepository;
-    private final MarketplaceProductRepository productRepository;
+    private final MarketplaceProductVariantRepository variantRepository;
     private final OrderEventRepository eventRepository;
     private final StoredFileRepository storedFileRepository;
     private final UserRepository userRepository;
@@ -51,6 +51,7 @@ public class OrderLifecycleService {
     private final NotificationService notificationService;
     private final OrderRefundService refundService;
     private final SellerPayoutService payoutService;
+    private final PreparationDelayResolver preparationDelayResolver;
     private final MarketplaceProperties properties;
 
     // ── Vendeur ─────────────────────────────────────────────────────────────
@@ -307,6 +308,7 @@ public class OrderLifecycleService {
     // Encaissement confirmé : la commande entre dans le cycle et le vendeur a une pièce à expédier.
     @Transactional
     public void markPaid(MarketplaceOrder order) {
+        int days = applyShipDueDate(order);
         record(order, OrderEventType.PAYMENT_CONFIRMED, OrderActorType.SYSTEM, null, null);
         notificationService.notify(order.getSeller(), NotificationType.ORDER_TO_SHIP,
                 "Nouvelle commande à expédier",
@@ -314,8 +316,23 @@ public class OrderLifecycleService {
                 sellerOrderHref(order), order);
         notificationService.notify(order.getBuyer(), NotificationType.ORDER_PAID,
                 "Commande confirmée",
-                "Ton paiement est confirmé. L'atelier prépare " + itemLabel(order) + ".",
+                "Ton paiement est confirmé. L'atelier prépare " + itemLabel(order) + "."
+                        + (days >= 1 ? " Expédition annoncée sous " + days + " jour"
+                        + (days > 1 ? "s" : "") + "." : ""),
                 buyerOrderHref(order), order);
+    }
+
+    // La date d'expédition promise est figée ici, une fois pour toutes : le produit est mutable et
+    // sa suppression détache la commande, donc relire le délai plus tard laisserait un atelier
+    // repousser après coup une promesse déjà faite à un acheteur qui a payé.
+    private int applyShipDueDate(MarketplaceOrder order) {
+        Instant now = Instant.now();
+        int days = order.getProduct() != null
+                ? preparationDelayResolver.effectiveDays(order.getProduct(), now)
+                : 0;
+        order.setShipDueAt(preparationDelayResolver.shipDueAt(now, days));
+        orderRepository.save(order);
+        return days;
     }
 
     @Transactional
@@ -327,6 +344,8 @@ public class OrderLifecycleService {
     // l'argent ne bougent, on rappelle simplement qu'un acheteur attend.
     @Transactional
     public void remindSellerToShip(MarketplaceOrder order) {
+        order.setShipReminderSentAt(Instant.now());
+        orderRepository.save(order);
         notificationService.notify(order.getSeller(), NotificationType.ORDER_TO_SHIP,
                 "Une commande attend toujours son colis",
                 itemLabel(order) + " est payée depuis plusieurs jours et n'est pas encore expédiée."
@@ -347,10 +366,18 @@ public class OrderLifecycleService {
     public void cancelAbandoned(MarketplaceOrder order) {
         order.setStatus(OrderStatus.CANCELLED);
         orderRepository.save(order);
-        if (order.getProduct() != null) {
-            productRepository.incrementStock(order.getProduct().getId(), Math.max(1, order.getQuantity()));
-        }
+        restock(order);
         record(order, OrderEventType.CANCELLED, OrderActorType.SYSTEM, null, "Paiement non finalisé");
+    }
+
+    // Le stock ne vit que sur la déclinaison. Si l'atelier a retiré la taille entre-temps, il n'y a
+    // rien à remettre en rayon : on le trace plutôt que d'inventer un stock produit qui n'existe plus.
+    private void restock(MarketplaceOrder order) {
+        if (order.getVariant() == null) {
+            log.warn("Remise en stock impossible pour la commande {} : déclinaison supprimée", order.getId());
+            return;
+        }
+        variantRepository.incrementStock(order.getVariant().getId(), Math.max(1, order.getQuantity()));
     }
 
     // Livraison : ouvre la fenêtre de retour et libère les fonds retenus au vendeur.
@@ -430,9 +457,7 @@ public class OrderLifecycleService {
         orderRepository.save(order);
 
         // La pièce retourne au catalogue : elle n'a jamais changé de propriétaire durablement.
-        if (order.getProduct() != null) {
-            productRepository.incrementStock(order.getProduct().getId(), Math.max(1, order.getQuantity()));
-        }
+        restock(order);
 
         // Remboursement INTÉGRAL (ou annulation) : la pièce quitte la Garde-Robe de l'acheteur —
         // il ne la possède plus, garder son passeport et sa facture serait faux. Un remboursement
@@ -487,8 +512,14 @@ public class OrderLifecycleService {
         return order;
     }
 
+    // La déclinaison fait partie de l'identité de la pièce vendue : c'est elle que l'atelier prend
+    // sur l'étagère, et c'est sur elle qu'un litige « mauvaise taille » se joue.
     private String itemLabel(MarketplaceOrder order) {
-        return order.getProduct() != null ? "« " + order.getProduct().getName() + " »" : "ta commande";
+        if (order.getProduct() == null) {
+            return "ta commande";
+        }
+        String label = "« " + order.getProduct().getName() + " »";
+        return order.getVariantLabel() != null ? label + " (" + order.getVariantLabel() + ")" : label;
     }
 
     private String trackingSummary(MarketplaceOrder order) {

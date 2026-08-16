@@ -1,5 +1,6 @@
 package com.minoh.lumiris_backend.controller;
 
+import com.minoh.lumiris_backend.dto.in.ArtisanPauseRequest;
 import com.minoh.lumiris_backend.dto.in.ArtisanRegisterRequest;
 import com.minoh.lumiris_backend.dto.in.ArtisanVitrineUpdateRequest;
 import com.minoh.lumiris_backend.dto.out.ArtisanPhotoResponse;
@@ -78,6 +79,19 @@ public class ArtisanController {
     @PostMapping("/me/publish")
     ResponseEntity<ArtisanProfileResponse> publish(@AuthenticationPrincipal UserDetails principal) {
         return ResponseEntity.ok(vitrineService.publish(principal.getUsername()));
+    }
+
+    @PutMapping("/me/pause")
+    ResponseEntity<ArtisanProfileResponse> pause(
+            @Valid @RequestBody ArtisanPauseRequest request,
+            @AuthenticationPrincipal UserDetails principal
+    ) {
+        return ResponseEntity.ok(vitrineService.pause(principal.getUsername(), request.until()));
+    }
+
+    @DeleteMapping("/me/pause")
+    ResponseEntity<ArtisanProfileResponse> resume(@AuthenticationPrincipal UserDetails principal) {
+        return ResponseEntity.ok(vitrineService.resume(principal.getUsername()));
     }
 
     private String resolveClientIp(HttpServletRequest request) {

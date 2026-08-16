@@ -24,6 +24,15 @@ public class MarketplaceOrder extends Auditable {
     private MarketplaceProduct product;
 
     @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "variant_id")
+    private MarketplaceProductVariant variant;
+
+    // Libellé de la déclinaison GELÉ à la commande : un atelier retire légitimement une taille de
+    // son catalogue, et sans lui la facture comme un litige « mauvaise taille » perdent leur objet.
+    @Column(name = "variant_label", length = 120)
+    private String variantLabel;
+
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "dpp_form_id")
     private DppForm dppForm;
 
@@ -113,6 +122,15 @@ public class MarketplaceOrder extends Auditable {
 
     @Column(name = "tracking_url", length = 500)
     private String trackingUrl;
+
+    // Date d'expédition promise à l'acheteur, figée à l'encaissement (délai de préparation de
+    // l'annonce + congés éventuels de l'atelier). Sert d'origine à la relance vendeur et à
+    // l'échéancier de versement.
+    @Column(name = "ship_due_at")
+    private Instant shipDueAt;
+
+    @Column(name = "ship_reminder_sent_at")
+    private Instant shipReminderSentAt;
 
     @Column(name = "shipped_at")
     private Instant shippedAt;

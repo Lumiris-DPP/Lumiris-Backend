@@ -22,16 +22,17 @@ public class PublicMarketplaceController {
 
     private final MarketplaceService marketplaceService;
 
-    // Filtres combinables (catégorie, matière, origine) + tri neutre par défaut.
-    // `personalize` = catégories d'affinité de l'utilisateur connecté (reco perso).
+    // Recherche plein texte (`q`) et filtres combinables (catégorie, matière, origine) + tri neutre
+    // par défaut. `personalize` = catégories d'affinité de l'utilisateur connecté (reco perso).
     @GetMapping("/search")
     ResponseEntity<SearchResponse> search(
+            @RequestParam(required = false) String q,
             @RequestParam(required = false) String category,
             @RequestParam(required = false) String material,
             @RequestParam(required = false) String origin,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) List<String> personalize) {
-        return ResponseEntity.ok(marketplaceService.search(category, material, origin, sort, personalize));
+        return ResponseEntity.ok(marketplaceService.search(q, category, material, origin, sort, personalize));
     }
 
     @PostMapping("/suggest")

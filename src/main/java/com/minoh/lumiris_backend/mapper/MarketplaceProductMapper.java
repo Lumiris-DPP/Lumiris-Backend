@@ -3,6 +3,7 @@ package com.minoh.lumiris_backend.mapper;
 import com.minoh.lumiris_backend.dto.in.ProductForm;
 import com.minoh.lumiris_backend.dto.in.UpdateProductRequest;
 import com.minoh.lumiris_backend.dto.out.MarketplaceItemResponse;
+import com.minoh.lumiris_backend.dto.out.ProductVariantResponse;
 import com.minoh.lumiris_backend.entity.ArtisanProfile;
 import com.minoh.lumiris_backend.entity.DppForm;
 import com.minoh.lumiris_backend.entity.IrisScore;
@@ -21,14 +22,10 @@ public class MarketplaceProductMapper {
     }
 
     // Vue canonique d'un produit (CRUD, recherche, suggestions). Le score comparable
-    // provient exclusivement du DPP lié ; atelierPlus est résolu à la volée par le service.
-    // salesCount = ventes réglées de cette annonce (0 sur les chemins publics).
-    public MarketplaceItemResponse toResponse(MarketplaceProduct p, IrisScore score, boolean atelierPlus) {
-        return toResponse(p, score, atelierPlus, 0L);
-    }
-
-    public MarketplaceItemResponse toResponse(MarketplaceProduct p, IrisScore score, boolean atelierPlus,
-                                              long salesCount) {
+    // provient exclusivement du DPP lié ; le reste de la présentation est résolu en lot
+    // par MarketplaceItemAssembler.
+    public MarketplaceItemResponse toResponse(MarketplaceProduct p, IrisScore score,
+                                              ProductPresentation presentation) {
         ArtisanProfile artisan = p.getArtisanProfile();
         String artisanName = artisan.getAtelierName() != null ? artisan.getAtelierName() : artisan.getDisplayName();
         return new MarketplaceItemResponse(
@@ -43,24 +40,34 @@ public class MarketplaceProductMapper {
                 p.getOriginCountry(),
                 p.getPriceCents(),
                 p.getCurrency(),
-                p.getStock(),
+                totalStock(presentation),
+                presentation.variants(),
+                presentation.sizeGuide(),
                 p.getShippingCents(),
                 p.getReturnPolicy(),
                 p.getDppForm() != null ? p.getDppForm().getWarrantyDescription() : null,
+                p.getPreparationDays(),
+                presentation.effectivePreparationDays(),
+                presentation.atelierPausedUntil(),
                 p.getExternalOrderUrl(),
                 p.getPhotoUrl(),
                 p.getStatus(),
                 score != null ? score.getTotal() : null,
                 score != null ? score.getGrade() : null,
-                atelierPlus,
+                presentation.atelierPlus(),
                 p.getStripePriceId() != null,
                 p.getCreatedAt(),
                 p.getViews(),
-                salesCount
+                presentation.salesCount()
         );
     }
 
-    // Champs communs à la création et à la mise à jour (le statut est traité par l'appelant).
+    private static int totalStock(ProductPresentation presentation) {
+        return presentation.variants().stream().mapToInt(ProductVariantResponse::stock).sum();
+    }
+
+    // Champs communs à la création et à la mise à jour (le statut, les déclinaisons et le guide des
+    // mesures sont traités par l'appelant).
     private void applyForm(MarketplaceProduct p, ProductForm req, DppForm dppForm) {
         p.setDppForm(dppForm);
         p.setName(req.name());
@@ -70,7 +77,9 @@ public class MarketplaceProductMapper {
         p.setOriginCountry(req.originCountry());
         p.setPriceCents(req.priceCents());
         p.setCurrency(normalizeCurrency(req.currency()));
-        p.setStock(req.stock());
+        p.setShippingCents(req.shippingCents() != null ? Math.max(0, req.shippingCents()) : 0);
+        p.setReturnPolicy(req.returnPolicy());
+        p.setPreparationDays(req.preparationDays() != null ? req.preparationDays() : 0);
         p.setExternalOrderUrl(req.externalOrderUrl());
         p.setPhotoUrl(req.photoUrl());
     }

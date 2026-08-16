@@ -47,9 +47,6 @@ public class MarketplaceProduct extends Auditable {
     @Column(nullable = false)
     private String currency = "EUR";
 
-    @Column(nullable = false)
-    private int stock = 0;
-
     @Column(name = "external_order_url")
     private String externalOrderUrl;
 
@@ -72,6 +69,10 @@ public class MarketplaceProduct extends Auditable {
 
     @Column(name = "return_policy")
     private String returnPolicy;
+
+    // Délai annoncé AVANT l'achat pour une pièce fabriquée à la commande. 0 = pièce en stock.
+    @Column(name = "preparation_days", nullable = false)
+    private int preparationDays = 0;
 
     // Compteur de vues de la fiche produit (incrémenté à l'ouverture côté VISION) — statistiques vendeur.
     @Column(name = "views", nullable = false)

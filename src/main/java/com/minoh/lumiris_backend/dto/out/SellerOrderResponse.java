@@ -15,6 +15,7 @@ import java.util.function.Function;
 public record SellerOrderResponse(
         UUID id,
         String productName,
+        String variantLabel,
         String productPhotoUrl,
         String buyerName,
         int quantity,
@@ -35,6 +36,7 @@ public record SellerOrderResponse(
         String disputeReason,
         boolean released,
         Instant releasedAt,
+        Instant shipDueAt,
         Instant shippedAt,
         Instant deliveredAt,
         Instant returnRequestedAt,
@@ -53,6 +55,7 @@ public record SellerOrderResponse(
         return new SellerOrderResponse(
                 o.getId(),
                 o.getProduct() != null ? o.getProduct().getName() : null,
+                o.getVariantLabel(),
                 o.getProduct() != null ? o.getProduct().getPhotoUrl() : null,
                 o.getBuyer() != null ? o.getBuyer().getName() : null,
                 o.getQuantity(),
@@ -73,6 +76,7 @@ public record SellerOrderResponse(
                 o.getDisputeReason(),
                 o.getStripeTransferId() != null,
                 o.getReleasedAt(),
+                o.getShipDueAt(),
                 o.getShippedAt(),
                 o.getDeliveredAt(),
                 o.getReturnRequestedAt(),

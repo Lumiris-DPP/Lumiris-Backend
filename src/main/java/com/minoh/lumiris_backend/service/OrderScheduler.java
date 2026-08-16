@@ -82,8 +82,10 @@ public class OrderScheduler {
     @Scheduled(fixedDelay = 24 * HOURLY_MS, initialDelay = 2 * HOURLY_MS)
     @Transactional
     public void remindAndRetry() {
+        // Le compte à rebours part de la date d'expédition PROMISE : un atelier qui a annoncé
+        // 10 jours de préparation, ou qui est en congés, n'est pas en retard.
         Instant threshold = Instant.now().minus(UNSHIPPED_REMINDER_AFTER);
-        for (MarketplaceOrder order : orderRepository.findUnshippedSince(threshold)) {
+        for (MarketplaceOrder order : orderRepository.findOverdueUnshipped(threshold)) {
             lifecycleService.remindSellerToShip(order);
         }
         for (MarketplaceOrder order : orderRepository.findUnreleased()) {

@@ -18,18 +18,6 @@ public interface MarketplaceProductRepository extends JpaRepository<MarketplaceP
     @Query("update MarketplaceProduct p set p.views = p.views + 1 where p.id = :id")
     int incrementViews(@Param("id") UUID id);
 
-    // Réservation de stock au checkout — décrément conditionnel atomique : ne passe que si le
-    // stock disponible couvre la quantité (garde anti-survente). Renvoie le nb de lignes affectées
-    // (1 = réservé, 0 = stock insuffisant, à traiter en 422 côté service).
-    @Modifying
-    @Query("update MarketplaceProduct p set p.stock = p.stock - :qty where p.id = :id and p.stock >= :qty")
-    int decrementStock(@Param("id") UUID id, @Param("qty") int qty);
-
-    // Remise en stock après remboursement : la pièce n'a jamais changé de propriétaire durablement.
-    @Modifying
-    @Query("update MarketplaceProduct p set p.stock = p.stock + :qty where p.id = :id")
-    int incrementStock(@Param("id") UUID id, @Param("qty") int qty);
-
     // Fiche produit publiée unitaire (VISION) — évite de scanner tout le catalogue pour un deep-link.
     @Query("""
             select p, s
@@ -100,6 +88,28 @@ public interface MarketplaceProductRepository extends JpaRepository<MarketplaceP
     List<Object[]> searchPublished(@Param("category") String category,
                                    @Param("material") String material,
                                    @Param("origin") String origin);
+
+    // Recherche plein texte : le vecteur pondéré est maintenu par Postgres (colonne générée), l'index
+    // GIN porte le prédicat. On ne renvoie que (id, rang) — l'hydratation réutilise
+    // findScoredPublishedByIds, qui porte déjà le join fetch de l'atelier et la jointure au score.
+    // websearch_to_tsquery et JAMAIS to_tsquery : cet endpoint est public et non authentifié, et
+    // to_tsquery lève sur une entrée malformée (« veste & » deviendrait une 500 à la demande).
+    // Les casts explicites sont indispensables en SQL natif, sans quoi Postgres ne peut pas
+    // déterminer le type des paramètres nuls.
+    @Query(value = """
+            select p.id as id,
+                   ts_rank(p.search_vector, websearch_to_tsquery('french', lumiris_unaccent(:q))) as rank
+            from marketplace_products p
+            where p.status = 'PUBLISHED'
+              and p.search_vector @@ websearch_to_tsquery('french', lumiris_unaccent(:q))
+              and (cast(:category as text) is null or lower(p.category)       = lower(cast(:category as text)))
+              and (cast(:material as text) is null or lower(p.material)       = lower(cast(:material as text)))
+              and (cast(:origin   as text) is null or lower(p.origin_country) = lower(cast(:origin   as text)))
+            """, nativeQuery = true)
+    List<Object[]> searchPublishedTextRanked(@Param("q") String q,
+                                             @Param("category") String category,
+                                             @Param("material") String material,
+                                             @Param("origin") String origin);
 
     @Query("""
             select p, s

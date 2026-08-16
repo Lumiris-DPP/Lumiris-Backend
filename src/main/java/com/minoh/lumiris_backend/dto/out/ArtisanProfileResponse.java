@@ -24,6 +24,7 @@ public record ArtisanProfileResponse(
 
         String slug,
         boolean published,
+        Instant pausedUntil,
         String atelierName,
         String story,
         String method,

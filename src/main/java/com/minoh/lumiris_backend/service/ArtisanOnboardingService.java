@@ -125,6 +125,13 @@ public class ArtisanOnboardingService {
                 .orElseThrow(() -> new ResourceNotFoundException("Profil artisan introuvable : " + id));
     }
 
+    // La pause n'est exposée que si elle est encore à venir : le front n'a ainsi aucune horloge
+    // à comparer pour savoir si l'atelier est réellement en congés.
+    private static Instant activePause(ArtisanProfile p) {
+        Instant until = p.getPausedUntil();
+        return until != null && until.isAfter(Instant.now()) ? until : null;
+    }
+
     ArtisanProfileResponse toResponse(ArtisanProfile p) {
         return new ArtisanProfileResponse(
                 p.getId(),
@@ -140,6 +147,7 @@ public class ArtisanOnboardingService {
                 p.getCreatedAt(),
                 p.getSlug(),
                 p.isPublished(),
+                activePause(p),
                 p.getAtelierName(),
                 p.getStory(),
                 p.getMethod(),

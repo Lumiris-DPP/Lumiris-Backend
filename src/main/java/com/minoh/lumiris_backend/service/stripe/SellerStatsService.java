@@ -1,9 +1,13 @@
 package com.minoh.lumiris_backend.service.stripe;
 
 import com.minoh.lumiris_backend.dto.out.SellerEarningsResponse;
+import com.minoh.lumiris_backend.dto.out.SellerPayoutEntryResponse;
+import com.minoh.lumiris_backend.dto.out.SellerPayoutScheduleResponse;
 import com.minoh.lumiris_backend.dto.out.SellerSaleResponse;
 import com.minoh.lumiris_backend.dto.out.SellerStatsResponse;
+import com.minoh.lumiris_backend.entity.MarketplaceOrder;
 import com.minoh.lumiris_backend.entity.OrderStatus;
+import com.minoh.lumiris_backend.entity.PayoutExpectation;
 import com.minoh.lumiris_backend.entity.User;
 import com.minoh.lumiris_backend.entity.UserRole;
 import com.minoh.lumiris_backend.exception.RoleNotAllowedException;
@@ -11,10 +15,12 @@ import com.minoh.lumiris_backend.repository.MarketplaceOrderRepository;
 import com.minoh.lumiris_backend.repository.MarketplaceProductRepository;
 import com.minoh.lumiris_backend.repository.UserRepository;
 import com.minoh.lumiris_backend.repository.WardrobeItemRepository;
+import com.minoh.lumiris_backend.service.PayoutScheduleResolver;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -31,6 +37,7 @@ public class SellerStatsService {
     private final MarketplaceProductRepository productRepository;
     private final WardrobeItemRepository wardrobeItemRepository;
     private final UserRepository userRepository;
+    private final PayoutScheduleResolver payoutScheduleResolver;
 
     @Transactional(readOnly = true)
     public SellerStatsResponse getStats(String userEmail) {
@@ -72,6 +79,52 @@ public class SellerStatsService {
                 orderRepository.releasedNetCentsBySeller(artisan.getId()),
                 "EUR"
         );
+    }
+
+    // Échéancier daté : une ligne par versement attendu, la plus proche en tête. Les commandes déjà
+    // versées en sont absentes — leur détail vit dans l'écran des commandes, et un échéancier qui
+    // reprendrait le passé cesserait de répondre à la seule question qu'il traite : quand suis-je payé.
+    @Transactional(readOnly = true)
+    public SellerPayoutScheduleResponse getPayoutSchedule(String userEmail) {
+        User artisan = requireArtisan(userEmail);
+        List<SellerPayoutEntryResponse> entries = orderRepository
+                .findUnreleasedBySeller(artisan.getId(), SOLD).stream()
+                .map(this::toPayoutEntry)
+                .sorted(Comparator.comparing(SellerPayoutEntryResponse::expectedAt,
+                        Comparator.nullsLast(Comparator.naturalOrder())))
+                .toList();
+
+        long scheduled = sumWhere(entries, PayoutExpectation.SCHEDULED);
+        long onHold = sumWhere(entries, PayoutExpectation.ON_HOLD) + sumWhere(entries, PayoutExpectation.IMMINENT);
+        return new SellerPayoutScheduleResponse(
+                scheduled,
+                orderRepository.releasedNetCentsBySeller(artisan.getId()),
+                onHold,
+                "EUR",
+                entries
+        );
+    }
+
+    private SellerPayoutEntryResponse toPayoutEntry(MarketplaceOrder order) {
+        PayoutScheduleResolver.PayoutForecast forecast = payoutScheduleResolver.forecast(order);
+        return new SellerPayoutEntryResponse(
+                order.getId(),
+                order.getProduct() != null ? order.getProduct().getName() : null,
+                order.getVariantLabel(),
+                order.getBuyer() != null ? order.getBuyer().getName() : null,
+                order.getNetCents(),
+                order.getCurrency(),
+                forecast.expectedAt(),
+                forecast.expectation(),
+                order.getStatus()
+        );
+    }
+
+    private static long sumWhere(List<SellerPayoutEntryResponse> entries, PayoutExpectation expectation) {
+        return entries.stream()
+                .filter(e -> e.expectation() == expectation)
+                .mapToLong(SellerPayoutEntryResponse::netCents)
+                .sum();
     }
 
     private User requireArtisan(String userEmail) {

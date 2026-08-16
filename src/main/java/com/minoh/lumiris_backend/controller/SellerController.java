@@ -3,6 +3,7 @@ package com.minoh.lumiris_backend.controller;
 import com.minoh.lumiris_backend.config.security.CurrentUserEmail;
 import com.minoh.lumiris_backend.dto.out.CheckoutResponse;
 import com.minoh.lumiris_backend.dto.out.SellerEarningsResponse;
+import com.minoh.lumiris_backend.dto.out.SellerPayoutScheduleResponse;
 import com.minoh.lumiris_backend.dto.out.SellerSaleResponse;
 import com.minoh.lumiris_backend.dto.out.SellerStatsResponse;
 import com.minoh.lumiris_backend.dto.out.SellerStatusResponse;
@@ -54,5 +55,11 @@ public class SellerController {
     @GetMapping("/earnings")
     ResponseEntity<SellerEarningsResponse> earnings(@CurrentUserEmail String email) {
         return ResponseEntity.ok(sellerStatsService.getEarnings(email));
+    }
+
+    // Échéancier daté : quand chaque vente en cours sera versée, et pourquoi elle ne l'est pas encore.
+    @GetMapping("/payouts")
+    ResponseEntity<SellerPayoutScheduleResponse> payouts(@CurrentUserEmail String email) {
+        return ResponseEntity.ok(sellerStatsService.getPayoutSchedule(email));
     }
 }

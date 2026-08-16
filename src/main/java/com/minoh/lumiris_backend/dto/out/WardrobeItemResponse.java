@@ -11,6 +11,7 @@ public record WardrobeItemResponse(
         UUID dppFormId,
         String dppPublicCode,
         String productName,
+        String variantLabel,
         String warrantyDescription,
         String invoiceNumber,
         Instant acquiredAt
@@ -22,6 +23,7 @@ public record WardrobeItemResponse(
                 dpp != null ? dpp.getId() : null,
                 dpp != null ? dpp.getPublicCode() : null,
                 dpp != null ? dpp.getProductName() : null,
+                item.getOrder() != null ? item.getOrder().getVariantLabel() : null,
                 item.getWarrantyDescription(),
                 item.getInvoiceNumber(),
                 item.getAcquiredAt()

@@ -10,6 +10,7 @@ import java.util.UUID;
 public record SellerSaleResponse(
         UUID id,
         String productName,
+        String variantLabel,
         int amountTotalCents,
         int commissionCents,
         int netCents,
@@ -24,6 +25,7 @@ public record SellerSaleResponse(
         return new SellerSaleResponse(
                 o.getId(),
                 o.getProduct() != null ? o.getProduct().getName() : null,
+                o.getVariantLabel(),
                 o.getAmountTotalCents(),
                 o.getCommissionCents(),
                 o.getNetCents(),

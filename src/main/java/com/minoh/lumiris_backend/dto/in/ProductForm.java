@@ -2,6 +2,7 @@ package com.minoh.lumiris_backend.dto.in;
 
 import com.minoh.lumiris_backend.entity.MarketplaceProductStatus;
 
+import java.util.List;
 import java.util.UUID;
 
 // Contrat commun aux formulaires de création et de mise à jour d'un produit du
@@ -23,7 +24,15 @@ public interface ProductForm {
 
     String currency();
 
-    int stock();
+    Integer shippingCents();
+
+    String returnPolicy();
+
+    Integer preparationDays();
+
+    List<ProductVariantForm> variants();
+
+    List<SizeMeasurementForm> sizeGuide();
 
     String externalOrderUrl();
 

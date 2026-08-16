@@ -18,8 +18,13 @@ public record CartIntentRequest(
         @NotEmpty @Valid List<Line> items,
         @NotNull @Valid ShippingAddress shipping
 ) {
+    // variantId est délibérément nullable : l'app mobile est exportée en statique et servie depuis
+    // un cache navigateur comme depuis un shell Tauri, donc des bundles antérieurs à la feature
+    // continuent de tourner plusieurs jours. Le serveur résout la déclinaison unique d'une annonce
+    // qui n'en a qu'une, et refuse en 422 une annonce qui en a plusieurs.
     public record Line(
             @NotNull UUID productId,
+            UUID variantId,
             @Min(1) int quantity
     ) {}
 

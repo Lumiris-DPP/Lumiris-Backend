@@ -3,6 +3,7 @@ package com.minoh.lumiris_backend.dto.out;
 import com.minoh.lumiris_backend.entity.MarketplaceProductStatus;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 // Vue canonique d'un produit du catalogue (CRUD, recherche, suggestions).
@@ -19,11 +20,21 @@ public record MarketplaceItemResponse(
         String originCountry,
         int priceCents,
         String currency,
+        // Somme des stocks des déclinaisons : le stock ne vit que sur la déclinaison.
         int stock,
+        List<ProductVariantResponse> variants,
+        List<SizeMeasurementResponse> sizeGuide,
         // Livraison + retour + garantie : visibles AVANT le paiement (transparence, moins d'abandon panier).
         int shippingCents,
         String returnPolicy,
         String warrantyDescription,
+        // preparationDays est la valeur BRUTE saisie par l'artisan (celle que son formulaire
+        // réenregistre) ; effectivePreparationDays est ce qui est promis à l'acheteur, congés de
+        // l'atelier inclus. Exposer une seule valeur graverait la rallonge de congés dans le produit
+        // au premier enregistrement du formulaire.
+        int preparationDays,
+        int effectivePreparationDays,
+        Instant atelierPausedUntil,
         String externalOrderUrl,
         String photoUrl,
         MarketplaceProductStatus status,

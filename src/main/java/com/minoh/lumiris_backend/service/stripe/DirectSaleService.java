@@ -7,8 +7,10 @@ import com.minoh.lumiris_backend.dto.out.PaymentIntentResponse;
 import com.minoh.lumiris_backend.entity.*;
 import com.minoh.lumiris_backend.exception.BillingValidationException;
 import com.minoh.lumiris_backend.exception.ResourceNotFoundException;
+import com.minoh.lumiris_backend.mapper.MarketplaceVariantMapper;
 import com.minoh.lumiris_backend.repository.*;
 import com.minoh.lumiris_backend.service.OrderLifecycleService;
+import com.minoh.lumiris_backend.service.PreparationDelayResolver;
 import com.stripe.model.PaymentIntent;
 import com.stripe.net.RequestOptions;
 import com.stripe.param.PaymentIntentCreateParams;
@@ -18,6 +20,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -42,11 +45,14 @@ public class DirectSaleService {
     private final StripeProperties properties;
     private final MarketplaceProperties marketplaceProperties;
     private final MarketplaceProductRepository productRepository;
+    private final MarketplaceProductVariantRepository variantRepository;
     private final SellerAccountRepository sellerAccountRepository;
     private final MarketplaceOrderRepository orderRepository;
     private final WardrobeItemRepository wardrobeItemRepository;
     private final UserRepository userRepository;
     private final OrderLifecycleService lifecycleService;
+    private final PreparationDelayResolver preparationDelayResolver;
+    private final MarketplaceVariantMapper variantMapper;
 
     // Crée le PaymentIntent du panier (une commande PENDING par ligne, même PaymentIntent) et renvoie
     // le client secret pour le Payment Element. Le fulfillment (Garde-Robe + facture) se fait au webhook.
@@ -128,13 +134,36 @@ public class DirectSaleService {
         }
     }
 
+    // Résolution de la déclinaison vendue. `variantId` absent est un cas normal : un bundle mobile
+    // antérieur à la feature tourne encore depuis un cache navigateur ou un shell Tauri. On prend
+    // alors la déclinaison unique de l'annonce, et on refuse en 422 si l'annonce en a plusieurs.
     private List<CartLine> loadLines(List<CartIntentRequest.Line> items) {
         return items.stream().map(line -> {
-            MarketplaceProduct p = productRepository.findById(line.productId())
+            MarketplaceProduct product = productRepository.findById(line.productId())
                     .filter(mp -> mp.getStatus() == MarketplaceProductStatus.PUBLISHED)
                     .orElseThrow(() -> new ResourceNotFoundException("Produit introuvable"));
-            return new CartLine(p, Math.max(1, line.quantity()));
+            return new CartLine(product, resolveVariant(product, line.variantId()), Math.max(1, line.quantity()));
         }).toList();
+    }
+
+    private MarketplaceProductVariant resolveVariant(MarketplaceProduct product, UUID variantId) {
+        if (variantId != null) {
+            MarketplaceProductVariant variant = variantRepository.findById(variantId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Déclinaison introuvable"));
+            // Sans ce contrôle, un panier forgé facturerait le prix d'une annonce en décrémentant
+            // le stock d'une autre.
+            if (!variant.getProduct().getId().equals(product.getId())) {
+                throw new ResourceNotFoundException("Déclinaison introuvable");
+            }
+            return variant;
+        }
+        List<MarketplaceProductVariant> variants =
+                variantRepository.findByProduct_IdOrderByPositionAscIdAsc(product.getId());
+        if (variants.size() == 1) {
+            return variants.get(0);
+        }
+        throw new BillingValidationException(
+                "Choisis une taille pour « " + product.getName() + " » avant de payer.");
     }
 
     // Ordre d'insertion préservé : les colis du récapitulatif suivent l'ordre du panier.
@@ -161,10 +190,10 @@ public class DirectSaleService {
     // Refus rapide (422, avant tout appel Stripe) si le stock ne couvre pas une ligne.
     private void requireStockAvailable(List<CartLine> lines) {
         for (CartLine line : lines) {
-            if (line.product().getStock() < line.quantity()) {
+            if (line.variant().getStock() < line.quantity()) {
                 throw new BillingValidationException(
-                        "Stock insuffisant pour « " + line.product().getName() + " » (reste "
-                                + line.product().getStock() + ").");
+                        "Stock insuffisant pour « " + line.label() + " » (reste "
+                                + line.variant().getStock() + ").");
             }
         }
     }
@@ -173,9 +202,8 @@ public class DirectSaleService {
     // ligne. Un échec (course perdue) annule toute la transaction.
     private void reserveStock(List<CartLine> lines) {
         for (CartLine line : lines) {
-            if (productRepository.decrementStock(line.product().getId(), line.quantity()) == 0) {
-                throw new BillingValidationException(
-                        "Stock insuffisant pour « " + line.product().getName() + " ».");
+            if (variantRepository.decrementStock(line.variant().getId(), line.quantity()) == 0) {
+                throw new BillingValidationException("Stock insuffisant pour « " + line.label() + " ».");
             }
         }
     }
@@ -185,8 +213,11 @@ public class DirectSaleService {
     // + signature du panier + bucket d'une minute (un ré-achat ultérieur du même panier obtient une
     // nouvelle clé, la clé Stripe expirant de toute façon sous 24 h).
     private String idempotencyKey(User buyer, List<CartLine> lines) {
+        // La signature porte la DÉCLINAISON : deux paniers ne différant que par la taille auraient
+        // sinon la même clé, Stripe renverrait le même PaymentIntent, et le second panier ne serait
+        // ni persisté ni réservé alors que l'acheteur voit un paiement réussi.
         String cartSig = lines.stream()
-                .map(l -> l.product().getId() + "x" + l.quantity())
+                .map(l -> l.variant().getId() + "x" + l.quantity())
                 .sorted().collect(Collectors.joining(","));
         return "checkout:" + buyer.getId() + ":"
                 + Integer.toHexString(cartSig.hashCode()) + ":" + (System.currentTimeMillis() / 60_000);
@@ -233,6 +264,8 @@ public class DirectSaleService {
                 int lineCommission = (int) Math.round(lineTotal * marketplaceProperties.getCommissionRate());
                 MarketplaceOrder order = new MarketplaceOrder();
                 order.setProduct(p);
+                order.setVariant(line.variant());
+                order.setVariantLabel(variantMapper.label(line.variant()));
                 order.setDppForm(p.getDppForm());
                 order.setBuyer(buyer);
                 order.setSeller(p.getArtisanProfile().getUser());
@@ -263,17 +296,23 @@ public class DirectSaleService {
         order.setShipToPhone(shipping.phone());
     }
 
+    // Sur un panier multi-atelier, le récapitulatif est le seul endroit qui peut dire « Atelier A
+    // sous 3 jours, Atelier B sous 17 jours » : le délai retenu est le plus long du colis.
     private List<PaymentIntentResponse.Shipment> shipments(Map<UUID, List<CartLine>> bySeller,
                                                            Map<UUID, Integer> shippingBySeller) {
+        Instant now = Instant.now();
         return bySeller.entrySet().stream()
                 .map(e -> new PaymentIntentResponse.Shipment(
                         e.getValue().get(0).sellerName(),
                         e.getValue().stream().mapToInt(CartLine::quantity).sum(),
-                        shippingBySeller.getOrDefault(e.getKey(), 0)))
+                        shippingBySeller.getOrDefault(e.getKey(), 0),
+                        e.getValue().stream()
+                                .mapToInt(l -> preparationDelayResolver.effectiveDays(l.product(), now))
+                                .max().orElse(0)))
                 .toList();
     }
 
-    private record CartLine(MarketplaceProduct product, int quantity) {
+    private record CartLine(MarketplaceProduct product, MarketplaceProductVariant variant, int quantity) {
 
         int lineTotal() {
             return product.getPriceCents() * quantity;
@@ -285,6 +324,18 @@ public class DirectSaleService {
 
         String sellerName() {
             return product.getArtisanProfile().getDisplayName();
+        }
+
+        String label() {
+            String sizeLabel = variant.getSizeLabel();
+            String colorLabel = variant.getColorLabel();
+            boolean hasSize = sizeLabel != null && !sizeLabel.isBlank();
+            boolean hasColor = colorLabel != null && !colorLabel.isBlank();
+            if (!hasSize && !hasColor) {
+                return product.getName();
+            }
+            return product.getName() + " (" + (hasSize && hasColor ? sizeLabel + " · " + colorLabel
+                    : hasSize ? sizeLabel : colorLabel) + ")";
         }
     }
 }

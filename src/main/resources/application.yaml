@@ -36,8 +36,18 @@ spring:
         username: ${MAIL_USERNAME:}
         password: ${MAIL_PASSWORD:}
         properties:
-            mail.smtp.auth: true
-            mail.smtp.starttls.enable: true
+            # Un relais de développement (Mailhog) n'attend ni authentification ni STARTTLS :
+            # les forcer fait échouer chaque envoi et maintient /actuator/health en DOWN.
+            mail.smtp.auth: ${MAIL_SMTP_AUTH:true}
+            mail.smtp.starttls.enable: ${MAIL_SMTP_STARTTLS:true}
+
+    devtools:
+        restart:
+            # Le rechargement à chaud partait sur un target/classes à moitié recopié (IDE et
+            # spring-boot:run écrivent au même endroit), d'où des redémarrages en échec sur un
+            # placeholder non résolu. On attend que la copie se stabilise avant de relancer.
+            quiet-period: 2s
+            poll-interval: 3s
 
 app:
     mail:
@@ -51,6 +61,21 @@ app:
         auto-deliver-after-ship-days: ${MARKETPLACE_AUTO_DELIVER_DAYS:7}
         auto-complete-after-delivery-days: ${MARKETPLACE_AUTO_COMPLETE_DAYS:14}
         commission-rate: ${MARKETPLACE_COMMISSION_RATE:0.05}
+        # Affichage du paiement fractionné uniquement : Stripe (Klarna) encaisse et porte le
+        # risque, Lumiris ne prête rien. Mettre installment-count à 1 masque la mention partout.
+        installment-count: ${MARKETPLACE_INSTALLMENT_COUNT:3}
+        installment-min-cents: ${MARKETPLACE_INSTALLMENT_MIN_CENTS:5000}
+
+    # Étiquette d'expédition + suivi transporteur réel. Sans clés, la fonctionnalité s'efface :
+    # l'atelier retrouve la saisie manuelle du suivi et le balayage J+7 continue de présumer la
+    # livraison. Rien à activer pour tourner en local.
+    shipping:
+        default-weight-grams: ${SHIPPING_DEFAULT_WEIGHT_GRAMS:800}
+        webhook-secret: ${SHIPPING_WEBHOOK_SECRET:}
+        sendcloud:
+            public-key: ${SENDCLOUD_PUBLIC_KEY:}
+            secret-key: ${SENDCLOUD_SECRET_KEY:}
+            base-url: ${SENDCLOUD_BASE_URL:}
 
 cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173,http://localhost:3001,http://localhost:3002,http://localhost:3003}

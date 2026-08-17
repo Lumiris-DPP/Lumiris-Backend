@@ -31,6 +31,12 @@ public record SellerOrderResponse(
         String carrier,
         String trackingNumber,
         String trackingUrl,
+        String trackingStatus,
+        String trackingStatusLabel,
+        Instant trackingUpdatedAt,
+        // URL présignée du bordereau déjà fabriqué : l'atelier le réimprime autant de fois qu'il
+        // le faut sans repasser commande d'une étiquette.
+        String labelUrl,
         ShippingAddressResponse shipTo,
         String returnReason,
         String disputeReason,
@@ -71,6 +77,10 @@ public record SellerOrderResponse(
                 o.getCarrier(),
                 o.getTrackingNumber(),
                 o.getTrackingUrl(),
+                o.getTrackingStatus() != null ? o.getTrackingStatus().name() : null,
+                o.getTrackingStatusLabel(),
+                o.getTrackingUpdatedAt(),
+                o.getShippingLabelFile() != null ? presign.apply(o.getShippingLabelFile().getId()) : null,
                 ShippingAddressResponse.from(o),
                 o.getReturnReason(),
                 o.getDisputeReason(),

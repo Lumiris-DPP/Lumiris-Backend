@@ -20,6 +20,7 @@ public record ConvertDppRequest(
         @Min(0) Integer shippingCents,
         @Size(max = 2000) String returnPolicy,
         @Min(0) @Max(90) Integer preparationDays,
+        @Min(0) @Max(30000) Integer weightGrams,
         @Size(max = 2048) @Pattern(regexp = HttpUrl.REGEX, message = HttpUrl.MESSAGE) String externalOrderUrl,
         @Size(max = 2048) @Pattern(regexp = HttpUrl.REGEX, message = HttpUrl.MESSAGE) String photoUrl,
         MarketplaceProductStatus status

@@ -6,50 +6,12 @@ endif
 DC  := docker compose
 MVN := ./mvnw
 
-export SPRING_DATASOURCE_URL
-export SPRING_DATASOURCE_USERNAME
-export SPRING_DATASOURCE_PASSWORD
-# Only export when set: an empty FLYWAY_LOCATIONS overrides the flyway-maven
-# plugin default (filesystem:src/main/resources/db/migration) with `classpath:`,
-# which makes `make mvn flyway:*` miss every migration ("did not follow convention").
-ifdef FLYWAY_LOCATIONS
-export FLYWAY_LOCATIONS
-endif
-export CORS_ALLOWED_ORIGINS
-export JWT_SECRET
-
-export REDIS_HOST
-export REDIS_PORT
-export REDIS_PASSWORD
-
-export SPRING_PROFILES_ACTIVE
-
-export STRIPE_SECRET_KEY
-export STRIPE_PUBLISHABLE_KEY
-export STRIPE_WEBHOOK_SECRET
-export STRIPE_BOOTSTRAP_CATALOG
-export STRIPE_PORTAL_RETURN_URL
-export STRIPE_PRODUCT_SOLO
-export STRIPE_PRODUCT_STUDIO
-export STRIPE_PRODUCT_MAISON
-export STRIPE_PRODUCT_ATELIER_PLUS
-export STRIPE_PRODUCT_LOCAL
-
-export MINIO_ENDPOINT
-export MINIO_ACCESS_KEY
-export MINIO_SECRET_KEY
-export MINIO_BUCKET
-
-export BLOCKCHAIN_RPC_URL
-export BLOCKCHAIN_WALLET_PRIVATE_KEY
-export STRIPE_SECRET_KEY
-export STRIPE_PUBLISHABLE_KEY
-export STRIPE_WEBHOOK_SECRET
-export STRIPE_PRODUCT_SOLO
-export STRIPE_PRODUCT_STUDIO
-export STRIPE_PRODUCT_MAISON
-export STRIPE_PRODUCT_ATELIER_PLUS
-export STRIPE_PRODUCT_LOCAL
+# Tout ce que .env définit part dans l'environnement des sous-processus. Une allowlist
+# manuelle laissait silencieusement tomber chaque nouvelle variable (MAIL_*, MARKETPLACE_*,
+# SHIPPING_*…), et l'application repartait sur ses valeurs par défaut sans rien signaler.
+# Une variable absente de .env reste indéfinie, donc non exportée : FLYWAY_LOCATIONS vide
+# n'écrase pas le défaut du plugin flyway-maven.
+export
 
 .DEFAULT_GOAL := help
 .PHONY: help start stop down fresh fresh-seed logs run mvn maven flyway test postman setup-stripe

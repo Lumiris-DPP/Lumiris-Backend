@@ -13,4 +13,7 @@ public interface ArtisanProfileRepository extends JpaRepository<ArtisanProfile, 
     Optional<ArtisanProfile> findByUser(User user);
     List<ArtisanProfile> findByStatus(ArtisanStatus status);
     Optional<ArtisanProfile> findBySlug(String slug);
+
+    // Annuaire public : uniquement les vitrines publiées d'ateliers vérifiés, dans un ordre stable.
+    List<ArtisanProfile> findByPublishedTrueAndStatusOrderByAtelierNameAsc(ArtisanStatus status);
 }

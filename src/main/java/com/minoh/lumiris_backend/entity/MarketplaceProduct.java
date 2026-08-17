@@ -74,6 +74,11 @@ public class MarketplaceProduct extends Auditable {
     @Column(name = "preparation_days", nullable = false)
     private int preparationDays = 0;
 
+    // Poids du colis : ce sur quoi le transporteur tarife. 0 = non renseigné, le poids par défaut
+    // configuré prend le relais plutôt que de bloquer la génération du bordereau.
+    @Column(name = "weight_grams", nullable = false)
+    private int weightGrams = 0;
+
     // Compteur de vues de la fiche produit (incrémenté à l'ouverture côté VISION) — statistiques vendeur.
     @Column(name = "views", nullable = false)
     private long views = 0;

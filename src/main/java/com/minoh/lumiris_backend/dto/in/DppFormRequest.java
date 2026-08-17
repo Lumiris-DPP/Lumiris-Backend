@@ -22,6 +22,7 @@ public record DppFormRequest(
 
         Integer recycledPct,
         String warrantyDescription,
+        Integer warrantyMonths,
         Boolean isRepairable,
         String endOfLifeInstructions,
 

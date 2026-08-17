@@ -30,6 +30,10 @@ public interface ProductForm {
 
     Integer preparationDays();
 
+    // Poids du colis, en grammes : c'est là-dessus que le transporteur tarife, et sans lui aucun
+    // bordereau n'est fabricable. Absent ⇒ le poids par défaut configuré prend le relais.
+    Integer weightGrams();
+
     List<ProductVariantForm> variants();
 
     List<SizeMeasurementForm> sizeGuide();

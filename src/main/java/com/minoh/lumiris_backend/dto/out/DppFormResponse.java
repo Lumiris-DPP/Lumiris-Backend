@@ -33,6 +33,7 @@ public record DppFormResponse(
 
         Integer recycledPct,
         String warrantyDescription,
+        Integer warrantyMonths,
         Boolean isRepairable,
         String endOfLifeInstructions,
         String dataHash,

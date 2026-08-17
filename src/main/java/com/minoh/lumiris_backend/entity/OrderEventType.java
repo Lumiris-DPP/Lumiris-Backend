@@ -18,5 +18,10 @@ public enum OrderEventType {
     CANCELLED,
     FUNDS_RELEASED,
     // Fil de conversation acheteur ↔ atelier, ouvert à tout moment — pas seulement en litige.
-    MESSAGE
+    MESSAGE,
+    // Bordereau d'expédition fabriqué par l'agrégateur (l'atelier n'a plus qu'à l'imprimer).
+    LABEL_GENERATED,
+    // Événement poussé par le TRANSPORTEUR. Distinct de SHIPPED : « expédiée » est ce que
+    // l'atelier déclare, « pris en charge » est ce que le transporteur constate.
+    TRACKING_UPDATE
 }

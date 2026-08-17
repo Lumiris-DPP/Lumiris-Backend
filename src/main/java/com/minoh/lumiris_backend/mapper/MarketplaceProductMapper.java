@@ -49,6 +49,7 @@ public class MarketplaceProductMapper {
                 p.getPreparationDays(),
                 presentation.effectivePreparationDays(),
                 presentation.atelierPausedUntil(),
+                p.getWeightGrams(),
                 p.getExternalOrderUrl(),
                 p.getPhotoUrl(),
                 p.getStatus(),
@@ -80,6 +81,7 @@ public class MarketplaceProductMapper {
         p.setShippingCents(req.shippingCents() != null ? Math.max(0, req.shippingCents()) : 0);
         p.setReturnPolicy(req.returnPolicy());
         p.setPreparationDays(req.preparationDays() != null ? req.preparationDays() : 0);
+        p.setWeightGrams(req.weightGrams() != null ? Math.max(0, req.weightGrams()) : 0);
         p.setExternalOrderUrl(req.externalOrderUrl());
         p.setPhotoUrl(req.photoUrl());
     }

@@ -126,6 +126,15 @@ public class ArtisanVitrineService {
         return onboardingService.toResponse(artisanRepo.save(profile));
     }
 
+    // Annuaire public du site : la même vitrine, mais listée. Sans cet endpoint l'annuaire ne
+    // pouvait qu'inventer ses ateliers, et chaque fiche renvoyait un 404.
+    @Transactional(readOnly = true)
+    public List<ArtisanPublicProfileResponse> listPublic() {
+        return artisanRepo.findByPublishedTrueAndStatusOrderByAtelierNameAsc(ArtisanStatus.VERIFIED).stream()
+                .map(this::toPublicProfile)
+                .toList();
+    }
+
     @Transactional(readOnly = true)
     public ArtisanPublicProfileResponse findPublicBySlug(String slug) {
         ArtisanProfile profile = artisanRepo.findBySlug(slug)
@@ -133,7 +142,7 @@ public class ArtisanVitrineService {
                 .filter(p -> p.getStatus() == ArtisanStatus.VERIFIED)
                 .orElseThrow(() -> new ResourceNotFoundException("Artisan introuvable"));
 
-        return toPublicResponse(profile);
+        return toPublicProfile(profile);
     }
 
     // Public directory listing (no geo-search: artisans have no stored coordinates, unlike
@@ -141,11 +150,11 @@ public class ArtisanVitrineService {
     @Transactional(readOnly = true)
     public List<ArtisanPublicProfileResponse> findAllPublished() {
         return artisanRepo.findByPublishedTrueAndStatus(ArtisanStatus.VERIFIED).stream()
-                .map(this::toPublicResponse)
+                .map(this::toPublicProfile)
                 .toList();
     }
 
-    private ArtisanPublicProfileResponse toPublicResponse(ArtisanProfile profile) {
+    private ArtisanPublicProfileResponse toPublicProfile(ArtisanProfile profile) {
         List<String> photoUrls = photoRepo.findByArtisanProfileOrderByPosition(profile).stream()
                 .map(photo -> storageService.getPresignedUrl(photo.getFile().getId()))
                 .toList();

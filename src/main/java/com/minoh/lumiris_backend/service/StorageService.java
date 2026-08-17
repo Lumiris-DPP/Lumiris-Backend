@@ -17,6 +17,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.ByteArrayInputStream;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
@@ -69,6 +70,37 @@ public class StorageService {
                 stored.getSizeBytes(),
                 stored.getCreatedAt()
         );
+    }
+
+    // Dépôt d'un document PRODUIT par la plateforme (bordereau d'expédition, facture) : même
+    // stockage et même table que les téléversements, mais sans requête HTTP ni utilisateur
+    // téléversant — l'auteur du fichier est le système.
+    @Transactional
+    public StoredFile store(byte[] content, String filename, String contentType) {
+        String objectKey = UUID.randomUUID() + extractExtension(filename);
+        String bucket = minioProperties.bucket();
+
+        try (ByteArrayInputStream stream = new ByteArrayInputStream(content)) {
+            minioClient.putObject(
+                    PutObjectArgs.builder()
+                            .bucket(bucket)
+                            .object(objectKey)
+                            .stream(stream, content.length, -1)
+                            .contentType(contentType)
+                            .build()
+            );
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to store generated file in MinIO", e);
+        }
+
+        StoredFile stored = new StoredFile();
+        stored.setBucketName(bucket);
+        stored.setObjectKey(objectKey);
+        stored.setOriginalFilename(filename);
+        stored.setContentType(contentType);
+        stored.setSizeBytes(content.length);
+
+        return storedFileRepository.save(stored);
     }
 
     public String getPresignedUrl(UUID fileId) {

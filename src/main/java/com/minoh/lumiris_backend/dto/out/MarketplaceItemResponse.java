@@ -35,6 +35,9 @@ public record MarketplaceItemResponse(
         int preparationDays,
         int effectivePreparationDays,
         Instant atelierPausedUntil,
+        // Poids du colis : donnée d'atelier, réémise telle quelle par son formulaire. Sans elle,
+        // aucun bordereau n'est fabricable pour cette annonce.
+        int weightGrams,
         String externalOrderUrl,
         String photoUrl,
         MarketplaceProductStatus status,

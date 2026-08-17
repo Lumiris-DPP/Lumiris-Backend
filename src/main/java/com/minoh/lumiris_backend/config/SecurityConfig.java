@@ -38,8 +38,12 @@ public class SecurityConfig {
         "/v1/events",
         // Public repairer directory: search and reviews.
         "/v1/repairers/**",
+        // Web Vitals emitted by sendBeacon, which cannot carry an Authorization header.
+        "/api/telemetry/**",
         // Stripe → server webhook: unauthenticated, secured by HMAC signature verification.
         "/api/stripe/webhook",
+        // Carrier aggregator → server webhook: same contract (unauthenticated, HMAC-verified).
+        "/api/shipping/webhook",
         "/swagger-ui/**",
         "/swagger-ui.html",
         "/v3/api-docs/**",

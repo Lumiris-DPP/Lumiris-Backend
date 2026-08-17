@@ -24,6 +24,9 @@ public interface MarketplaceOrderRepository extends JpaRepository<MarketplaceOrd
     // Fulfillment du paiement embarqué : toutes les lignes de commande d'un même PaymentIntent.
     List<MarketplaceOrder> findByStripePaymentIntentId(String paymentIntentId);
 
+    // Rapprochement d'un webhook transporteur : l'agrégateur ne connaît que SON identifiant de colis.
+    Optional<MarketplaceOrder> findByCarrierParcelId(String carrierParcelId);
+
     List<MarketplaceOrder> findByBuyer_IdOrderByCreatedAtDesc(UUID buyerId);
 
     List<MarketplaceOrder> findBySeller_IdOrderByCreatedAtDesc(UUID sellerId);
@@ -79,6 +82,18 @@ public interface MarketplaceOrderRepository extends JpaRepository<MarketplaceOrd
               and o.createdAt < :threshold
             """)
     List<MarketplaceOrder> findAbandonedPending(@Param("threshold") Instant threshold);
+
+    // Réservations laissées par les tentatives de paiement précédentes du même acheteur. Sans elles,
+    // chaque carte refusée puis réessayée empile une commande PENDING de plus et retire une unité
+    // du catalogue jusqu'au balayage du lendemain.
+    @Query("""
+            select o from MarketplaceOrder o
+            where o.status = com.minoh.lumiris_backend.entity.OrderStatus.PENDING
+              and o.buyer.id = :buyerId
+              and o.stripePaymentIntentId <> :currentPaymentIntentId
+            """)
+    List<MarketplaceOrder> findSupersededPending(@Param("buyerId") UUID buyerId,
+                                                 @Param("currentPaymentIntentId") String currentPaymentIntentId);
 
     // Retour refusé ou réceptionné et laissé sans suite : sans échéance, ces commandes restent
     // éternellement dans l'onglet « Retours » du vendeur et l'acheteur n'a jamais de conclusion.

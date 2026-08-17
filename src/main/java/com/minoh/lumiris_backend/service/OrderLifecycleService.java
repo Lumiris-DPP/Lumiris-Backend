@@ -60,13 +60,28 @@ public class OrderLifecycleService {
     public void ship(String sellerEmail, UUID orderId, ShipOrderRequest request) {
         User seller = userRepository.getByEmail(sellerEmail);
         MarketplaceOrder order = requireSellerOrder(seller, orderId);
+        requireShippable(order);
+        order.setCarrier(request.carrier());
+        order.setTrackingNumber(request.trackingNumber());
+        order.setTrackingUrl(request.trackingUrl());
+        markShipped(order, seller);
+    }
+
+    // Refus commun aux deux chemins d'expédition (saisie manuelle et bordereau généré) : rien ne
+    // part deux fois, et rien ne part avant d'être payé.
+    public void requireShippable(MarketplaceOrder order) {
         if (order.getStatus() != OrderStatus.PAID) {
             throw new BillingValidationException(
                     "Seule une commande payée et non encore expédiée peut être marquée expédiée.");
         }
-        order.setCarrier(request.carrier());
-        order.setTrackingNumber(request.trackingNumber());
-        order.setTrackingUrl(request.trackingUrl());
+    }
+
+    // Bascule effective en expédiée, une fois le transporteur et le suivi renseignés — que
+    // l'atelier les ait tapés ou que l'agrégateur les ait remplis. Un seul chemin d'écriture pour
+    // que la notification acheteur et l'entrée de timeline soient identiques dans les deux cas.
+    @Transactional
+    public void markShipped(MarketplaceOrder order, User seller) {
+        requireShippable(order);
         order.setShippedAt(Instant.now());
         order.setStatus(OrderStatus.SHIPPED);
         orderRepository.save(order);
@@ -340,6 +355,69 @@ public class OrderLifecycleService {
         transitionToDelivered(order, actorType, null);
     }
 
+    // Bordereau fabriqué : l'atelier n'a plus qu'à imprimer. Journalisé à part de l'expédition —
+    // il arrive qu'une étiquette soit générée puis le colis remis le lendemain, et un litige sur
+    // un délai se joue sur cet écart.
+    @Transactional
+    public void recordLabelGenerated(MarketplaceOrder order, User seller) {
+        record(order, OrderEventType.LABEL_GENERATED, OrderActorType.SELLER, seller,
+                trackingSummary(order));
+    }
+
+    // Événement poussé par le TRANSPORTEUR. C'est le seul chemin par lequel une commande devient
+    // livrée sur un fait constaté plutôt que sur l'échéance présumée du balayage : la fenêtre de
+    // rétractation court alors depuis la bonne date, et les fonds partent sur une vraie livraison.
+    //
+    // Une commande gelée par un litige n'avance pas pour autant : l'événement est consigné, la
+    // décision reste humaine.
+    @Transactional
+    public void applyTrackingUpdate(MarketplaceOrder order, TrackingStatus status, String label,
+                                    String trackingNumber, String trackingUrl) {
+        if (order.getTrackingStatus() == status) {
+            return;
+        }
+        order.setTrackingStatus(status);
+        order.setTrackingStatusLabel(label);
+        order.setTrackingUpdatedAt(Instant.now());
+        // Le numéro n'est parfois attribué qu'à la prise en charge : on le complète sans jamais
+        // écraser un suivi déjà connu de l'acheteur.
+        if (order.getTrackingNumber() == null && trackingNumber != null) {
+            order.setTrackingNumber(trackingNumber);
+        }
+        if (order.getTrackingUrl() == null && trackingUrl != null) {
+            order.setTrackingUrl(trackingUrl);
+        }
+        orderRepository.save(order);
+
+        record(order, OrderEventType.TRACKING_UPDATE, OrderActorType.SYSTEM, null, label);
+
+        if (status.isDelivered() && order.getStatus() == OrderStatus.SHIPPED
+                && order.getDisputeStatus() != DisputeStatus.OPEN) {
+            transitionToDelivered(order, OrderActorType.SYSTEM, null);
+            return;
+        }
+        notifyCarrierMilestone(order, status, label);
+    }
+
+    // Un colis change d'état une dizaine de fois entre l'atelier et la boîte aux lettres. Deux
+    // seulement méritent d'interrompre l'acheteur : il doit être là pour recevoir, ou quelque
+    // chose a mal tourné. Le reste vit dans la timeline, qu'il consulte quand il le veut.
+    private void notifyCarrierMilestone(MarketplaceOrder order, TrackingStatus status, String label) {
+        if (status == TrackingStatus.OUT_FOR_DELIVERY) {
+            notificationService.notify(order.getBuyer(), NotificationType.ORDER_SHIPPED,
+                    "Ton colis arrive aujourd'hui",
+                    itemLabel(order) + " est en cours de livraison.",
+                    buyerOrderHref(order), order);
+            return;
+        }
+        if (status == TrackingStatus.EXCEPTION || status == TrackingStatus.RETURNED) {
+            notifyBoth(order, NotificationType.ORDER_SHIPPED,
+                    "Incident de livraison",
+                    "Le transporteur signale un problème sur " + itemLabel(order)
+                            + (label != null ? " — " + label : "") + ".");
+        }
+    }
+
     // Relance du vendeur sur une commande payée jamais expédiée. Notification seule : ni l'état ni
     // l'argent ne bougent, on rappelle simplement qu'un acheteur attend.
     @Transactional
@@ -494,7 +572,7 @@ public class OrderLifecycleService {
         eventRepository.save(new OrderEvent(order, type, actorType, actor, message, attachments));
     }
 
-    private MarketplaceOrder requireSellerOrder(User seller, UUID orderId) {
+    public MarketplaceOrder requireSellerOrder(User seller, UUID orderId) {
         MarketplaceOrder order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new ResourceNotFoundException("Commande introuvable"));
         if (order.getSeller() == null || !order.getSeller().getId().equals(seller.getId())) {

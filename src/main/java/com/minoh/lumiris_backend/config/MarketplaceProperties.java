@@ -17,6 +17,13 @@ public class MarketplaceProperties {
     private int autoCompleteAfterDeliveryDays = 14;
     private double commissionRate = 0.05;
 
+    // Paiement fractionné : Stripe l'encaisse déjà (Klarna est proposé par le Payment Element dès
+    // qu'il est activé au dashboard), mais RIEN ne l'annonçait avant l'écran de paiement — donc
+    // personne ne savait qu'une pièce à 300 € était payable en trois fois au moment où il hésitait.
+    // Ces deux valeurs ne pilotent QUE l'affichage : ni le prêteur ni le risque ne sont chez nous.
+    private int installmentCount = 3;
+    private int installmentMinCents = 5000;
+
     public int getReturnWindowDays() {
         return returnWindowDays;
     }
@@ -47,6 +54,22 @@ public class MarketplaceProperties {
 
     public void setCommissionRate(double commissionRate) {
         this.commissionRate = commissionRate;
+    }
+
+    public int getInstallmentCount() {
+        return installmentCount;
+    }
+
+    public void setInstallmentCount(int installmentCount) {
+        this.installmentCount = installmentCount;
+    }
+
+    public int getInstallmentMinCents() {
+        return installmentMinCents;
+    }
+
+    public void setInstallmentMinCents(int installmentMinCents) {
+        this.installmentMinCents = installmentMinCents;
     }
 
     public Duration returnWindow() {

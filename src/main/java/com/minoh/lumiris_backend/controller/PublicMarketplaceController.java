@@ -1,7 +1,9 @@
 package com.minoh.lumiris_backend.controller;
 
+import com.minoh.lumiris_backend.config.MarketplaceProperties;
 import com.minoh.lumiris_backend.dto.in.SuggestRequest;
 import com.minoh.lumiris_backend.dto.out.MarketplaceItemResponse;
+import com.minoh.lumiris_backend.dto.out.PaymentOptionsResponse;
 import com.minoh.lumiris_backend.dto.out.SearchResponse;
 import com.minoh.lumiris_backend.dto.out.SuggestionResponse;
 import com.minoh.lumiris_backend.service.MarketplaceService;
@@ -21,6 +23,15 @@ import java.util.UUID;
 public class PublicMarketplaceController {
 
     private final MarketplaceService marketplaceService;
+    private final MarketplaceProperties marketplaceProperties;
+
+    // Facilités de paiement annonçables. Public et sans état : la fiche produit et le panier
+    // doivent pouvoir dire « ou 3× 100 € » AVANT toute session, c'est-à-dire au moment où
+    // l'acheteur hésite — pas au dernier écran du tunnel.
+    @GetMapping("/payment-options")
+    ResponseEntity<PaymentOptionsResponse> paymentOptions() {
+        return ResponseEntity.ok(PaymentOptionsResponse.from(marketplaceProperties));
+    }
 
     // Recherche plein texte (`q`) et filtres combinables (catégorie, matière, origine) + tri neutre
     // par défaut. `personalize` = catégories d'affinité de l'utilisateur connecté (reco perso).

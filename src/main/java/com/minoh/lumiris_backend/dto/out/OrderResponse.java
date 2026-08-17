@@ -29,6 +29,12 @@ public record OrderResponse(
         String carrier,
         String trackingNumber,
         String trackingUrl,
+        // Dernier état CONSTATÉ par le transporteur, distinct de `status` qui est l'état de la
+        // commande. Le libellé brut vient de l'agrégateur : lui seul sait dire « disponible au
+        // point relais » là où l'enum ne connaît que OUT_FOR_DELIVERY.
+        String trackingStatus,
+        String trackingStatusLabel,
+        Instant trackingUpdatedAt,
         Instant shipDueAt,
         Instant shippedAt,
         Instant deliveredAt,
@@ -62,6 +68,9 @@ public record OrderResponse(
                 o.getCarrier(),
                 o.getTrackingNumber(),
                 o.getTrackingUrl(),
+                o.getTrackingStatus() != null ? o.getTrackingStatus().name() : null,
+                o.getTrackingStatusLabel(),
+                o.getTrackingUpdatedAt(),
                 o.getShipDueAt(),
                 o.getShippedAt(),
                 o.getDeliveredAt(),

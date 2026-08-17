@@ -54,6 +54,7 @@ public class DppFormMapper {
         form.setReachCompliant(request.reachCompliant() != null && request.reachCompliant());
         form.setRecycledPct(request.recycledPct());
         form.setWarrantyDescription(request.warrantyDescription());
+        form.setWarrantyMonths(request.warrantyMonths());
         form.setIsRepairable(request.isRepairable() != null && request.isRepairable());
         form.setEndOfLifeInstructions(request.endOfLifeInstructions());
         form.setAvailableSizes(request.availableSizes());
@@ -130,6 +131,7 @@ public class DppFormMapper {
                 form.getReachCompliant(),
                 form.getRecycledPct(),
                 form.getWarrantyDescription(),
+                form.getWarrantyMonths(),
                 form.getIsRepairable(),
                 form.getEndOfLifeInstructions(),
                 form.getDataHash(),
@@ -155,6 +157,8 @@ public class DppFormMapper {
         data.put("reachCompliant", dppForm.getReachCompliant());
         data.put("recycledPct", dppForm.getRecycledPct());
         data.put("warrantyDescription", dppForm.getWarrantyDescription());
+        // N'AJOUTER AUCUNE CLÉ ICI : verify() recompare ce condensé à celui déjà ancré on-chain,
+        // donc tout champ ajouté ferait échouer la vérification de TOUS les passeports existants.
         data.put("isRepairable", dppForm.getIsRepairable());
         data.put("endOfLifeInstructions", dppForm.getEndOfLifeInstructions());
         data.put("materials", dppForm.getMaterials().stream()

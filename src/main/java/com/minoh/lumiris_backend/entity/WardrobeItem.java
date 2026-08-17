@@ -39,4 +39,20 @@ public class WardrobeItem {
 
     @Column(name = "acquired_at", nullable = false)
     private Instant acquiredAt = Instant.now();
+
+    // Échéance FIGÉE à l'achat : un atelier peut raccourcir la garantie de ses futures pièces, pas
+    // celle déjà vendue. Null = aucune durée déclarée sur le passeport, donc aucune alerte.
+    @Column(name = "warranty_until")
+    private Instant warrantyUntil;
+
+    // Anti-doublons du balayage (quotidien, sur chaque instance) — pas des dates métier.
+    // La saison, et non un simple drapeau : le rappel d'entretien doit revenir l'hiver suivant.
+    @Column(name = "care_reminder_sent_at")
+    private Instant careReminderSentAt;
+
+    @Column(name = "care_reminder_season", length = 16)
+    private String careReminderSeason;
+
+    @Column(name = "warranty_alert_sent_at")
+    private Instant warrantyAlertSentAt;
 }

@@ -7,11 +7,18 @@ import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
+import org.springframework.web.servlet.NoHandlerFoundException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -52,6 +59,33 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     ErrorResponse handleBadRequest(IllegalArgumentException ex) {
         return new ErrorResponse(400, ex.getMessage());
+    }
+
+    @ExceptionHandler({
+            MissingServletRequestParameterException.class,
+            MissingServletRequestPartException.class,
+            MethodArgumentTypeMismatchException.class,
+            HttpMessageNotReadableException.class
+    })
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    ErrorResponse handleMalformedRequest(Exception ex) {
+        return new ErrorResponse(400, "MALFORMED_REQUEST", clientErrorMessage(ex, "Requête invalide"));
+    }
+
+    @ExceptionHandler({NoResourceFoundException.class, NoHandlerFoundException.class})
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    ErrorResponse handleUnknownRoute() {
+        return new ErrorResponse(404, "Ressource introuvable");
+    }
+
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    @ResponseStatus(HttpStatus.METHOD_NOT_ALLOWED)
+    ErrorResponse handleMethodNotSupported() {
+        return new ErrorResponse(405, "Méthode non autorisée sur cette ressource");
+    }
+
+    private String clientErrorMessage(Exception ex, String fallback) {
+        return environment.matchesProfiles("local") ? ex.getMessage() : fallback;
     }
 
     @ExceptionHandler({BadCredentialsException.class, UsernameNotFoundException.class})

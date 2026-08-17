@@ -62,7 +62,7 @@ public class BuyerOrderService {
     @Transactional(readOnly = true)
     public List<WardrobeItemResponse> getWardrobe(String userEmail) {
         User user = userRepository.getByEmail(userEmail);
-        return wardrobeItemRepository.findByUser_IdOrderByAcquiredAtDesc(user.getId())
+        return wardrobeItemRepository.findOwnedWithPassport(user.getId())
                 .stream().map(WardrobeItemResponse::from).toList();
     }
 

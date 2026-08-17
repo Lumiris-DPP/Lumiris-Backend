@@ -161,6 +161,7 @@ public class MarketplaceService {
         product.setShippingCents(req.shippingCents() != null && req.shippingCents() >= 0 ? req.shippingCents() : 0);
         product.setReturnPolicy(req.returnPolicy());
         product.setPreparationDays(req.preparationDays() != null ? req.preparationDays() : 0);
+        product.setWeightGrams(req.weightGrams() != null ? Math.max(0, req.weightGrams()) : 0);
         product.setStatus(req.status() != null ? req.status() : MarketplaceProductStatus.PUBLISHED);
         assertSellablePrice(product);
         MarketplaceProduct saved = productRepository.save(product);

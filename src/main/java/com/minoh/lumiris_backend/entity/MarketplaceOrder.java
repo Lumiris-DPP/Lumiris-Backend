@@ -132,6 +132,30 @@ public class MarketplaceOrder extends Auditable {
     @Column(name = "ship_reminder_sent_at")
     private Instant shipReminderSentAt;
 
+    // Bordereau généré par l'agrégateur. Le PDF vit dans le stockage objet comme toute pièce jointe :
+    // l'atelier le réimprime autant de fois qu'il le faut sans re-payer une étiquette.
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "shipping_label_file_id")
+    private StoredFile shippingLabelFile;
+
+    // Identifiant du colis CHEZ l'agrégateur : seule clé de rapprochement d'un webhook entrant.
+    // Le numéro de suivi ne convient pas — il n'est pas encore attribué à l'annonce du colis.
+    @Column(name = "carrier_parcel_id", length = 120)
+    private String carrierParcelId;
+
+    // Dernier état constaté par le TRANSPORTEUR, distinct de `status` qui est l'état métier de la
+    // commande. Le libellé brut de l'agrégateur est conservé tel quel : lui seul sait dire
+    // « en attente au point relais » là où notre enum ne connaît que IN_TRANSIT.
+    @Enumerated(EnumType.STRING)
+    @Column(name = "tracking_status", length = 24)
+    private TrackingStatus trackingStatus;
+
+    @Column(name = "tracking_status_label", length = 200)
+    private String trackingStatusLabel;
+
+    @Column(name = "tracking_updated_at")
+    private Instant trackingUpdatedAt;
+
     @Column(name = "shipped_at")
     private Instant shippedAt;
 

@@ -11,6 +11,8 @@ import com.minoh.lumiris_backend.mapper.MarketplaceVariantMapper;
 import com.minoh.lumiris_backend.repository.*;
 import com.minoh.lumiris_backend.service.OrderLifecycleService;
 import com.minoh.lumiris_backend.service.PreparationDelayResolver;
+import com.stripe.exception.InvalidRequestException;
+import com.stripe.exception.StripeException;
 import com.stripe.model.PaymentIntent;
 import com.stripe.net.RequestOptions;
 import com.stripe.param.PaymentIntentCreateParams;
@@ -21,10 +23,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -41,6 +45,9 @@ import java.util.stream.Collectors;
 public class DirectSaleService {
 
     private static final Logger log = LoggerFactory.getLogger(DirectSaleService.class);
+
+    // Un PaymentIntent dans un de ces états peut encore aboutir : sa réservation reste intouchable.
+    private static final Set<String> SETTLING_INTENT_STATUSES = Set.of("succeeded", "processing", "requires_capture");
 
     private final StripeProperties properties;
     private final MarketplaceProperties marketplaceProperties;
@@ -84,6 +91,8 @@ public class DirectSaleService {
         // Retry dans la fenêtre d'idempotence : Stripe renvoie le même PaymentIntent → si les commandes
         // existent déjà, on ne re-réserve pas le stock et on ne recrée pas les lignes. On rafraîchit en
         // revanche l'adresse : l'acheteur a pu revenir corriger sa livraison avant de payer.
+        releaseSupersededReservations(buyer, intent.getId());
+
         List<MarketplaceOrder> existing = orderRepository.findByStripePaymentIntentId(intent.getId());
         if (existing.isEmpty()) {
             reserveStock(lines);
@@ -117,14 +126,7 @@ public class DirectSaleService {
             orderRepository.save(order);
 
             if (order.getBuyer() != null && !wardrobeItemRepository.existsByOrder_Id(order.getId())) {
-                WardrobeItem item = new WardrobeItem();
-                item.setUser(order.getBuyer());
-                item.setDppForm(order.getDppForm());
-                item.setOrder(order);
-                item.setInvoiceNumber(invoiceNumber);
-                item.setWarrantyDescription(
-                        order.getDppForm() != null ? order.getDppForm().getWarrantyDescription() : null);
-                wardrobeItemRepository.save(item);
+                wardrobeItemRepository.save(wardrobeItemFor(order, invoiceNumber));
             }
             lifecycleService.markPaid(order);
             confirmed++;
@@ -132,6 +134,27 @@ public class DirectSaleService {
         if (confirmed > 0) {
             log.info("PaymentIntent {} → {} commande(s) PAID + ajoutées à la Garde-Robe", paymentIntentId, confirmed);
         }
+    }
+
+    // L'échéance de garantie est FIGÉE ici : l'atelier peut raccourcir la garantie de ses futures
+    // pièces, pas celle déjà vendue. Sans durée déclarée sur le passeport, elle reste nulle — la
+    // Garde-Robe n'alerte alors sur rien, plutôt que d'inventer une échéance sur un droit
+    // contractuel.
+    private WardrobeItem wardrobeItemFor(MarketplaceOrder order, String invoiceNumber) {
+        DppForm dpp = order.getDppForm();
+        WardrobeItem item = new WardrobeItem();
+        item.setUser(order.getBuyer());
+        item.setDppForm(dpp);
+        item.setOrder(order);
+        item.setInvoiceNumber(invoiceNumber);
+        item.setWarrantyDescription(dpp != null ? dpp.getWarrantyDescription() : null);
+        if (dpp != null && dpp.getWarrantyMonths() != null && dpp.getWarrantyMonths() > 0) {
+            item.setWarrantyUntil(item.getAcquiredAt()
+                    .atZone(ZoneOffset.UTC)
+                    .plusMonths(dpp.getWarrantyMonths())
+                    .toInstant());
+        }
+        return item;
     }
 
     // Résolution de la déclinaison vendue. `variantId` absent est un cas normal : un bundle mobile
@@ -184,6 +207,43 @@ public class DirectSaleService {
                     .orElseThrow(() -> new BillingValidationException(
                             "L'atelier « " + entry.getValue().get(0).sellerName()
                                     + " » n'a pas encore activé les paiements — retire ses pièces du panier."));
+        }
+    }
+
+    // Une nouvelle tentative de paiement rend caduques les réservations des précédentes : elles
+    // repartent au catalogue immédiatement, au lieu d'attendre le balayage des paniers abandonnés.
+    // Le statut est relu chez Stripe avant chaque annulation — un paiement abouti dont le webhook
+    // n'est pas encore arrivé ne doit surtout pas voir sa pièce remise en rayon.
+    private void releaseSupersededReservations(User buyer, String currentPaymentIntentId) {
+        List<MarketplaceOrder> superseded =
+                orderRepository.findSupersededPending(buyer.getId(), currentPaymentIntentId);
+        if (superseded.isEmpty()) {
+            return;
+        }
+        Map<String, Boolean> releasableByIntent = new LinkedHashMap<>();
+        for (MarketplaceOrder order : superseded) {
+            boolean releasable = releasableByIntent.computeIfAbsent(
+                    order.getStripePaymentIntentId(), this::isAbandonedIntent);
+            if (releasable) {
+                lifecycleService.cancelAbandoned(order);
+            }
+        }
+    }
+
+    private boolean isAbandonedIntent(String paymentIntentId) {
+        try {
+            String status = PaymentIntent.retrieve(paymentIntentId).getStatus();
+            return !SETTLING_INTENT_STATUSES.contains(status);
+        } catch (InvalidRequestException e) {
+            // Intent inconnu de Stripe (base recréée, changement de compte) : il n'aboutira jamais,
+            // sa réservation n'a plus de raison d'être.
+            return "resource_missing".equals(e.getCode());
+        } catch (StripeException e) {
+            // Stripe injoignable : on garde la réservation. Le balayage des paniers abandonnés
+            // finira par la libérer, alors qu'une remise en rayon à tort survendrait la pièce.
+            log.warn("Statut du PaymentIntent {} illisible, réservation conservée : {}",
+                    paymentIntentId, e.getMessage());
+            return false;
         }
     }
 

@@ -78,7 +78,7 @@ class DppFormControllerTest {
                 List.of("S", "M"), List.of("Écru"),
                 List.of(), List.of(), null,
                 "2026-01-01", null, null, null, true,
-                null, null, null, null, 1
+                null, null, null, null, null, 1
         );
 
         MockMultipartFile dataPart = new MockMultipartFile(

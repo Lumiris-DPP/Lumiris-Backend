@@ -204,13 +204,7 @@ public class DppFormService {
         form.setBlockchainAnchorStatus(BlockchainAnchorStatus.PENDING);
         DppForm savedForm = dppFormRepository.save(form);
 
-        Set<DocumentType> docTypes = savedForm.getDocuments().stream()
-                .map(DppFormDocument::getDocumentType)
-                .collect(Collectors.toSet());
-        if (savedForm.getMainPhotoFile() != null) {
-            docTypes.add(DocumentType.PRODUCT_PHOTO);
-        }
-        saveIrisScore(savedForm, docTypes);
+        saveIrisScore(savedForm, savedForm.attachedDocumentTypes());
         anchorAfterCommit(savedForm.getId(), savedForm.getDataHash());
 
         return new DppFormCreatedResponse(savedForm.getId());
@@ -365,6 +359,10 @@ public class DppFormService {
         IrisScore score = irisScoreRepository.findByDppFormId(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Score not found"));
 
+        return toScoreResponse(score);
+    }
+
+    private static IrisScoreResponse toScoreResponse(IrisScore score) {
         return new IrisScoreResponse(
                 score.getTotal(),
                 score.getGrade(),
@@ -374,9 +372,16 @@ public class DppFormService {
                         score.getImpact(),
                         score.getRepairability()
                 ),
-                new IrisScoreResponse.Weights(0.4, 0.25, 0.25, 0.1),
+                IrisScoreResponse.FIXED_WEIGHTS,
                 List.of()
         );
+    }
+
+    @Transactional
+    public int backfillMissingIrisScores() {
+        List<DppForm> forms = dppFormRepository.findWithoutIrisScore(DppStatus.VALID);
+        forms.forEach(form -> saveIrisScore(form, form.attachedDocumentTypes()));
+        return forms.size();
     }
 
     public IrisScoreResponse computeIrisScore(DppScoreInput input) {
@@ -409,18 +414,7 @@ public class DppFormService {
         DppFormResponse dppResponse = dppFormMapper.toResponse(form, mainPhotoUrl, documents, artisanSlug);
 
         IrisScoreResponse scoreResponse = irisScoreRepository.findByDppFormId(form.getId())
-                .map(score -> new IrisScoreResponse(
-                        score.getTotal(),
-                        score.getGrade(),
-                        new IrisScoreResponse.Breakdown(
-                                score.getTransparency(),
-                                score.getCraftsmanship(),
-                                score.getImpact(),
-                                score.getRepairability()
-                        ),
-                        IrisScoreResponse.FIXED_WEIGHTS,
-                        List.of()
-                ))
+                .map(DppFormService::toScoreResponse)
                 .orElse(null);
 
         atelierStatsService.trackScan(form);

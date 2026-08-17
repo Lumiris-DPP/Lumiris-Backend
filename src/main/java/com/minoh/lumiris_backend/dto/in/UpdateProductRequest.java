@@ -27,6 +27,7 @@ public record UpdateProductRequest(
         @NotNull @Min(0) Integer shippingCents,
         @Size(max = 2000) String returnPolicy,
         @NotNull @Min(0) @Max(90) Integer preparationDays,
+        @NotNull @Min(0) @Max(30000) Integer weightGrams,
         @NotEmpty @Valid List<ProductVariantForm> variants,
         @Valid List<SizeMeasurementForm> sizeGuide,
         @Size(max = 2048) @Pattern(regexp = HttpUrl.REGEX, message = HttpUrl.MESSAGE) String externalOrderUrl,

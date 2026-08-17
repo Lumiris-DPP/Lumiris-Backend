@@ -7,8 +7,11 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import static com.minoh.lumiris_backend.entity.DppStatus.VALID;
 
@@ -70,6 +73,11 @@ public class DppForm extends Auditable {
     @Column(name = "warranty_description")
     private String warrantyDescription;
 
+    // Durée chiffrée de la garantie. warrantyDescription est une phrase libre : on ne déduit pas
+    // une échéance d'alerte de la prose. Null = aucune durée déclarée, donc aucune alerte.
+    @Column(name = "warranty_months")
+    private Integer warrantyMonths;
+
     @Column(name = "is_repairable")
     private Boolean isRepairable;
 
@@ -110,4 +118,14 @@ public class DppForm extends Auditable {
 
     @OneToMany(mappedBy = "dppForm", cascade = CascadeType.PERSIST, fetch = FetchType.LAZY)
     private List<DppFormDocument> documents = new ArrayList<>();
+
+    public Set<DocumentType> attachedDocumentTypes() {
+        Set<DocumentType> types = documents.stream()
+                .map(DppFormDocument::getDocumentType)
+                .collect(Collectors.toCollection(() -> EnumSet.noneOf(DocumentType.class)));
+        if (mainPhotoFile != null) {
+            types.add(DocumentType.PRODUCT_PHOTO);
+        }
+        return types;
+    }
 }

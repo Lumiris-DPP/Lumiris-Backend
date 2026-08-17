@@ -120,4 +120,33 @@ public class ArtisanProfile extends Auditable {
     // cette date. La pause se termine d'elle-même quand la date passe — aucun job de reprise.
     @Column(name = "paused_until")
     private Instant pausedUntil;
+
+    // ── Adresse d'enlèvement (expéditeur du bordereau) ──────────────────────
+    // Distincte de `city`, qui est une donnée de vitrine : un atelier expose sa ville sans publier
+    // sa rue. Sans elle, aucune étiquette n'est fabricable.
+    @Column(name = "ship_from_line1", length = 300)
+    private String shipFromLine1;
+
+    @Column(name = "ship_from_line2", length = 300)
+    private String shipFromLine2;
+
+    @Column(name = "ship_from_postal_code", length = 20)
+    private String shipFromPostalCode;
+
+    @Column(name = "ship_from_city", length = 120)
+    private String shipFromCity;
+
+    @Column(name = "ship_from_country", length = 2)
+    private String shipFromCountry = "FR";
+
+    @Column(name = "ship_from_phone", length = 40)
+    private String shipFromPhone;
+
+    public boolean hasShipFromAddress() {
+        return isFilled(shipFromLine1) && isFilled(shipFromPostalCode) && isFilled(shipFromCity);
+    }
+
+    private static boolean isFilled(String value) {
+        return value != null && !value.isBlank();
+    }
 }

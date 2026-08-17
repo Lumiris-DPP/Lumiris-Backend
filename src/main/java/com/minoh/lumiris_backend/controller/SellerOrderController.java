@@ -6,8 +6,10 @@ import com.minoh.lumiris_backend.dto.in.RefundRequest;
 import com.minoh.lumiris_backend.dto.in.ReturnDecisionRequest;
 import com.minoh.lumiris_backend.dto.in.ShipOrderRequest;
 import com.minoh.lumiris_backend.dto.out.SellerOrderResponse;
+import com.minoh.lumiris_backend.dto.out.ShippingLabelResponse;
 import com.minoh.lumiris_backend.service.OrderLifecycleService;
 import com.minoh.lumiris_backend.service.SellerOrderService;
+import com.minoh.lumiris_backend.service.shipping.ShippingLabelService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -30,10 +32,18 @@ public class SellerOrderController {
 
     private final SellerOrderService sellerOrderService;
     private final OrderLifecycleService lifecycleService;
+    private final ShippingLabelService shippingLabelService;
 
     @GetMapping
     ResponseEntity<List<SellerOrderResponse>> orders(@CurrentUserEmail String email) {
         return ResponseEntity.ok(sellerOrderService.list(email));
+    }
+
+    // État de l'intégration transporteur, lu AVANT d'afficher le bouton d'impression : sans lui,
+    // l'atelier découvrirait qu'il lui manque une adresse d'enlèvement au moment d'imprimer.
+    @GetMapping("/shipping")
+    ResponseEntity<ShippingLabelResponse.Availability> shipping(@CurrentUserEmail String email) {
+        return ResponseEntity.ok(shippingLabelService.availability(email));
     }
 
     @GetMapping("/{id}")
@@ -48,6 +58,16 @@ public class SellerOrderController {
                               @CurrentUserEmail String email) {
         lifecycleService.ship(email, id, request);
         return ResponseEntity.noContent().build();
+    }
+
+    // Étiquette en un clic : bordereau fabriqué depuis l'adresse déjà stockée sur la commande,
+    // suivi rempli automatiquement, commande passée en expédiée sans aucune saisie. La saisie
+    // manuelle ci-dessus reste le chemin d'une remise en main propre ou d'un transporteur hors
+    // agrégateur.
+    @PostMapping("/{id}/label")
+    ResponseEntity<ShippingLabelResponse> generateLabel(@PathVariable UUID id,
+                                                        @CurrentUserEmail String email) {
+        return ResponseEntity.ok(shippingLabelService.generate(email, id));
     }
 
     @PostMapping("/{id}/return/decision")

@@ -52,6 +52,7 @@ public class DppFormMapper {
         form.setSku(request.sku());
         // NOT NULL in DB (default false); a draft may omit them, so coalesce.
         form.setReachCompliant(request.reachCompliant() != null && request.reachCompliant());
+        form.setWeightGrams(sanitizeWeight(request.weightGrams()));
         form.setRecycledPct(request.recycledPct());
         form.setWarrantyDescription(request.warrantyDescription());
         form.setWarrantyMonths(request.warrantyMonths());
@@ -60,6 +61,11 @@ public class DppFormMapper {
         form.setAvailableSizes(request.availableSizes());
         form.setColors(request.colors());
         form.setCareNotes(request.careNotes());
+    }
+
+    private static Integer sanitizeWeight(Integer grams) {
+        if (grams == null || grams < 1 || grams > 50_000) return null;
+        return grams;
     }
 
     /**
@@ -129,6 +135,7 @@ public class DppFormMapper {
                 form.getGtin(),
                 form.getSku(),
                 form.getReachCompliant(),
+                form.getWeightGrams(),
                 form.getRecycledPct(),
                 form.getWarrantyDescription(),
                 form.getWarrantyMonths(),

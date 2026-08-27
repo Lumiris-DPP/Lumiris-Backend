@@ -1,5 +1,6 @@
 package com.minoh.lumiris_backend.config;
 
+import com.minoh.lumiris_backend.config.security.CurrentUserArgumentResolver;
 import com.minoh.lumiris_backend.config.security.CurrentUserEmailArgumentResolver;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Configuration;
@@ -13,9 +14,11 @@ import java.util.List;
 public class WebConfig implements WebMvcConfigurer {
 
     private final CurrentUserEmailArgumentResolver currentUserEmailArgumentResolver;
+    private final CurrentUserArgumentResolver currentUserArgumentResolver;
 
     @Override
     public void addArgumentResolvers(List<HandlerMethodArgumentResolver> resolvers) {
         resolvers.add(currentUserEmailArgumentResolver);
+        resolvers.add(currentUserArgumentResolver);
     }
 }

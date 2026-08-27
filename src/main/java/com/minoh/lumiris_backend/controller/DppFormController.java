@@ -88,6 +88,15 @@ public class DppFormController {
         return ResponseEntity.noContent().build();
     }
 
+    @PostMapping("/{id}/duplicate")
+    ResponseEntity<DppFormCreatedResponse> duplicate(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal UserDetails principal
+    ) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(dppFormService.duplicate(id, principal.getUsername()));
+    }
+
     // Finalisation of a draft: quota gate, public code (QR), data hash, Iris score, blockchain anchor.
     @PostMapping("/{id}/publish")
     ResponseEntity<DppFormCreatedResponse> publish(
@@ -155,7 +164,10 @@ public class DppFormController {
     }
 
     @PostMapping("/compute_iris_score")
-    ResponseEntity<IrisScoreResponse> computeIrisScore(@RequestBody DppScoreInput input) {
-        return ResponseEntity.ok(dppFormService.computeIrisScore(input));
+    ResponseEntity<IrisScoreResponse> computeIrisScore(
+            @RequestBody DppScoreInput input,
+            @AuthenticationPrincipal UserDetails principal
+    ) {
+        return ResponseEntity.ok(dppFormService.computeIrisScore(input, principal.getUsername()));
     }
 }

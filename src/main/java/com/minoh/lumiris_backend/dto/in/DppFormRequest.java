@@ -20,6 +20,7 @@ public record DppFormRequest(
         String sku,
         Boolean reachCompliant,
 
+        Integer weightGrams,
         Integer recycledPct,
         String warrantyDescription,
         Integer warrantyMonths,

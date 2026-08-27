@@ -40,6 +40,7 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.security.SecureRandom;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
@@ -152,9 +153,6 @@ public class DppFormService {
 
             dppFormMapper.applyScalars(form, request);
 
-            // Replace children wholesale. Persist the rebuilt rows directly through their repos
-            // (the child @ManyToOne owns the FK) rather than through the form's lazy collections —
-            // clearing/adding an uninitialized collection queues inserts with a null dpp_form_id.
             dppMaterialRepository.deleteByDppForm(form);
             dppCareInstructionRepository.deleteByDppForm(form);
             saveChildrenDirect(form, request);
@@ -177,6 +175,65 @@ public class DppFormService {
         dppEventRepository.deleteByDppFormId(form.getId());
         irisScoreRepository.findByDppFormId(form.getId()).ifPresent(irisScoreRepository::delete);
         dppFormRepository.delete(form);
+    }
+
+    @Transactional
+    public DppFormCreatedResponse duplicate(UUID id, String userEmail) {
+        DppForm source = loadOwned(id, userEmail);
+
+        DppForm copy = new DppForm();
+        copy.setUser(source.getUser());
+        copy.setStatus(DppStatus.DRAFT);
+        copy.setProductName(source.getProductName() == null ? null : source.getProductName() + " (copie)");
+        copy.setProductDescription(source.getProductDescription());
+        copy.setProductCategory(source.getProductCategory());
+        copy.setOriginCountry(source.getOriginCountry());
+        copy.setManufacturedAt(source.getManufacturedAt());
+        copy.setBatchNumber(source.getBatchNumber());
+        copy.setQuantity(source.getQuantity());
+        // Pas de gtin : la colonne est UNIQUE, deux passeports ne peuvent pas porter le même.
+        copy.setSku(source.getSku());
+        copy.setReachCompliant(source.getReachCompliant());
+        copy.setRecycledPct(source.getRecycledPct());
+        copy.setWarrantyDescription(source.getWarrantyDescription());
+        copy.setWarrantyMonths(source.getWarrantyMonths());
+        copy.setWeightGrams(source.getWeightGrams());
+        copy.setIsRepairable(source.getIsRepairable());
+        copy.setEndOfLifeInstructions(source.getEndOfLifeInstructions());
+        copy.setAvailableSizes(source.getAvailableSizes() == null ? null : new ArrayList<>(source.getAvailableSizes()));
+        copy.setColors(source.getColors() == null ? null : new ArrayList<>(source.getColors()));
+        copy.setCareNotes(source.getCareNotes());
+        copy.setMainPhotoFile(source.getMainPhotoFile());
+        dppFormRepository.save(copy);
+
+        for (DppMaterial material : source.getMaterials()) {
+            DppMaterial materialCopy = new DppMaterial();
+            materialCopy.setDppForm(copy);
+            materialCopy.setFiber(material.getFiber());
+            materialCopy.setPercentage(material.getPercentage());
+            materialCopy.setOriginCountry(material.getOriginCountry());
+            materialCopy.setLatitude(material.getLatitude());
+            materialCopy.setLongitude(material.getLongitude());
+            dppMaterialRepository.save(materialCopy);
+        }
+
+        for (DppCareInstruction care : source.getCareInstructions()) {
+            DppCareInstruction careCopy = new DppCareInstruction();
+            careCopy.setDppForm(copy);
+            careCopy.setCareCode(care.getCareCode());
+            dppCareInstructionRepository.save(careCopy);
+        }
+
+        for (DppFormDocument document : source.getDocuments()) {
+            DppFormDocument documentCopy = new DppFormDocument();
+            documentCopy.setDppForm(copy);
+            documentCopy.setFile(document.getFile());
+            documentCopy.setDocumentType(document.getDocumentType());
+            documentCopy.setVisibility(document.getVisibility());
+            dppFormDocumentRepository.save(documentCopy);
+        }
+
+        return new DppFormCreatedResponse(copy.getId());
     }
 
     @Transactional
@@ -297,7 +354,7 @@ public class DppFormService {
         }
     }
 
-    private DppForm loadOwnedDraft(UUID id, String userEmail) {
+    private DppForm loadOwned(UUID id, String userEmail) {
         User user = userRepository.findByEmail(userEmail)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
         DppForm form = dppFormRepository.findById(id)
@@ -305,6 +362,11 @@ public class DppFormService {
         if (!form.getUser().getId().equals(user.getId())) {
             throw new ResourceNotFoundException("DPP not found");
         }
+        return form;
+    }
+
+    private DppForm loadOwnedDraft(UUID id, String userEmail) {
+        DppForm form = loadOwned(id, userEmail);
         if (form.getStatus() != DppStatus.DRAFT) {
             throw new ConflictException("Seul un DPP en brouillon peut être modifié, supprimé ou publié.");
         }
@@ -384,8 +446,14 @@ public class DppFormService {
         return forms.size();
     }
 
-    public IrisScoreResponse computeIrisScore(DppScoreInput input) {
-        return irisScoreCalculator.compute(input);
+    @Transactional(readOnly = true)
+    public IrisScoreResponse computeIrisScore(DppScoreInput input, String userEmail) {
+        DppScoreInput.Labels labels = userRepository.findByEmail(userEmail)
+                .map(User::getArtisanProfile)
+                .map(profile -> new DppScoreInput.Labels(profile.isEpvLabeled(), profile.isOfgLabeled(),
+                        profile.isGotsLabeled(), profile.isOekoTexLabeled()))
+                .orElse(DppScoreInput.Labels.NONE);
+        return irisScoreCalculator.compute(input.withLabels(labels));
     }
 
     @Transactional(readOnly = true)

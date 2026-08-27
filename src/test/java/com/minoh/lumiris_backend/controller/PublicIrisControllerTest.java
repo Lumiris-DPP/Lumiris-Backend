@@ -22,11 +22,11 @@ class PublicIrisControllerTest {
     }
 
     @Test
-    void getMethodology_returnsSectionsOrderedByWeightThenCap() throws Exception {
+    void getMethodology_returnsTheFourWeightedAxes() throws Exception {
         mockMvc.perform(get("/public/iris/methodology"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.version").value("v2"))
-                .andExpect(jsonPath("$.sections.length()").value(5))
+                .andExpect(jsonPath("$.version").value("v3"))
+                .andExpect(jsonPath("$.sections.length()").value(4))
                 .andExpect(jsonPath("$.sections[0].key").value("transparency"))
                 .andExpect(jsonPath("$.sections[0].weightPercent").value(40))
                 .andExpect(jsonPath("$.sections[1].key").value("craftsmanship"))
@@ -34,10 +34,16 @@ class PublicIrisControllerTest {
                 .andExpect(jsonPath("$.sections[2].key").value("impact"))
                 .andExpect(jsonPath("$.sections[2].weightPercent").value(25))
                 .andExpect(jsonPath("$.sections[3].key").value("repairability"))
-                .andExpect(jsonPath("$.sections[3].weightPercent").value(10))
-                .andExpect(jsonPath("$.sections[4].key").value("regulatory-cap"))
-                // Section hors moyenne pondérée : le poids doit être absent, pas à 0.
-                .andExpect(jsonPath("$.sections[4].weightPercent").doesNotExist());
+                .andExpect(jsonPath("$.sections[3].weightPercent").value(10));
+    }
+
+    @Test
+    void getMethodology_weightsSumToOneHundred() throws Exception {
+        // Garde-fou : les quatre axes forment toute la note, il n'y a plus de section hors moyenne.
+        mockMvc.perform(get("/public/iris/methodology"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.sections[*].weightPercent").value(
+                        org.hamcrest.Matchers.hasItems(40, 25, 25, 10)));
     }
 
     @Test

@@ -88,6 +88,16 @@ public class DppFormController {
         return ResponseEntity.noContent().build();
     }
 
+    // Draft-only: 409 when the DPP is already published.
+    @PostMapping("/{id}/duplicate")
+    ResponseEntity<DppFormCreatedResponse> duplicate(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal UserDetails principal
+    ) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(dppFormService.duplicate(id, principal.getUsername()));
+    }
+
     // Finalisation of a draft: quota gate, public code (QR), data hash, Iris score, blockchain anchor.
     @PostMapping("/{id}/publish")
     ResponseEntity<DppFormCreatedResponse> publish(

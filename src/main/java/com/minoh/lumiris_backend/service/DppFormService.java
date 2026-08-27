@@ -40,6 +40,7 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.security.SecureRandom;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
@@ -152,9 +153,6 @@ public class DppFormService {
 
             dppFormMapper.applyScalars(form, request);
 
-            // Replace children wholesale. Persist the rebuilt rows directly through their repos
-            // (the child @ManyToOne owns the FK) rather than through the form's lazy collections —
-            // clearing/adding an uninitialized collection queues inserts with a null dpp_form_id.
             dppMaterialRepository.deleteByDppForm(form);
             dppCareInstructionRepository.deleteByDppForm(form);
             saveChildrenDirect(form, request);
@@ -177,6 +175,66 @@ public class DppFormService {
         dppEventRepository.deleteByDppFormId(form.getId());
         irisScoreRepository.findByDppFormId(form.getId()).ifPresent(irisScoreRepository::delete);
         dppFormRepository.delete(form);
+    }
+
+    // Recopie un brouillon à l'identique, enfants compris. Les documents et la photo pointent vers
+    // les mêmes fichiers stockés : ce sont des blobs immuables, inutile de les dupliquer.
+    @Transactional
+    public DppFormCreatedResponse duplicate(UUID id, String userEmail) {
+        DppForm source = loadOwnedDraft(id, userEmail);
+
+        DppForm copy = new DppForm();
+        copy.setUser(source.getUser());
+        copy.setStatus(DppStatus.DRAFT);
+        copy.setProductName(source.getProductName() == null ? null : source.getProductName() + " (copie)");
+        copy.setProductDescription(source.getProductDescription());
+        copy.setProductCategory(source.getProductCategory());
+        copy.setOriginCountry(source.getOriginCountry());
+        copy.setManufacturedAt(source.getManufacturedAt());
+        copy.setBatchNumber(source.getBatchNumber());
+        copy.setQuantity(source.getQuantity());
+        // Pas de gtin : la colonne est UNIQUE, deux passeports ne peuvent pas porter le même.
+        copy.setSku(source.getSku());
+        copy.setReachCompliant(source.getReachCompliant());
+        copy.setRecycledPct(source.getRecycledPct());
+        copy.setWarrantyDescription(source.getWarrantyDescription());
+        copy.setWarrantyMonths(source.getWarrantyMonths());
+        copy.setIsRepairable(source.getIsRepairable());
+        copy.setEndOfLifeInstructions(source.getEndOfLifeInstructions());
+        copy.setAvailableSizes(source.getAvailableSizes() == null ? null : new ArrayList<>(source.getAvailableSizes()));
+        copy.setColors(source.getColors() == null ? null : new ArrayList<>(source.getColors()));
+        copy.setCareNotes(source.getCareNotes());
+        copy.setMainPhotoFile(source.getMainPhotoFile());
+        dppFormRepository.save(copy);
+
+        for (DppMaterial material : source.getMaterials()) {
+            DppMaterial materialCopy = new DppMaterial();
+            materialCopy.setDppForm(copy);
+            materialCopy.setFiber(material.getFiber());
+            materialCopy.setPercentage(material.getPercentage());
+            materialCopy.setOriginCountry(material.getOriginCountry());
+            materialCopy.setLatitude(material.getLatitude());
+            materialCopy.setLongitude(material.getLongitude());
+            dppMaterialRepository.save(materialCopy);
+        }
+
+        for (DppCareInstruction care : source.getCareInstructions()) {
+            DppCareInstruction careCopy = new DppCareInstruction();
+            careCopy.setDppForm(copy);
+            careCopy.setCareCode(care.getCareCode());
+            dppCareInstructionRepository.save(careCopy);
+        }
+
+        for (DppFormDocument document : source.getDocuments()) {
+            DppFormDocument documentCopy = new DppFormDocument();
+            documentCopy.setDppForm(copy);
+            documentCopy.setFile(document.getFile());
+            documentCopy.setDocumentType(document.getDocumentType());
+            documentCopy.setVisibility(document.getVisibility());
+            dppFormDocumentRepository.save(documentCopy);
+        }
+
+        return new DppFormCreatedResponse(copy.getId());
     }
 
     @Transactional
@@ -306,7 +364,7 @@ public class DppFormService {
             throw new ResourceNotFoundException("DPP not found");
         }
         if (form.getStatus() != DppStatus.DRAFT) {
-            throw new ConflictException("Seul un DPP en brouillon peut être modifié, supprimé ou publié.");
+            throw new ConflictException("Seul un DPP en brouillon peut être modifié, dupliqué, supprimé ou publié.");
         }
         return form;
     }

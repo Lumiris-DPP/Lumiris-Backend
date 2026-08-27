@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.minoh.lumiris_backend.dto.in.DppFormRequest;
 import com.minoh.lumiris_backend.dto.out.DppFormCreatedResponse;
+import com.minoh.lumiris_backend.exception.GlobalExceptionHandler;
+import com.minoh.lumiris_backend.exception.ResourceNotFoundException;
 import com.minoh.lumiris_backend.service.DppFormService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -15,6 +17,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.MediaType;
 import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.mock.env.MockEnvironment;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.User;
@@ -32,6 +35,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -58,6 +62,7 @@ class DppFormControllerTest {
         );
 
         mockMvc = MockMvcBuilders.standaloneSetup(dppFormController)
+                .setControllerAdvice(new GlobalExceptionHandler(new MockEnvironment()))
                 .setCustomArgumentResolvers(new AuthenticationPrincipalArgumentResolver())
                 .setMessageConverters(new MappingJackson2HttpMessageConverter(objectMapper))
                 .build();
@@ -93,5 +98,30 @@ class DppFormControllerTest {
                 .andExpect(jsonPath("$.id").isNotEmpty());
 
         verify(dppFormService).create(any(), anyMap(), eq(USER_EMAIL), eq(false));
+    }
+
+    @Test
+    void duplicate_shouldReturn201_withCreatedDraftId() throws Exception {
+        UUID sourceId = UUID.randomUUID();
+        UUID copyId = UUID.randomUUID();
+        when(dppFormService.duplicate(sourceId, USER_EMAIL)).thenReturn(new DppFormCreatedResponse(copyId));
+
+        mockMvc.perform(post("/api/dpp-forms/{id}/duplicate", sourceId))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").value(copyId.toString()));
+
+        verify(dppFormService).duplicate(sourceId, USER_EMAIL);
+    }
+
+    @Test
+    void duplicate_otherUsersDpp_shouldReturn404() throws Exception {
+        UUID sourceId = UUID.randomUUID();
+        when(dppFormService.duplicate(sourceId, USER_EMAIL))
+                .thenThrow(new ResourceNotFoundException("DPP not found"));
+
+        mockMvc.perform(post("/api/dpp-forms/{id}/duplicate", sourceId))
+                .andExpect(status().isNotFound());
+
+        verify(dppFormService).duplicate(sourceId, USER_EMAIL);
     }
 }

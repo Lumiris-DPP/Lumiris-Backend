@@ -88,7 +88,6 @@ public class DppFormController {
         return ResponseEntity.noContent().build();
     }
 
-    // Draft-only: 409 when the DPP is already published.
     @PostMapping("/{id}/duplicate")
     ResponseEntity<DppFormCreatedResponse> duplicate(
             @PathVariable UUID id,

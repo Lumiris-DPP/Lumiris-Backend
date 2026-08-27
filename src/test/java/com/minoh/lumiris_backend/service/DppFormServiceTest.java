@@ -6,6 +6,7 @@ import com.minoh.lumiris_backend.dto.out.DppFormCreatedResponse;
 import com.minoh.lumiris_backend.entity.DppForm;
 import com.minoh.lumiris_backend.dto.out.DppVerificationResponse;
 import com.minoh.lumiris_backend.entity.BlockchainAnchorStatus;
+import com.minoh.lumiris_backend.entity.DppCareInstruction;
 import com.minoh.lumiris_backend.entity.DppMaterial;
 import com.minoh.lumiris_backend.entity.DppStatus;
 import com.minoh.lumiris_backend.entity.User;
@@ -22,6 +23,7 @@ import com.minoh.lumiris_backend.entity.StoredFile;
 import com.minoh.lumiris_backend.dto.out.DppFormPublicResponse;
 import com.minoh.lumiris_backend.repository.ArtisanProfileRepository;
 import com.minoh.lumiris_backend.repository.DppCareInstructionRepository;
+import com.minoh.lumiris_backend.repository.DppFormDocumentRepository;
 import com.minoh.lumiris_backend.repository.DppFormRepository;
 import com.minoh.lumiris_backend.repository.DppMaterialRepository;
 import com.minoh.lumiris_backend.repository.IrisScoreRepository;
@@ -99,6 +101,9 @@ class DppFormServiceTest {
 
     @Mock
     private DppCareInstructionRepository dppCareInstructionRepository;
+
+    @Mock
+    private DppFormDocumentRepository dppFormDocumentRepository;
 
     @Mock
     private ArtisanProfileRepository artisanProfileRepository;
@@ -230,6 +235,85 @@ class DppFormServiceTest {
         assertThatThrownBy(() -> service.publish(id, USER_EMAIL))
                 .isInstanceOf(SubscriptionRequiredException.class);
         verify(dppFormRepository, never()).save(any());
+    }
+
+    // ── duplication ──────────────────────────────────────────────────────────
+
+    @Test
+    void duplicate_publishedDpp_shouldCreateIndependentDraftWithChildren() {
+        UUID id = UUID.randomUUID();
+        DppForm source = new DppForm();
+        source.setId(id);
+        source.setUser(user);
+        source.setStatus(DppStatus.VALID);
+        source.setProductName("Pull publié");
+        source.setPublicCode("PUB12345");
+        source.setDataHash("published-hash");
+        source.setGtin("1234567890123");
+        source.setBlockchainTxHash("0xpublished");
+        source.setBlockchainAnchorStatus(BlockchainAnchorStatus.ANCHORED);
+        source.setWeightGrams(475);
+
+        DppMaterial material = new DppMaterial();
+        material.setDppForm(source);
+        material.setFiber("wool");
+        material.setPercentage(100);
+        material.setOriginCountry("France");
+        source.getMaterials().add(material);
+
+        DppCareInstruction care = new DppCareInstruction();
+        care.setDppForm(source);
+        care.setCareCode("wash-30");
+        source.getCareInstructions().add(care);
+
+        DppFormDocument document = document(
+                source,
+                DocumentType.CARE_GUIDE,
+                DppDocumentVisibility.PUBLIC_USERS
+        );
+        source.getDocuments().add(document);
+        when(dppFormRepository.findById(id)).thenReturn(Optional.of(source));
+
+        DppFormCreatedResponse response = service.duplicate(id, USER_EMAIL);
+
+        ArgumentCaptor<DppForm> formCaptor = ArgumentCaptor.forClass(DppForm.class);
+        verify(dppFormRepository).save(formCaptor.capture());
+        DppForm copy = formCaptor.getValue();
+        assertThat(response.id()).isEqualTo(copy.getId());
+        assertThat(copy.getStatus()).isEqualTo(DppStatus.DRAFT);
+        assertThat(copy.getProductName()).isEqualTo("Pull publié (copie)");
+        assertThat(copy.getPublicCode()).isNull();
+        assertThat(copy.getDataHash()).isNull();
+        assertThat(copy.getGtin()).isNull();
+        assertThat(copy.getBlockchainTxHash()).isNull();
+        assertThat(copy.getBlockchainAnchorStatus()).isEqualTo(BlockchainAnchorStatus.PENDING);
+        assertThat(copy.getWeightGrams()).isEqualTo(475);
+
+        ArgumentCaptor<DppMaterial> materialCaptor = ArgumentCaptor.forClass(DppMaterial.class);
+        verify(dppMaterialRepository).save(materialCaptor.capture());
+        assertThat(materialCaptor.getValue().getDppForm()).isSameAs(copy);
+        assertThat(materialCaptor.getValue().getFiber()).isEqualTo("wool");
+
+        ArgumentCaptor<DppCareInstruction> careCaptor = ArgumentCaptor.forClass(DppCareInstruction.class);
+        verify(dppCareInstructionRepository).save(careCaptor.capture());
+        assertThat(careCaptor.getValue().getDppForm()).isSameAs(copy);
+        assertThat(careCaptor.getValue().getCareCode()).isEqualTo("wash-30");
+
+        ArgumentCaptor<DppFormDocument> documentCaptor = ArgumentCaptor.forClass(DppFormDocument.class);
+        verify(dppFormDocumentRepository).save(documentCaptor.capture());
+        assertThat(documentCaptor.getValue().getDppForm()).isSameAs(copy);
+        assertThat(documentCaptor.getValue().getFile()).isSameAs(document.getFile());
+        assertThat(documentCaptor.getValue().getDocumentType()).isEqualTo(DocumentType.CARE_GUIDE);
+        assertThat(documentCaptor.getValue().getVisibility()).isEqualTo(DppDocumentVisibility.PUBLIC_USERS);
+
+        assertThat(source.getStatus()).isEqualTo(DppStatus.VALID);
+        assertThat(source.getProductName()).isEqualTo("Pull publié");
+        assertThat(source.getPublicCode()).isEqualTo("PUB12345");
+        assertThat(source.getDataHash()).isEqualTo("published-hash");
+        assertThat(source.getGtin()).isEqualTo("1234567890123");
+        assertThat(source.getMaterials()).containsExactly(material);
+        assertThat(source.getCareInstructions()).containsExactly(care);
+        assertThat(source.getDocuments()).containsExactly(document);
     }
 
     // ── géocodage des matières ────────────────────────────────────────────────

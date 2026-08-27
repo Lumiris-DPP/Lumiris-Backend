@@ -177,11 +177,9 @@ public class DppFormService {
         dppFormRepository.delete(form);
     }
 
-    // Recopie un brouillon à l'identique, enfants compris. Les documents et la photo pointent vers
-    // les mêmes fichiers stockés : ce sont des blobs immuables, inutile de les dupliquer.
     @Transactional
     public DppFormCreatedResponse duplicate(UUID id, String userEmail) {
-        DppForm source = loadOwnedDraft(id, userEmail);
+        DppForm source = loadOwned(id, userEmail);
 
         DppForm copy = new DppForm();
         copy.setUser(source.getUser());
@@ -199,6 +197,7 @@ public class DppFormService {
         copy.setRecycledPct(source.getRecycledPct());
         copy.setWarrantyDescription(source.getWarrantyDescription());
         copy.setWarrantyMonths(source.getWarrantyMonths());
+        copy.setWeightGrams(source.getWeightGrams());
         copy.setIsRepairable(source.getIsRepairable());
         copy.setEndOfLifeInstructions(source.getEndOfLifeInstructions());
         copy.setAvailableSizes(source.getAvailableSizes() == null ? null : new ArrayList<>(source.getAvailableSizes()));
@@ -355,7 +354,7 @@ public class DppFormService {
         }
     }
 
-    private DppForm loadOwnedDraft(UUID id, String userEmail) {
+    private DppForm loadOwned(UUID id, String userEmail) {
         User user = userRepository.findByEmail(userEmail)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
         DppForm form = dppFormRepository.findById(id)
@@ -363,8 +362,13 @@ public class DppFormService {
         if (!form.getUser().getId().equals(user.getId())) {
             throw new ResourceNotFoundException("DPP not found");
         }
+        return form;
+    }
+
+    private DppForm loadOwnedDraft(UUID id, String userEmail) {
+        DppForm form = loadOwned(id, userEmail);
         if (form.getStatus() != DppStatus.DRAFT) {
-            throw new ConflictException("Seul un DPP en brouillon peut être modifié, dupliqué, supprimé ou publié.");
+            throw new ConflictException("Seul un DPP en brouillon peut être modifié, supprimé ou publié.");
         }
         return form;
     }

@@ -78,6 +78,9 @@ public class DppForm extends Auditable {
     @Column(name = "warranty_months")
     private Integer warrantyMonths;
 
+    @Column(name = "weight_grams")
+    private Integer weightGrams;
+
     @Column(name = "is_repairable")
     private Boolean isRepairable;
 

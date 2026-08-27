@@ -8,11 +8,11 @@ import org.springframework.stereotype.Service;
 import java.util.List;
 
 /**
- * Source de vérité du texte explicatif du score Iris V2.
+ * Source de vérité du texte explicatif du score Iris.
  *
- * <p>Les poids affichés ici reflètent l'algorithme de {@code @lumiris/core}
- * (scoring/constants.ts, grade.ts, caps.ts) : changer un poids ou un palier côté
- * algorithme impose de le répercuter ici.
+ * <p>Ce texte doit décrire ce que les quatre {@code *ScoreService} calculent réellement : toute
+ * évolution d'un barème doit être répercutée ici, sinon la promesse affichée à l'artisan ne
+ * correspond plus à la note qu'il obtient.
  */
 @Service
 public class IrisMethodologyService {
@@ -25,41 +25,40 @@ public class IrisMethodologyService {
 
     private static IrisMethodologyResponse build() {
         return new IrisMethodologyResponse(
-                "v2",
+                "v3",
                 "Comment est calculé le score Iris",
                 "Votre passeport est noté sur 100 à partir des seules informations que vous renseignez, "
                         + "puis traduit en une lettre de A à E.",
                 List.of(
                         new Section("transparency", "Transparence", 40,
-                                "À quel point la matière et la fabrication sont traçables et prouvées.",
+                                "À quel point la composition est complète, cohérente et justifiée.",
                                 List.of(
-                                        "Renseigner fibre, fournisseur et pays pour chaque matière",
-                                        "Téléverser les factures fournisseurs",
-                                        "Ajouter une photo par étape de fabrication"
+                                        "Renseigner fibre, pourcentage et pays sur chaque matière",
+                                        "Faire totaliser 100 % à la composition",
+                                        "Téléverser les certificats d'origine et de transaction",
+                                        "Joindre le justificatif REACH, pas seulement la déclaration"
                                 )),
                         new Section("craftsmanship", "Savoir-faire", 25,
-                                "La part du vêtement que vous fabriquez vous-même.",
+                                "Ce que votre atelier apporte, et ce qui l'atteste.",
                                 List.of(
-                                        "Déclarer les étapes faites dans votre atelier",
-                                        "Ajouter vos labels (EPV, Origine France Garantie)",
-                                        "Offrir 24 mois de garantie ou plus"
+                                        "Faire reconnaître vos labels (EPV, Origine France Garantie, GOTS, OEKO-TEX)",
+                                        "Offrir 24 mois de garantie ou plus",
+                                        "Joindre le carnet de création"
                                 )),
                         new Section("impact", "Impact", 25,
-                                "L'empreinte environnementale du vêtement : carbone, eau, transport.",
+                                "L'empreinte du vêtement : carbone, eau, matière recyclée, transport.",
                                 List.of(
+                                        "Renseigner le poids : sans lui, carbone et eau ne sont pas calculés",
                                         "Privilégier les fibres à faible impact et la matière recyclée",
-                                        "Rapprocher les étapes de fabrication",
-                                        "Déclarer votre analyse de cycle de vie si vous en avez une"
+                                        "Rapprocher l'origine des matières du lieu de confection"
                                 )),
                         new Section("repairability", "Réparabilité", 10,
-                                "La facilité à faire réparer le vêtement plutôt qu'à le remplacer.",
+                                "La possibilité concrète de faire réparer le vêtement.",
                                 List.of(
-                                        "Référencer des réparateurs partenaires",
-                                        "Allonger la durée de garantie"
-                                )),
-                        new Section("regulatory-cap", "Plafond réglementaire", null,
-                                "Un champ ESPR ou AGEC manquant bloque la lettre à D, quel que soit le total.",
-                                List.of("Compléter les champs signalés comme manquants sur le passeport"))
+                                        "Joindre un manuel de réparation en plus de la déclaration",
+                                        "Allonger la garantie au-delà de 12 mois",
+                                        "Détailler les consignes de fin de vie"
+                                ))
                 ),
                 List.of(
                         new GradeScale("A", 80, "Exemplaire — tout est tracé"),

@@ -165,7 +165,10 @@ public class DppFormController {
     }
 
     @PostMapping("/compute_iris_score")
-    ResponseEntity<IrisScoreResponse> computeIrisScore(@RequestBody DppScoreInput input) {
-        return ResponseEntity.ok(dppFormService.computeIrisScore(input));
+    ResponseEntity<IrisScoreResponse> computeIrisScore(
+            @RequestBody DppScoreInput input,
+            @AuthenticationPrincipal UserDetails principal
+    ) {
+        return ResponseEntity.ok(dppFormService.computeIrisScore(input, principal.getUsername()));
     }
 }

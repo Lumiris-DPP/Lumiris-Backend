@@ -442,8 +442,14 @@ public class DppFormService {
         return forms.size();
     }
 
-    public IrisScoreResponse computeIrisScore(DppScoreInput input) {
-        return irisScoreCalculator.compute(input);
+    @Transactional(readOnly = true)
+    public IrisScoreResponse computeIrisScore(DppScoreInput input, String userEmail) {
+        DppScoreInput.Labels labels = userRepository.findByEmail(userEmail)
+                .map(User::getArtisanProfile)
+                .map(profile -> new DppScoreInput.Labels(profile.isEpvLabeled(), profile.isOfgLabeled(),
+                        profile.isGotsLabeled(), profile.isOekoTexLabeled()))
+                .orElse(DppScoreInput.Labels.NONE);
+        return irisScoreCalculator.compute(input.withLabels(labels));
     }
 
     @Transactional(readOnly = true)

@@ -6,6 +6,8 @@ import com.minoh.lumiris_backend.entity.WardrobeItem;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 
 // Une pièce de la Garde-Robe de l'acheteur : passeport + facture + garantie, et ce qu'il y a à
@@ -23,7 +25,11 @@ public record WardrobeItemResponse(
         List<String> careInstructions,
         String careNotes,
         String invoiceNumber,
-        Instant acquiredAt
+        Instant acquiredAt,
+        String origin,
+        String clientKey,
+        String kind,
+        Map<String, Object> payload
 ) {
     public static WardrobeItemResponse from(WardrobeItem item) {
         DppForm dpp = item.getDppForm();
@@ -40,7 +46,11 @@ public record WardrobeItemResponse(
                         : List.of(),
                 dpp != null ? dpp.getCareNotes() : null,
                 item.getInvoiceNumber(),
-                item.getAcquiredAt()
+                item.getAcquiredAt(),
+                item.getOrigin().name().toLowerCase(Locale.ROOT),
+                item.getClientKey(),
+                item.getKind() != null ? item.getKind().apiValue() : null,
+                item.getPayload()
         );
     }
 }

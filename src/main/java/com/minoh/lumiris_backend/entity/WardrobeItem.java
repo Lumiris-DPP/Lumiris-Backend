@@ -3,8 +3,11 @@ package com.minoh.lumiris_backend.entity;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
+import java.util.Map;
 import java.util.UUID;
 
 // Pièce possédée par l'acheteur (Garde-Robe VISION). Créée automatiquement à l'achat direct :
@@ -30,6 +33,21 @@ public class WardrobeItem {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "order_id")
     private MarketplaceOrder order;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 16)
+    private WardrobeItemOrigin origin = WardrobeItemOrigin.PURCHASE;
+
+    @Column(name = "client_key", length = 255)
+    private String clientKey;
+
+    @Enumerated(EnumType.STRING)
+    @Column(length = 32)
+    private WardrobeItemKind kind;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(columnDefinition = "jsonb")
+    private Map<String, Object> payload;
 
     @Column(name = "warranty_description")
     private String warrantyDescription;

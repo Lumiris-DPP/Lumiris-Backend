@@ -1,6 +1,7 @@
 package com.minoh.lumiris_backend.repository;
 
 import com.minoh.lumiris_backend.entity.WardrobeItem;
+import com.minoh.lumiris_backend.entity.WardrobeItemOrigin;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -22,6 +23,21 @@ public interface WardrobeItemRepository extends JpaRepository<WardrobeItem, UUID
             order by w.acquiredAt desc
             """)
     List<WardrobeItem> findOwnedWithPassport(@Param("userId") UUID userId);
+
+    List<WardrobeItem> findByUser_IdAndOriginAndClientKeyIn(UUID userId,
+                                                            WardrobeItemOrigin origin,
+                                                            List<String> clientKeys);
+
+    @Modifying
+    @Query("""
+            delete from WardrobeItem w
+            where w.user.id = :userId
+              and w.origin = :origin
+              and w.clientKey in :clientKeys
+            """)
+    int deleteByUserAndOriginAndClientKeys(@Param("userId") UUID userId,
+                                           @Param("origin") WardrobeItemOrigin origin,
+                                           @Param("clientKeys") List<String> clientKeys);
 
     // Idempotence du fulfillment webhook : une commande n'ajoute qu'une fois la pièce.
     boolean existsByOrder_Id(UUID orderId);

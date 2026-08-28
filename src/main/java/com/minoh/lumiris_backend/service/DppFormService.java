@@ -6,6 +6,7 @@ import com.minoh.lumiris_backend.dto.out.DppAccessTokenResponse;
 import com.minoh.lumiris_backend.dto.out.DppFormCreatedResponse;
 import com.minoh.lumiris_backend.dto.out.DppFormDocumentResponse;
 import com.minoh.lumiris_backend.dto.out.DppFormPublicResponse;
+import com.minoh.lumiris_backend.dto.out.DppPublicJsonLdResponse;
 import com.minoh.lumiris_backend.dto.out.DppFormResponse;
 import com.minoh.lumiris_backend.dto.out.DppFormSummaryResponse;
 import com.minoh.lumiris_backend.dto.out.IrisScoreResponse;
@@ -488,6 +489,45 @@ public class DppFormService {
         atelierStatsService.trackScan(form);
 
         return new DppFormPublicResponse(dppResponse, scoreResponse, artisanSlug, accessLevel);
+    }
+
+    /** Représentation machine strictement publique : aucun jeton ne peut élargir son périmètre. */
+    @Transactional(readOnly = true)
+    public DppPublicJsonLdResponse findPublicJsonLd(String publicCode, String canonicalId) {
+        DppForm form = dppFormRepository.findByPublicCode(publicCode)
+                .orElseThrow(() -> new ResourceNotFoundException("DPP not found"));
+
+        Hibernate.initialize(form.getMaterials());
+        Hibernate.initialize(form.getCareInstructions());
+        Hibernate.initialize(form.getDocuments());
+
+        String mainPhotoUrl = form.getMainPhotoFile() != null
+                ? storageService.getPresignedUrl(form.getMainPhotoFile().getId())
+                : null;
+
+        List<DppFormDocumentResponse> documents = mapDocuments(
+                form,
+                DppAccessLevel.PUBLIC.visibilities()
+        );
+
+        String artisanSlug = artisanProfileRepository.findByUser(form.getUser())
+                .filter(ArtisanProfile::isPublished)
+                .filter(profile -> profile.getStatus() == ArtisanStatus.VERIFIED)
+                .map(ArtisanProfile::getSlug)
+                .orElse(null);
+
+        IrisScoreResponse irisScore = irisScoreRepository.findByDppFormId(form.getId())
+                .map(DppFormService::toScoreResponse)
+                .orElse(null);
+
+        return dppFormMapper.toPublicJsonLd(
+                form,
+                mainPhotoUrl,
+                documents,
+                irisScore,
+                artisanSlug,
+                canonicalId
+        );
     }
 
     /** Les trois QR d'un passeport publié : permanents, dérivés du code public, rien à générer. */

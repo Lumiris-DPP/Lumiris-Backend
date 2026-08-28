@@ -21,6 +21,7 @@ import com.minoh.lumiris_backend.entity.DppFormDocument;
 import com.minoh.lumiris_backend.entity.DocumentType;
 import com.minoh.lumiris_backend.entity.StoredFile;
 import com.minoh.lumiris_backend.dto.out.DppFormPublicResponse;
+import com.minoh.lumiris_backend.dto.out.DppPublicJsonLdResponse;
 import com.minoh.lumiris_backend.repository.ArtisanProfileRepository;
 import com.minoh.lumiris_backend.repository.DppCareInstructionRepository;
 import com.minoh.lumiris_backend.repository.DppFormDocumentRepository;
@@ -416,6 +417,39 @@ class DppFormServiceTest {
 
         UUID publicFileId = documentFileId(form, DppDocumentVisibility.PUBLIC_USERS);
         verify(storageService).getPresignedUrl(publicFileId);
+        verify(storageService, never()).getPresignedUrl(documentFileId(form, DppDocumentVisibility.CIRCULAR_OPERATORS));
+        verify(storageService, never()).getPresignedUrl(documentFileId(form, DppDocumentVisibility.AUTHORITIES));
+    }
+
+    @Test
+    void findPublicJsonLd_shouldExposeOnlyThePublicScope() {
+        DppForm form = formWithOneDocumentPerVisibility("SEED0001");
+        UUID publicFileId = documentFileId(form, DppDocumentVisibility.PUBLIC_USERS);
+
+        when(dppFormRepository.findByPublicCode("SEED0001")).thenReturn(Optional.of(form));
+        when(storageService.getPresignedUrl(publicFileId)).thenReturn("https://files.test/care-guide.pdf");
+
+        DppPublicJsonLdResponse response = service.findPublicJsonLd(
+                "SEED0001",
+                "https://api.lumiris.eu/public/dpp_forms/SEED0001/jsonld"
+        );
+
+        assertThat(response.id()).isEqualTo("https://api.lumiris.eu/public/dpp_forms/SEED0001/jsonld");
+        assertThat(response.context()).containsEntry("@vocab", "https://schema.org/");
+        assertThat(response.context()).containsEntry("materials", "lumiris:composition");
+        assertThat(response.context().get("image")).isEqualTo(Map.of(
+                "@id", "https://schema.org/image",
+                "@type", "@id"
+        ));
+        assertThat(response.documents())
+                .singleElement()
+                .satisfies(document -> {
+                    assertThat(document.documentType()).isEqualTo("CARE_GUIDE");
+                    assertThat(document.url()).isEqualTo("https://files.test/care-guide.pdf");
+                });
+
+        verify(accessTokenService, never()).resolve(any(), any());
+        verify(atelierStatsService, never()).trackScan(any());
         verify(storageService, never()).getPresignedUrl(documentFileId(form, DppDocumentVisibility.CIRCULAR_OPERATORS));
         verify(storageService, never()).getPresignedUrl(documentFileId(form, DppDocumentVisibility.AUTHORITIES));
     }

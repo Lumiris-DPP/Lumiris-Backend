@@ -3,8 +3,10 @@ package com.minoh.lumiris_backend.mapper;
 import com.minoh.lumiris_backend.dto.in.DppFormRequest;
 import com.minoh.lumiris_backend.dto.in.MaterialRequest;
 import com.minoh.lumiris_backend.dto.out.DppFormDocumentResponse;
+import com.minoh.lumiris_backend.dto.out.DppPublicJsonLdResponse;
 import com.minoh.lumiris_backend.dto.out.DppFormResponse;
 import com.minoh.lumiris_backend.dto.out.DppFormSummaryResponse;
+import com.minoh.lumiris_backend.dto.out.IrisScoreResponse;
 import com.minoh.lumiris_backend.dto.out.MaterialResponse;
 import com.minoh.lumiris_backend.entity.*;
 import com.minoh.lumiris_backend.service.GeocodingService;
@@ -18,6 +20,61 @@ import java.util.Map;
 @Component
 @RequiredArgsConstructor
 public class DppFormMapper {
+
+    private static final Map<String, Object> JSON_LD_CONTEXT = Map.ofEntries(
+            Map.entry("@version", 1.1),
+            Map.entry("@vocab", "https://schema.org/"),
+            // TODO: ajouter cette page dans le site vitrine pour être conforme
+            Map.entry("lumiris", "https://lumiris.eu/vocabulary/"),
+            Map.entry("xsd", "http://www.w3.org/2001/XMLSchema#"),
+            Map.entry("image", Map.of(
+                    "@id", "https://schema.org/image",
+                    "@type", "@id"
+            )),
+            Map.entry("url", Map.of(
+                    "@id", "https://schema.org/url",
+                    "@type", "@id"
+            )),
+            Map.entry("dateCreated", Map.of(
+                    "@id", "https://schema.org/dateCreated",
+                    "@type", "xsd:dateTime"
+            )),
+            Map.entry("productionDate", Map.of(
+                    "@id", "https://schema.org/productionDate",
+                    "@type", "xsd:date"
+            )),
+            Map.entry("publicCode", "lumiris:publicCode"),
+            Map.entry("status", "lumiris:passportStatus"),
+            Map.entry("materials", "lumiris:composition"),
+            Map.entry("fiber", "lumiris:fiber"),
+            Map.entry("percentage", "lumiris:percentage"),
+            Map.entry("careInstructions", "lumiris:careInstructions"),
+            Map.entry("careNotes", "lumiris:careNotes"),
+            Map.entry("batchNumber", "lumiris:batchNumber"),
+            Map.entry("reachCompliant", "lumiris:reachCompliant"),
+            Map.entry("weightGrams", "lumiris:weightGrams"),
+            Map.entry("recycledPercentage", "lumiris:recycledPercentage"),
+            Map.entry("warrantyMonths", "lumiris:warrantyMonths"),
+            Map.entry("repairable", "lumiris:repairable"),
+            Map.entry("endOfLifeInstructions", "lumiris:endOfLifeInstructions"),
+            Map.entry("productionQuantity", "lumiris:productionQuantity"),
+            Map.entry("dataHash", "lumiris:dataHash"),
+            Map.entry("blockchainAnchorStatus", "lumiris:blockchainAnchorStatus"),
+            Map.entry("blockchainTransactionHash", "lumiris:blockchainTransactionHash"),
+            Map.entry("documents", "subjectOf"),
+            Map.entry("documentType", "additionalType"),
+            Map.entry("irisScore", "lumiris:irisScore"),
+            Map.entry("artisanSlug", "lumiris:artisanSlug"),
+            Map.entry("total", "lumiris:total"),
+            Map.entry("grade", "lumiris:grade"),
+            Map.entry("breakdown", "lumiris:breakdown"),
+            Map.entry("weights", "lumiris:weights"),
+            Map.entry("reasons", "lumiris:reasons"),
+            Map.entry("transparency", "lumiris:transparency"),
+            Map.entry("craftsmanship", "lumiris:craftsmanship"),
+            Map.entry("impact", "lumiris:impact"),
+            Map.entry("repairability", "lumiris:repairability")
+    );
 
     private final GeocodingService geocodingService;
 
@@ -147,6 +204,80 @@ public class DppFormMapper {
                 documents,
                 artisanSlug
         );
+    }
+
+    public DppPublicJsonLdResponse toPublicJsonLd(
+            DppForm form,
+            String mainPhotoUrl,
+            List<DppFormDocumentResponse> documents,
+            IrisScoreResponse irisScore,
+            String artisanSlug,
+            String canonicalId
+    ) {
+        List<DppPublicJsonLdResponse.Material> materials = form.getMaterials().stream()
+                .map(material -> new DppPublicJsonLdResponse.Material(
+                        material.getFiber(),
+                        material.getPercentage(),
+                        toCountry(material.getOriginCountry()),
+                        material.getLatitude(),
+                        material.getLongitude()
+                ))
+                .toList();
+
+        List<String> careInstructions = form.getCareInstructions().stream()
+                .map(DppCareInstruction::getCareCode)
+                .toList();
+
+        List<DppPublicJsonLdResponse.Document> publicDocuments = documents.stream()
+                .map(document -> new DppPublicJsonLdResponse.Document(
+                        "DigitalDocument",
+                        document.documentType(),
+                        document.filename(),
+                        document.url()
+                ))
+                .toList();
+
+        return new DppPublicJsonLdResponse(
+                JSON_LD_CONTEXT,
+                canonicalId,
+                List.of("Product", "lumiris:DigitalProductPassport"),
+                form.getPublicCode(),
+                form.getCreatedAt(),
+                form.getStatus(),
+                form.getProductName(),
+                form.getProductDescription(),
+                form.getProductCategory(),
+                toCountry(form.getOriginCountry()),
+                form.getAvailableSizes(),
+                form.getColors(),
+                mainPhotoUrl,
+                materials,
+                careInstructions,
+                form.getCareNotes(),
+                form.getManufacturedAt(),
+                form.getBatchNumber(),
+                form.getGtin(),
+                form.getReachCompliant(),
+                form.getWeightGrams(),
+                form.getRecycledPct(),
+                form.getWarrantyDescription(),
+                form.getWarrantyMonths(),
+                form.getIsRepairable(),
+                form.getEndOfLifeInstructions(),
+                form.getQuantity(),
+                form.getDataHash(),
+                form.getBlockchainAnchorStatus(),
+                form.getBlockchainTxHash(),
+                publicDocuments,
+                irisScore,
+                artisanSlug
+        );
+    }
+
+    private static DppPublicJsonLdResponse.Country toCountry(String name) {
+        return name == null || name.isBlank()
+                ? null
+                : new DppPublicJsonLdResponse.Country("Country", name);
     }
 
     public Map<String, Object> toHashableData(DppForm dppForm) {

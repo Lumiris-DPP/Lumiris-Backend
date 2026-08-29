@@ -1,0 +1,12 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{email/_layout :: layout(title=${title}, content=~{::main})}">
+<body>
+<main>
+    <p>Bonjour <span th:text="${name}">Nom</span>,</p>
+    <p>Votre inscription sur Lumiris a bien été reçue. Notre équipe va examiner votre dossier
+        et vous notifiera dès que possible.</p>
+    <p>À bientôt,<br/>L'équipe Lumiris</p>
+</main>
+</body>
+</html>

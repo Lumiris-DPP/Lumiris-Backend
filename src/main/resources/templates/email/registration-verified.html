@@ -1,0 +1,12 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{email/_layout :: layout(title=${title}, content=~{::main})}">
+<body>
+<main>
+    <p>Bonjour <span th:text="${name}">Nom</span>,</p>
+    <p>Votre compte artisan a été validé. Vous pouvez désormais accéder à toutes
+        les fonctionnalités de la plateforme.</p>
+    <p>Bienvenue !<br/>L'équipe Lumiris</p>
+</main>
+</body>
+</html>

@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 
 // Notifications in-app + email. Une transition de commande appelle `notify` une fois par
@@ -32,11 +33,94 @@ public class NotificationService {
     private final UserRepository userRepository;
     private final MailService mailService;
 
+    @Transactional
     public void notify(User recipient, NotificationType type, String title, String body,
                        String href, MarketplaceOrder order) {
         if (recipient == null) {
             return;
         }
+        save(recipient, type, title, body, href, order);
+        sendMail(recipient, type, () -> mailService.sendNotification(recipient.getEmail(), title, body));
+    }
+
+    @Transactional
+    public void notifyCertificateExpiring(User recipient, String certificateName, String expiryDate) {
+        if (recipient == null) {
+            return;
+        }
+        String title = "Certificat bientôt expiré";
+        String body = "Votre certificat " + certificateName + " arrive à expiration le " + expiryDate + ".";
+        save(recipient, NotificationType.CERTIFICATE_EXPIRING, title, body, null, null);
+        sendMail(recipient, NotificationType.CERTIFICATE_EXPIRING, () ->
+                mailService.sendCertificateExpiring(recipient.getEmail(), recipient.getName(), certificateName, expiryDate));
+    }
+
+    @Transactional
+    public void notifyRetouchAccepted(User recipient, String itemName, String href) {
+        if (recipient == null) {
+            return;
+        }
+        String title = "Retouche acceptée";
+        String body = "Votre demande de retouche pour " + itemName + " a été acceptée.";
+        save(recipient, NotificationType.RETOUCH_ACCEPTED, title, body, href, null);
+        sendMail(recipient, NotificationType.RETOUCH_ACCEPTED, () ->
+                mailService.sendRetouchAccepted(recipient.getEmail(), recipient.getName(), itemName));
+    }
+
+    @Transactional
+    public void notifyPaymentSuccess(User recipient, MarketplaceOrder order) {
+        if (recipient == null) {
+            return;
+        }
+        String amount = formatAmount(order);
+        String orderRef = orderRef(order);
+        String title = "Paiement confirmé";
+        String body = "Votre paiement de " + amount + " pour la commande " + orderRef + " a bien été validé.";
+        save(recipient, NotificationType.PAYMENT_SUCCEEDED, title, body, null, order);
+        sendMail(recipient, NotificationType.PAYMENT_SUCCEEDED, () ->
+                mailService.sendPaymentSuccess(recipient.getEmail(), recipient.getName(), amount, orderRef));
+    }
+
+    @Transactional
+    public void notifyPaymentFailed(User recipient, MarketplaceOrder order) {
+        if (recipient == null) {
+            return;
+        }
+        String amount = formatAmount(order);
+        String orderRef = orderRef(order);
+        String title = "Échec du paiement";
+        String body = "Le paiement de " + amount + " pour la commande " + orderRef + " n'a pas pu être traité.";
+        save(recipient, NotificationType.PAYMENT_FAILED, title, body, null, order);
+        sendMail(recipient, NotificationType.PAYMENT_FAILED, () ->
+                mailService.sendPaymentFailed(recipient.getEmail(), recipient.getName(), amount, orderRef));
+    }
+
+    @Transactional
+    public void notifyPassportPublished(User recipient, String passportName, String passportUrl) {
+        if (recipient == null) {
+            return;
+        }
+        String title = "Passeport produit publié";
+        String body = "Le passeport produit " + passportName + " est désormais publié.";
+        save(recipient, NotificationType.PASSPORT_PUBLISHED, title, body, passportUrl, null);
+        sendMail(recipient, NotificationType.PASSPORT_PUBLISHED, () ->
+                mailService.sendPassportPublished(recipient.getEmail(), recipient.getName(), passportName, passportUrl));
+    }
+
+    @Transactional
+    public void notifyPassportScanned(User recipient, String passportName, String passportUrl) {
+        if (recipient == null) {
+            return;
+        }
+        String title = "Passeport produit scanné";
+        String body = "Votre passeport produit " + passportName + " vient d'être scanné.";
+        save(recipient, NotificationType.PASSPORT_SCANNED, title, body, passportUrl, null);
+        sendMail(recipient, NotificationType.PASSPORT_SCANNED, () ->
+                mailService.sendPassportScanned(recipient.getEmail(), recipient.getName(), passportName, passportUrl));
+    }
+
+    private void save(User recipient, NotificationType type, String title, String body,
+                       String href, MarketplaceOrder order) {
         Notification notification = new Notification();
         notification.setUser(recipient);
         notification.setType(type);
@@ -45,13 +129,25 @@ public class NotificationService {
         notification.setHref(href);
         notification.setOrder(order);
         notificationRepository.save(notification);
+    }
 
+    // L'écriture en base fait foi ; une panne d'envoi ne doit jamais remonter à l'appelant.
+    private void sendMail(User recipient, NotificationType type, Runnable send) {
         try {
-            mailService.sendNotification(recipient.getEmail(), title, body);
+            send.run();
         } catch (RuntimeException e) {
             log.warn("Notification {} enregistrée mais email non parti pour {}: {}",
                     type, recipient.getId(), e.getMessage());
         }
+    }
+
+    private String formatAmount(MarketplaceOrder order) {
+        return String.format(Locale.FRANCE, "%.2f %s",
+                order.getAmountTotalCents() / 100.0, order.getCurrency());
+    }
+
+    private String orderRef(MarketplaceOrder order) {
+        return order.getInvoiceNumber() != null ? order.getInvoiceNumber() : order.getId().toString();
     }
 
     @Transactional(readOnly = true)

@@ -32,6 +32,7 @@ public class NotificationService {
     private final NotificationRepository notificationRepository;
     private final UserRepository userRepository;
     private final MailService mailService;
+    private final NotificationPreferenceService preferenceService;
 
     @Transactional
     public void notify(User recipient, NotificationType type, String title, String body,
@@ -131,8 +132,12 @@ public class NotificationService {
         notificationRepository.save(notification);
     }
 
-    // L'écriture en base fait foi ; une panne d'envoi ne doit jamais remonter à l'appelant.
+    // L'écriture en base fait foi ; une panne d'envoi ne doit jamais remonter à l'appelant, et un
+    // désabonnement à la catégorie n'empêche que l'email — pas la Notification in-app déjà écrite.
     private void sendMail(User recipient, NotificationType type, Runnable send) {
+        if (!preferenceService.isEmailEnabled(recipient, type)) {
+            return;
+        }
         try {
             send.run();
         } catch (RuntimeException e) {

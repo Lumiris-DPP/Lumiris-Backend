@@ -1,7 +1,10 @@
 package com.minoh.lumiris_backend.service.stripe;
 
 import com.minoh.lumiris_backend.config.stripe.StripeProperties;
+import com.minoh.lumiris_backend.entity.User;
 import com.minoh.lumiris_backend.exception.WebhookSignatureException;
+import com.minoh.lumiris_backend.repository.UserRepository;
+import com.minoh.lumiris_backend.service.NotificationService;
 import com.stripe.exception.SignatureVerificationException;
 import com.stripe.model.Account;
 import com.stripe.model.Event;
@@ -16,6 +19,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import java.util.Locale;
 import java.util.Optional;
 
 @Service
@@ -28,6 +32,8 @@ public class StripeWebhookService {
     private final SubscriptionService subscriptionService;
     private final DirectSaleService directSaleService;
     private final SellerConnectService sellerConnectService;
+    private final NotificationService notificationService;
+    private final UserRepository userRepository;
 
     public void handle(String payload, String signatureHeader) {
         if (!properties.hasWebhookSecret()) {
@@ -59,12 +65,8 @@ public class StripeWebhookService {
                             event.getId(), event.getType());
                 }
             }
-            case "invoice.paid", "invoice.payment_succeeded", "invoice.payment_failed" -> {
-                String subscriptionId = invoiceSubscriptionIdOf(event);
-                if (subscriptionId != null) {
-                    subscriptionService.resyncById(subscriptionId);
-                }
-            }
+            case "invoice.paid", "invoice.payment_succeeded" -> handleInvoicePaid(event);
+            case "invoice.payment_failed" -> handleInvoicePaymentFailed(event);
             case "checkout.session.completed" -> handleCheckoutCompleted(event);
             // LUMIRIS-22/24 : achat direct in-app payé (Payment Element) → fulfillment (Garde-Robe +
             // facture) et entrée dans le cycle de vie. Les fonds restent RETENUS : ils ne sont reversés
@@ -92,9 +94,51 @@ public class StripeWebhookService {
         return object instanceof Subscription sub ? sub.getId() : null;
     }
 
-    private String invoiceSubscriptionIdOf(Event event) {
+    // Facture d'abonnement payée : resync (comportement déjà en place) + notifie le titulaire.
+    // Pas de garde d'idempotence ici — un retry Stripe rare enverrait une seconde notification,
+    // jugé acceptable plutôt que d'ajouter un suivi dédié pour ce cas.
+    private void handleInvoicePaid(Event event) {
+        Invoice invoice = invoiceOf(event);
+        if (invoice == null) {
+            return;
+        }
+        if (invoice.getSubscription() != null) {
+            subscriptionService.resyncById(invoice.getSubscription());
+        }
+        userByStripeCustomer(invoice.getCustomer()).ifPresent(user ->
+                notificationService.notifyPaymentSuccess(user,
+                        formatAmount(invoice.getAmountPaid(), invoice.getCurrency()), reference(invoice)));
+    }
+
+    private void handleInvoicePaymentFailed(Event event) {
+        Invoice invoice = invoiceOf(event);
+        if (invoice == null) {
+            return;
+        }
+        if (invoice.getSubscription() != null) {
+            subscriptionService.resyncById(invoice.getSubscription());
+        }
+        userByStripeCustomer(invoice.getCustomer()).ifPresent(user ->
+                notificationService.notifyPaymentFailed(user,
+                        formatAmount(invoice.getAmountDue(), invoice.getCurrency()), reference(invoice)));
+    }
+
+    private Invoice invoiceOf(Event event) {
         StripeObject object = deserialize(event);
-        return object instanceof Invoice invoice ? invoice.getSubscription() : null;
+        return object instanceof Invoice invoice ? invoice : null;
+    }
+
+    private Optional<User> userByStripeCustomer(String stripeCustomerId) {
+        return stripeCustomerId != null ? userRepository.findByStripeCustomerId(stripeCustomerId) : Optional.empty();
+    }
+
+    private String reference(Invoice invoice) {
+        return invoice.getNumber() != null ? invoice.getNumber() : invoice.getId();
+    }
+
+    private String formatAmount(Long amountCents, String currency) {
+        long cents = amountCents != null ? amountCents : 0L;
+        return String.format(Locale.FRANCE, "%.2f %s", cents / 100.0, currency);
     }
 
     private void handleCheckoutCompleted(Event event) {

@@ -10,6 +10,7 @@ import com.minoh.lumiris_backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,6 +36,9 @@ public class NotificationService {
     private final MailService mailService;
     private final PushNotificationService pushNotificationService;
     private final NotificationPreferenceService preferenceService;
+
+    @Value("${app.frontend-url}")
+    private String frontendUrl;
 
     @Transactional
     public void notify(User recipient, NotificationType type, String title, String body,
@@ -73,33 +77,51 @@ public class NotificationService {
         sendPush(recipient, NotificationType.RETOUCH_ACCEPTED, title, body, href);
     }
 
+    // Commande marketplace : gardé pour un futur appelant (ORDER_PAID couvre déjà cet événement
+    // avec plus de contexte aujourd'hui — voir OrderLifecycleService.markPaid). Le seul appelant
+    // actuel est la surcharge par abonnement ci-dessous, sans commande à lier.
     @Transactional
     public void notifyPaymentSuccess(User recipient, MarketplaceOrder order) {
+        notifyPaymentSuccess(recipient, formatAmount(order), orderRef(order), order);
+    }
+
+    // Paiement d'abonnement (facture Stripe) : pas de MarketplaceOrder à lier.
+    @Transactional
+    public void notifyPaymentSuccess(User recipient, String amount, String reference) {
+        notifyPaymentSuccess(recipient, amount, reference, null);
+    }
+
+    private void notifyPaymentSuccess(User recipient, String amount, String reference, MarketplaceOrder order) {
         if (recipient == null) {
             return;
         }
-        String amount = formatAmount(order);
-        String orderRef = orderRef(order);
         String title = "Paiement confirmé";
-        String body = "Votre paiement de " + amount + " pour la commande " + orderRef + " a bien été validé.";
+        String body = "Votre paiement de " + amount + " (réf. " + reference + ") a bien été validé.";
         save(recipient, NotificationType.PAYMENT_SUCCEEDED, title, body, null, order);
         sendMail(recipient, NotificationType.PAYMENT_SUCCEEDED, () ->
-                mailService.sendPaymentSuccess(recipient.getEmail(), recipient.getName(), amount, orderRef));
+                mailService.sendPaymentSuccess(recipient.getEmail(), recipient.getName(), amount, reference));
         sendPush(recipient, NotificationType.PAYMENT_SUCCEEDED, title, body, null);
     }
 
     @Transactional
     public void notifyPaymentFailed(User recipient, MarketplaceOrder order) {
+        notifyPaymentFailed(recipient, formatAmount(order), orderRef(order), order);
+    }
+
+    @Transactional
+    public void notifyPaymentFailed(User recipient, String amount, String reference) {
+        notifyPaymentFailed(recipient, amount, reference, null);
+    }
+
+    private void notifyPaymentFailed(User recipient, String amount, String reference, MarketplaceOrder order) {
         if (recipient == null) {
             return;
         }
-        String amount = formatAmount(order);
-        String orderRef = orderRef(order);
         String title = "Échec du paiement";
-        String body = "Le paiement de " + amount + " pour la commande " + orderRef + " n'a pas pu être traité.";
+        String body = "Le paiement de " + amount + " (réf. " + reference + ") n'a pas pu être traité.";
         save(recipient, NotificationType.PAYMENT_FAILED, title, body, null, order);
         sendMail(recipient, NotificationType.PAYMENT_FAILED, () ->
-                mailService.sendPaymentFailed(recipient.getEmail(), recipient.getName(), amount, orderRef));
+                mailService.sendPaymentFailed(recipient.getEmail(), recipient.getName(), amount, reference));
         sendPush(recipient, NotificationType.PAYMENT_FAILED, title, body, null);
     }
 
@@ -111,8 +133,8 @@ public class NotificationService {
         String title = "Passeport produit publié";
         String body = "Le passeport produit " + passportName + " est désormais publié.";
         save(recipient, NotificationType.PASSPORT_PUBLISHED, title, body, passportUrl, null);
-        sendMail(recipient, NotificationType.PASSPORT_PUBLISHED, () ->
-                mailService.sendPassportPublished(recipient.getEmail(), recipient.getName(), passportName, passportUrl));
+        sendMail(recipient, NotificationType.PASSPORT_PUBLISHED, () -> mailService.sendPassportPublished(
+                recipient.getEmail(), recipient.getName(), passportName, absoluteUrl(passportUrl)));
         sendPush(recipient, NotificationType.PASSPORT_PUBLISHED, title, body, passportUrl);
     }
 
@@ -124,8 +146,8 @@ public class NotificationService {
         String title = "Passeport produit scanné";
         String body = "Votre passeport produit " + passportName + " vient d'être scanné.";
         save(recipient, NotificationType.PASSPORT_SCANNED, title, body, passportUrl, null);
-        sendMail(recipient, NotificationType.PASSPORT_SCANNED, () ->
-                mailService.sendPassportScanned(recipient.getEmail(), recipient.getName(), passportName, passportUrl));
+        sendMail(recipient, NotificationType.PASSPORT_SCANNED, () -> mailService.sendPassportScanned(
+                recipient.getEmail(), recipient.getName(), passportName, absoluteUrl(passportUrl)));
         sendPush(recipient, NotificationType.PASSPORT_SCANNED, title, body, passportUrl);
     }
 
@@ -165,6 +187,12 @@ public class NotificationService {
             log.warn("Notification {} enregistrée mais push non parti pour {}: {}",
                     type, recipient.getId(), e.getMessage());
         }
+    }
+
+    // Un email n'a pas d'origine à préfixer lui-même — contrairement au href in-app (relatif,
+    // préfixé par le front), le lien d'un email doit être absolu pour être cliquable.
+    private String absoluteUrl(String relativePath) {
+        return frontendUrl + relativePath;
     }
 
     private String formatAmount(MarketplaceOrder order) {

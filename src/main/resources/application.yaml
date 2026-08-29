@@ -30,17 +30,6 @@ spring:
         # Tolerate seeds being absent from the resolved locations on envs that already applied them.
         ignore-migration-patterns: '*:missing'
 
-    mail:
-        host: ${MAIL_HOST:smtp.gmail.com}
-        port: ${MAIL_PORT:587}
-        username: ${MAIL_USERNAME:}
-        password: ${MAIL_PASSWORD:}
-        properties:
-            # Un relais de développement (Mailhog) n'attend ni authentification ni STARTTLS :
-            # les forcer fait échouer chaque envoi et maintient /actuator/health en DOWN.
-            mail.smtp.auth: ${MAIL_SMTP_AUTH:true}
-            mail.smtp.starttls.enable: ${MAIL_SMTP_STARTTLS:true}
-
     devtools:
         restart:
             # Le rechargement à chaud partait sur un target/classes à moitié recopié (IDE et
@@ -108,6 +97,11 @@ minio:
     access-key: ${MINIO_ACCESS_KEY:lumiris}
     secret-key: ${MINIO_SECRET_KEY:lumiris_local_dev_only}
     bucket: ${MINIO_BUCKET:lumiris}
+
+# Emails transactionnels (Resend). Vide par défaut : l'envoi échoue et se contente d'un log
+# (voir MailService), comme les autres intégrations optionnelles ci-dessus — jamais bloquant.
+resend:
+    api-key: ${RESEND_API_KEY:}
 
 # Nominatim (OpenStreetMap) usage policy requires a descriptive User-Agent identifying the app.
 geocoding:

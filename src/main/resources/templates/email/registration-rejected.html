@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{email/_layout :: layout(title=${title}, content=~{::main})}">
+<body>
+<main>
+    <p>Bonjour <span th:text="${name}">Nom</span>,</p>
+    <p>Nous ne sommes pas en mesure de valider votre inscription sur Lumiris.</p>
+    <p th:if="${reason != null and !reason.isBlank()}">
+        Motif : <span th:text="${reason}">Motif</span>
+    </p>
+    <p>Pour toute question, contactez-nous.<br/>L'équipe Lumiris</p>
+</main>
+</body>
+</html>

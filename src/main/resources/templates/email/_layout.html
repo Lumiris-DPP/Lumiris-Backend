@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body th:fragment="layout(title, content)"
+      style="margin:0;padding:0;background-color:#f4f1ea;font-family:'Helvetica Neue',Arial,sans-serif;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f1ea;padding:32px 0;">
+    <tr>
+        <td align="center">
+            <table role="presentation" width="480" cellpadding="0" cellspacing="0"
+                   style="background-color:#ffffff;border-radius:8px;overflow:hidden;">
+                <tr>
+                    <td style="background-color:#1f1b16;padding:24px 32px;">
+                        <span style="color:#f4f1ea;font-size:20px;font-weight:600;letter-spacing:0.5px;">Lumiris</span>
+                    </td>
+                </tr>
+                <tr>
+                    <td style="padding:32px;color:#1f1b16;font-size:15px;line-height:1.6;">
+                        <h1 style="font-size:19px;margin:0 0 16px;color:#1f1b16;" th:text="${title}">Titre</h1>
+                        <div th:replace="${content}">Contenu</div>
+                    </td>
+                </tr>
+                <tr>
+                    <td style="padding:20px 32px;background-color:#f4f1ea;color:#8a8378;font-size:12px;">
+                        <p style="margin:0;">L'équipe Lumiris</p>
+                    </td>
+                </tr>
+            </table>
+        </td>
+    </tr>
+</table>
+</body>
+</html>

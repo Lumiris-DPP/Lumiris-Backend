@@ -119,6 +119,57 @@ Clés attendues dans `.env` : `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`,
 
 ---
 
+## ⛓️ Blockchain Setup (Ethereum Sepolia)
+
+Each DPP created is automatically anchored on the **Ethereum Sepolia testnet** via an Alchemy RPC node. The SHA-256 hash of the DPP data is stored in the transaction's calldata, making it externally verifiable and tamper-proof.
+
+### Prerequisites
+
+1. **Create an Alchemy account** at [alchemy.com](https://www.alchemy.com) and create a new app on **Ethereum Sepolia**. Copy the HTTPS RPC URL (looks like `https://eth-sepolia.g.alchemy.com/v2/YOUR_KEY`).
+
+2. **Create a MetaMask wallet** and switch to the **Sepolia testnet**. Export your private key (Account > Settings > Export private key) — MetaMask exports it with a `0x` prefix, **remove the `0x`** before using it.
+
+3. **Get Sepolia ETH** (testnet tokens, free) at [cloud.google.com/application/web3/faucet/ethereum/sepolia](https://cloud.google.com/application/web3/faucet/ethereum/sepolia). You need a small amount to pay gas fees for each anchor transaction.
+
+### Configuration
+
+Add the two variables to your `.env` file:
+
+```env
+BLOCKCHAIN_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/YOUR_ALCHEMY_KEY
+BLOCKCHAIN_WALLET_PRIVATE_KEY=your_private_key_without_0x_prefix
+```
+
+> These variables are never committed — `.env` and `application-local.yaml` are gitignored.
+
+### How it works
+
+| Step | What happens |
+|------|-------------|
+| DPP created | SHA-256 hash computed from product fields, stored in DB with status `PENDING` |
+| After DB commit | Async job sends a transaction to Sepolia with the hash as calldata |
+| Receipt confirmed | Status updated to `ANCHORED`, transaction hash stored in DB |
+| `GET /api/dpp-forms/{id}/verify` | Retrieves hash from blockchain and compares to recomputed hash |
+
+### Verification response
+
+```json
+{
+  "id": "...",
+  "verified": true,
+  "blockchainHash": "6b3ae768...",
+  "recomputedHash": "6b3ae768...",
+  "blockchainTxHash": "0xdeadbeef...",
+  "anchorStatus": "ANCHORED",
+  "message": null
+}
+```
+
+- `verified: true` → the DPP data has not been tampered with since anchoring
+- `anchorStatus` can be `PENDING`, `ANCHORED`, or `FAILED`
+
+---
+
 ## 📦 Stockage (MinIO) & ⛓️ Blockchain (Ethereum Sepolia)
 
 - **Stockage fichiers** : les photos produit et documents DPP sont uploadés sur

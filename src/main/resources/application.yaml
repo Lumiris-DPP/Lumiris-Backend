@@ -42,6 +42,12 @@ app:
     mail:
         from: ${MAIL_FROM:noreply@lumiris.com}
 
+    # Origine de l'app consommateur (Vision/mobile), qui sert /p et les autres routes publiques.
+    # Les hrefs de notification restent relatifs pour l'in-app (voir Notification.href) — c'est
+    # uniquement pour les emails, qui n'ont pas d'origine à préfixer eux-mêmes, qu'on a besoin
+    # d'une URL absolue.
+    frontend-url: ${FRONTEND_URL:http://localhost:3002}
+
     # Cycle de vie des commandes marketplace. return-window-days porte le droit de rétractation
     # légal (14 jours) ; les deux échéances suivantes empêchent une commande de rester ouverte
     # indéfiniment quand ni l'acheteur ni le transporteur ne confirment quoi que ce soit.

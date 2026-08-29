@@ -11,6 +11,7 @@ import com.minoh.lumiris_backend.exception.ResourceNotFoundException;
 import com.minoh.lumiris_backend.exception.SubscriptionRequiredException;
 import com.minoh.lumiris_backend.repository.PassportAnalyticsEventRepository;
 import com.minoh.lumiris_backend.repository.DppFormRepository;
+import com.minoh.lumiris_backend.repository.DppScanNotificationThrottleRepository;
 import com.minoh.lumiris_backend.repository.SubscriptionRepository;
 import com.minoh.lumiris_backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -18,6 +19,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
@@ -30,8 +32,12 @@ public class AtelierStatsService {
 
     private final PassportAnalyticsEventRepository passportAnalyticsEventRepository;
     private final DppFormRepository dppFormRepository;
+    private final DppScanNotificationThrottleRepository scanThrottleRepository;
     private final SubscriptionRepository subscriptionRepository;
     private final UserRepository userRepository;
+    private final NotificationService notificationService;
+
+    private static final Duration SCAN_NOTIFICATION_COOLDOWN = Duration.ofMinutes(15);
 
     @Transactional
     public void track(String publicCode, String rawType) {
@@ -43,9 +49,23 @@ public class AtelierStatsService {
 
     // Called from the (read-only) public DPP lookup, so a "scan" is tracked with zero extra
     // integration work from VISION/WEB. Runs in its own transaction, independent of the caller's.
+    // form vient de la transaction (readOnly) de l'appelant : son user est peut-être un proxy non
+    // initialisé, inutilisable une fois passé dans cette transaction REQUIRES_NEW (nouvelle
+    // session). getId() sur un proxy est sans risque (pas d'accès DB) ; on recharge l'utilisateur
+    // pour de vrai avant de le notifier.
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void trackScan(DppForm form) {
         passportAnalyticsEventRepository.save(new PassportAnalyticsEvent(form, PassportAnalyticsEventType.SCAN));
+
+        // Chaque scan est compté ci-dessus, mais la notification est throttlée : rouvrir le lien
+        // plusieurs fois de suite (ou un scanner de sécurité de client mail qui pré-visite les
+        // liens sortants) ne doit pas spammer le propriétaire d'un email par scan.
+        Instant now = Instant.now();
+        if (scanThrottleRepository.claim(form.getId(), now, now.minus(SCAN_NOTIFICATION_COOLDOWN)) == 0) {
+            return;
+        }
+        userRepository.findById(form.getUser().getId()).ifPresent(owner ->
+                notificationService.notifyPassportScanned(owner, form.getProductName(), "/p?c=" + form.getPublicCode()));
     }
 
     @Transactional(readOnly = true)

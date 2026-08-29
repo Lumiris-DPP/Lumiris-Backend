@@ -4,8 +4,8 @@
 <body>
 <main>
     <p>Bonjour <span th:text="${name}">Nom</span>,</p>
-    <p>Le paiement de <strong th:text="${amount}">Montant</strong> pour la commande
-        <span th:text="${orderRef}">Référence</span> n'a pas pu être traité.</p>
+    <p>Le paiement de <strong th:text="${amount}">Montant</strong>
+        (réf. <span th:text="${orderRef}">Référence</span>) n'a pas pu être traité.</p>
     <p>Merci de vérifier votre moyen de paiement ou de réessayer.<br/>L'équipe Lumiris</p>
 </main>
 </body>

@@ -168,6 +168,38 @@
 			<artifactId>spring-boot-starter-thymeleaf</artifactId>
 		</dependency>
 
+		<!-- Web Push (VAPID). Exclut bcprov-jdk15on : ce projet standardise sur bcprov-jdk18on
+		     (voir dependencyManagement) et les deux artefacts ne peuvent pas coexister sur le
+		     classpath (mêmes packages org.bouncycastle.*). -->
+		<dependency>
+			<groupId>nl.martijndwars</groupId>
+			<artifactId>web-push</artifactId>
+			<version>5.1.2</version>
+			<exclusions>
+				<exclusion>
+					<groupId>org.bouncycastle</groupId>
+					<artifactId>bcprov-jdk15on</artifactId>
+				</exclusion>
+			</exclusions>
+		</dependency>
+		<dependency>
+			<groupId>org.bouncycastle</groupId>
+			<artifactId>bcprov-jdk18on</artifactId>
+		</dependency>
+		<!-- web-push ne déclare httpasyncclient/jose4j (donc org.apache.http.HttpResponse et
+		     JoseException, présents dans la signature de PushService#send) qu'en scope runtime —
+		     on les remonte en compile pour pouvoir référencer ces types. -->
+		<dependency>
+			<groupId>org.apache.httpcomponents</groupId>
+			<artifactId>httpcore</artifactId>
+			<version>4.4.16</version>
+		</dependency>
+		<dependency>
+			<groupId>org.bitbucket.b_c</groupId>
+			<artifactId>jose4j</artifactId>
+			<version>0.7.9</version>
+		</dependency>
+
 		<!-- Web3j (Ethereum) -->
 		<dependency>
 			<groupId>org.web3j</groupId>

@@ -103,6 +103,15 @@ minio:
 resend:
     api-key: ${RESEND_API_KEY:}
 
+# Web Push (VAPID). Vide par défaut : PushNotificationService détecte l'absence de clés et
+# n'envoie rien, sans bloquer — même logique que Resend/Sendcloud ci-dessus. Générer une paire
+# avec `npx web-push generate-vapid-keys`.
+webpush:
+    vapid:
+        public-key: ${VAPID_PUBLIC_KEY:}
+        private-key: ${VAPID_PRIVATE_KEY:}
+        subject: ${VAPID_SUBJECT:mailto:contact@lumiris.app}
+
 # Nominatim (OpenStreetMap) usage policy requires a descriptive User-Agent identifying the app.
 geocoding:
     user-agent: ${GEOCODING_USER_AGENT:Lumiris/1.0 (contact@lumiris.app)}

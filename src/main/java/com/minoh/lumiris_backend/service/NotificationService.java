@@ -19,9 +19,10 @@ import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 
-// Notifications in-app + email. Une transition de commande appelle `notify` une fois par
-// destinataire ; l'écriture en base fait foi, l'email n'est qu'un rappel best-effort (une panne
-// SMTP ne doit jamais faire échouer — ni annuler — la transition métier qui l'a déclenché).
+// Notifications in-app + email + push. Une transition de commande appelle `notify` une fois par
+// destinataire ; l'écriture en base fait foi, l'email et le push ne sont que des rappels
+// best-effort (une panne SMTP/Web Push ne doit jamais faire échouer — ni annuler — la transition
+// métier qui l'a déclenché).
 @Service
 @RequiredArgsConstructor
 public class NotificationService {
@@ -32,6 +33,7 @@ public class NotificationService {
     private final NotificationRepository notificationRepository;
     private final UserRepository userRepository;
     private final MailService mailService;
+    private final PushNotificationService pushNotificationService;
     private final NotificationPreferenceService preferenceService;
 
     @Transactional
@@ -42,6 +44,7 @@ public class NotificationService {
         }
         save(recipient, type, title, body, href, order);
         sendMail(recipient, type, () -> mailService.sendNotification(recipient.getEmail(), title, body));
+        sendPush(recipient, type, title, body, href);
     }
 
     @Transactional
@@ -54,6 +57,7 @@ public class NotificationService {
         save(recipient, NotificationType.CERTIFICATE_EXPIRING, title, body, null, null);
         sendMail(recipient, NotificationType.CERTIFICATE_EXPIRING, () ->
                 mailService.sendCertificateExpiring(recipient.getEmail(), recipient.getName(), certificateName, expiryDate));
+        sendPush(recipient, NotificationType.CERTIFICATE_EXPIRING, title, body, null);
     }
 
     @Transactional
@@ -66,6 +70,7 @@ public class NotificationService {
         save(recipient, NotificationType.RETOUCH_ACCEPTED, title, body, href, null);
         sendMail(recipient, NotificationType.RETOUCH_ACCEPTED, () ->
                 mailService.sendRetouchAccepted(recipient.getEmail(), recipient.getName(), itemName));
+        sendPush(recipient, NotificationType.RETOUCH_ACCEPTED, title, body, href);
     }
 
     @Transactional
@@ -80,6 +85,7 @@ public class NotificationService {
         save(recipient, NotificationType.PAYMENT_SUCCEEDED, title, body, null, order);
         sendMail(recipient, NotificationType.PAYMENT_SUCCEEDED, () ->
                 mailService.sendPaymentSuccess(recipient.getEmail(), recipient.getName(), amount, orderRef));
+        sendPush(recipient, NotificationType.PAYMENT_SUCCEEDED, title, body, null);
     }
 
     @Transactional
@@ -94,6 +100,7 @@ public class NotificationService {
         save(recipient, NotificationType.PAYMENT_FAILED, title, body, null, order);
         sendMail(recipient, NotificationType.PAYMENT_FAILED, () ->
                 mailService.sendPaymentFailed(recipient.getEmail(), recipient.getName(), amount, orderRef));
+        sendPush(recipient, NotificationType.PAYMENT_FAILED, title, body, null);
     }
 
     @Transactional
@@ -106,6 +113,7 @@ public class NotificationService {
         save(recipient, NotificationType.PASSPORT_PUBLISHED, title, body, passportUrl, null);
         sendMail(recipient, NotificationType.PASSPORT_PUBLISHED, () ->
                 mailService.sendPassportPublished(recipient.getEmail(), recipient.getName(), passportName, passportUrl));
+        sendPush(recipient, NotificationType.PASSPORT_PUBLISHED, title, body, passportUrl);
     }
 
     @Transactional
@@ -118,6 +126,7 @@ public class NotificationService {
         save(recipient, NotificationType.PASSPORT_SCANNED, title, body, passportUrl, null);
         sendMail(recipient, NotificationType.PASSPORT_SCANNED, () ->
                 mailService.sendPassportScanned(recipient.getEmail(), recipient.getName(), passportName, passportUrl));
+        sendPush(recipient, NotificationType.PASSPORT_SCANNED, title, body, passportUrl);
     }
 
     private void save(User recipient, NotificationType type, String title, String body,
@@ -142,6 +151,18 @@ public class NotificationService {
             send.run();
         } catch (RuntimeException e) {
             log.warn("Notification {} enregistrée mais email non parti pour {}: {}",
+                    type, recipient.getId(), e.getMessage());
+        }
+    }
+
+    private void sendPush(User recipient, NotificationType type, String title, String body, String href) {
+        if (!preferenceService.isPushEnabled(recipient, type)) {
+            return;
+        }
+        try {
+            pushNotificationService.send(recipient, title, body, href);
+        } catch (RuntimeException e) {
+            log.warn("Notification {} enregistrée mais push non parti pour {}: {}",
                     type, recipient.getId(), e.getMessage());
         }
     }

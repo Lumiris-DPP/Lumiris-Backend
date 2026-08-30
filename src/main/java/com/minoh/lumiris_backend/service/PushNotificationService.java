@@ -6,6 +6,7 @@ import com.minoh.lumiris_backend.entity.User;
 import com.minoh.lumiris_backend.repository.PushSubscriptionRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import nl.martijndwars.webpush.Encoding;
 import nl.martijndwars.webpush.Notification;
 import nl.martijndwars.webpush.PushService;
 import nl.martijndwars.webpush.Subscription;
@@ -64,12 +65,19 @@ public class PushNotificationService {
         try {
             Subscription webPushSubscription = new Subscription(subscription.getEndpoint(),
                     new Subscription.Keys(subscription.getP256dh(), subscription.getAuth()));
-            HttpResponse response = service.send(new Notification(webPushSubscription, payload));
+            // AES128GCM (RFC 8291) : le send(Notification) sans argument par défaut sur AESGCM,
+            // le brouillon pré-RFC que FCM rejette désormais (Crypto-Key header invalide).
+            HttpResponse response = service.send(new Notification(webPushSubscription, payload), Encoding.AES128GCM);
             int status = response.getStatusLine().getStatusCode();
             // 404/410 : le navigateur a révoqué cet abonnement (désinstallation, expiration...) —
             // il ne sert plus à rien de le garder.
             if (status == 404 || status == 410) {
                 subscriptionRepository.delete(subscription);
+            } else if (status < 200 || status >= 300) {
+                String responseBody = response.getEntity() != null
+                        ? new String(response.getEntity().getContent().readAllBytes())
+                        : "";
+                log.warn("Push non envoyé (abonnement {}): HTTP {} — {}", subscription.getId(), status, responseBody);
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();

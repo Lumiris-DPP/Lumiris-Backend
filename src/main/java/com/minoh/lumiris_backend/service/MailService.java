@@ -52,23 +52,6 @@ public class MailService {
         send(to, subject, "email/registration-rejected", context);
     }
 
-    public void sendCertificateExpiring(String to, String name, String certificateName, String expiryDate) {
-        String subject = "Votre certificat arrive à expiration";
-        Context context = titledContext(subject);
-        context.setVariable("name", name);
-        context.setVariable("certificateName", certificateName);
-        context.setVariable("expiryDate", expiryDate);
-        send(to, subject, "email/certificate-expiring", context);
-    }
-
-    public void sendRetouchAccepted(String to, String name, String itemName) {
-        String subject = "Votre retouche a été acceptée";
-        Context context = titledContext(subject);
-        context.setVariable("name", name);
-        context.setVariable("itemName", itemName);
-        send(to, subject, "email/retouch-accepted", context);
-    }
-
     public void sendPaymentSuccess(String to, String name, String amount, String orderRef) {
         String subject = "Paiement confirmé";
         Context context = titledContext(subject);

@@ -11,8 +11,7 @@ public enum NotificationCategory {
     FAVORITES,
     WARDROBE,
     PAYMENTS,
-    PASSPORT,
-    ATELIER;
+    PASSPORT;
 
     private static final Map<NotificationType, NotificationCategory> BY_TYPE = new EnumMap<>(NotificationType.class);
 
@@ -40,15 +39,12 @@ public enum NotificationCategory {
 
         BY_TYPE.put(NotificationType.WARDROBE_CARE, WARDROBE);
         BY_TYPE.put(NotificationType.WARDROBE_WARRANTY_ENDING, WARDROBE);
-        BY_TYPE.put(NotificationType.CERTIFICATE_EXPIRING, WARDROBE);
 
         BY_TYPE.put(NotificationType.PAYMENT_SUCCEEDED, PAYMENTS);
         BY_TYPE.put(NotificationType.PAYMENT_FAILED, PAYMENTS);
 
         BY_TYPE.put(NotificationType.PASSPORT_PUBLISHED, PASSPORT);
         BY_TYPE.put(NotificationType.PASSPORT_SCANNED, PASSPORT);
-
-        BY_TYPE.put(NotificationType.RETOUCH_ACCEPTED, ATELIER);
     }
 
     // Volontairement stricte : un NotificationType oublié ici doit casser au lieu de silencieusement

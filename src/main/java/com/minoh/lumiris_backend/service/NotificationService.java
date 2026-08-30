@@ -51,32 +51,6 @@ public class NotificationService {
         sendPush(recipient, type, title, body, href);
     }
 
-    @Transactional
-    public void notifyCertificateExpiring(User recipient, String certificateName, String expiryDate) {
-        if (recipient == null) {
-            return;
-        }
-        String title = "Certificat bientôt expiré";
-        String body = "Votre certificat " + certificateName + " arrive à expiration le " + expiryDate + ".";
-        save(recipient, NotificationType.CERTIFICATE_EXPIRING, title, body, null, null);
-        sendMail(recipient, NotificationType.CERTIFICATE_EXPIRING, () ->
-                mailService.sendCertificateExpiring(recipient.getEmail(), recipient.getName(), certificateName, expiryDate));
-        sendPush(recipient, NotificationType.CERTIFICATE_EXPIRING, title, body, null);
-    }
-
-    @Transactional
-    public void notifyRetouchAccepted(User recipient, String itemName, String href) {
-        if (recipient == null) {
-            return;
-        }
-        String title = "Retouche acceptée";
-        String body = "Votre demande de retouche pour " + itemName + " a été acceptée.";
-        save(recipient, NotificationType.RETOUCH_ACCEPTED, title, body, href, null);
-        sendMail(recipient, NotificationType.RETOUCH_ACCEPTED, () ->
-                mailService.sendRetouchAccepted(recipient.getEmail(), recipient.getName(), itemName));
-        sendPush(recipient, NotificationType.RETOUCH_ACCEPTED, title, body, href);
-    }
-
     // Commande marketplace : gardé pour un futur appelant (ORDER_PAID couvre déjà cet événement
     // avec plus de contexte aujourd'hui — voir OrderLifecycleService.markPaid). Le seul appelant
     // actuel est la surcharge par abonnement ci-dessous, sans commande à lier.

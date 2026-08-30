@@ -26,7 +26,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class MailService {
 
-    private static final int DEAD_PAGE_SIZE = 30;
+    private static final int LIST_PAGE_SIZE = 30;
 
     private final EmailOutboxRepository emailOutboxRepository;
 
@@ -114,8 +114,19 @@ public class MailService {
     // DLQ : lignes qu'EmailOutboxDispatcher a abandonnées après max_attempts échecs.
     public List<EmailOutboxResponse> listDead(int page) {
         return emailOutboxRepository
-                .findByStatusOrderByCreatedAtDesc(EmailOutboxStatus.DEAD, PageRequest.of(page, DEAD_PAGE_SIZE))
+                .findByStatusOrderByCreatedAtDesc(EmailOutboxStatus.DEAD, PageRequest.of(page, LIST_PAGE_SIZE))
                 .stream().map(EmailOutboxResponse::from).toList();
+    }
+
+    // Log d'envoi admin (tous statuts) — status et recipientEmail sont des filtres optionnels.
+    public List<EmailOutboxResponse> list(EmailOutboxStatus status, String recipientEmail, int page) {
+        return emailOutboxRepository
+                .search(status, blankToNull(recipientEmail), PageRequest.of(page, LIST_PAGE_SIZE))
+                .stream().map(EmailOutboxResponse::from).toList();
+    }
+
+    private String blankToNull(String value) {
+        return (value == null || value.isBlank()) ? null : value;
     }
 
     // Relance manuelle d'une ligne DLQ : repart en PENDING, immédiatement due, tentatives à zéro.

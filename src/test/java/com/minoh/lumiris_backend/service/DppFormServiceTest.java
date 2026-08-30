@@ -156,7 +156,8 @@ class DppFormServiceTest {
                 List.of("S", "M"), List.of("Écru"),
                 List.of(), List.of(), "none",
                 "2026-01-01", "LOT-001", null, "SKU-001", true,
-                null, 30, "2 ans", 24, true, "Rapporter en boutique", 1
+                null, 30, "2 ans", 24, true, "Rapporter en boutique", 1,
+                null, null
         );
 
         DppFormCreatedResponse response = service.create(request, Collections.emptyMap(), USER_EMAIL, false);
@@ -172,7 +173,8 @@ class DppFormServiceTest {
                 List.of("M", "L", "XL"), List.of("Beige", "Noir"),
                 List.of(), List.of("wash-30"), null,
                 "2026-03-15", "LOT-002", "1234567890123", "SKU-002", false,
-                null, null, null, null, false, null, 1
+                null, null, null, null, false, null, 1,
+                null, null
         );
 
         DppFormCreatedResponse response = service.create(request, Collections.emptyMap(), USER_EMAIL, false);
@@ -198,7 +200,8 @@ class DppFormServiceTest {
                 null, null,
                 List.of(), List.of(), null,
                 null, null, null, null, false,
-                null, null, null, null, false, null, 1
+                null, null, null, null, false, null, 1,
+                null, null
         );
 
         DppFormCreatedResponse response = service.create(request, Collections.emptyMap(), USER_EMAIL, true);
@@ -217,7 +220,8 @@ class DppFormServiceTest {
                 List.of("S"), List.of("Écru"),
                 List.of(), List.of(), "none",
                 "2026-01-01", "LOT-001", null, "SKU-001", true,
-                null, 30, "2 ans", 24, true, "Rapporter en boutique", 1
+                null, 30, "2 ans", 24, true, "Rapporter en boutique", 1,
+                null, null
         );
 
         assertThatThrownBy(() -> service.create(request, Collections.emptyMap(), USER_EMAIL, false))
@@ -328,7 +332,8 @@ class DppFormServiceTest {
                 null, null,
                 List.of(new MaterialRequest("wool", 100, "France")), List.of(), null,
                 "2026-01-01", null, null, null, false,
-                null, null, null, null, false, null, 1
+                null, null, null, null, false, null, 1,
+                null, null
         );
     }
 

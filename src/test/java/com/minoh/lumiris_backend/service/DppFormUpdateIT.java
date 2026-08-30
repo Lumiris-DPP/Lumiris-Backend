@@ -109,7 +109,8 @@ class DppFormUpdateIT {
                 List.of("M"), List.of("Écru"),
                 List.of(), List.of(), null,
                 "2026-01-01", "LOT-001", null, "SKU-001", false,
-                null, null, null, null, false, null, 1
+                null, null, null, null, false, null, 1,
+                null, null
         );
     }
 

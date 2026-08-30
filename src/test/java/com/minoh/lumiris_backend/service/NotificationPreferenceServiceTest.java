@@ -119,14 +119,14 @@ class NotificationPreferenceServiceTest {
     void update_shouldOverwriteExistingPreference() {
         NotificationPreference existing = new NotificationPreference();
         existing.setUser(user);
-        existing.setCategory(NotificationCategory.ATELIER);
+        existing.setCategory(NotificationCategory.WARDROBE);
         existing.setEmailEnabled(true);
         existing.setPushEnabled(true);
-        when(preferenceRepository.findByUser_IdAndCategory(user.getId(), NotificationCategory.ATELIER))
+        when(preferenceRepository.findByUser_IdAndCategory(user.getId(), NotificationCategory.WARDROBE))
                 .thenReturn(Optional.of(existing));
         when(preferenceRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        NotificationPreferenceResponse response = service.update(USER_EMAIL, NotificationCategory.ATELIER,
+        NotificationPreferenceResponse response = service.update(USER_EMAIL, NotificationCategory.WARDROBE,
                 new NotificationPreferenceUpdateRequest(false, false));
 
         assertThat(response.emailEnabled()).isFalse();

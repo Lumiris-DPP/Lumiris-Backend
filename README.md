@@ -119,6 +119,40 @@ Clés attendues dans `.env` : `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`,
 
 ---
 
+## 🔔 Notifications (email + push)
+
+Notifications transactionnelles envoyées via une file d'attente (`email_outbox`,
+retry exponentiel + DLQ, `EmailOutboxDispatcher` toutes les 30s) — log d'envoi
+consultable côté admin (`GET /api/admin/emails`).
+
+**Email (Resend)** — `RESEND_API_KEY` : vide en local, `MailService` s'efface
+silencieusement sans clé (aucun email ne part, mais l'outbox et les notifications
+in-app fonctionnent normalement).
+
+**Push (Web Push / VAPID)** — identifie le serveur auprès des navigateurs pour
+autoriser l'envoi de notifications push (standard [RFC 8292](https://datatracker.ietf.org/doc/html/rfc8292)).
+Vide en local par défaut, même comportement : `PushNotificationService` s'efface
+sans clé.
+
+Génère une paire **une seule fois par environnement**, jamais à chaque déploiement :
+
+```bash
+npx web-push generate-vapid-keys
+```
+
+```env
+VAPID_PUBLIC_KEY=...
+VAPID_PRIVATE_KEY=...
+VAPID_SUBJECT=mailto:contact@lumiris.app
+```
+
+> ⚠️ Ne jamais régénérer la paire une fois en prod : ça invalide instantanément tous
+> les abonnements push existants des utilisateurs (ils devraient tous se réabonner).
+> La clé publique est servie dynamiquement au front via `GET /api/push/vapid-public-key`
+> — rien à synchroniser manuellement côté front.
+
+---
+
 ## ⛓️ Blockchain Setup (Ethereum Sepolia)
 
 Each DPP created is automatically anchored on the **Ethereum Sepolia testnet** via an Alchemy RPC node. The SHA-256 hash of the DPP data is stored in the transaction's calldata, making it externally verifiable and tamper-proof.

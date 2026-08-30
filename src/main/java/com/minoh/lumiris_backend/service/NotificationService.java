@@ -13,6 +13,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
@@ -20,10 +21,12 @@ import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 
-// Notifications in-app + email + push. Une transition de commande appelle `notify` une fois par
-// destinataire ; l'écriture en base fait foi, l'email et le push ne sont que des rappels
-// best-effort (une panne SMTP/Web Push ne doit jamais faire échouer — ni annuler — la transition
-// métier qui l'a déclenché).
+// Notifications in-app + email + push. Une transition métier appelle `notify*` une fois par
+// destinataire. Chaque appel tourne dans sa PROPRE transaction (REQUIRES_NEW), toute exception
+// (écriture en base, email, push) y est avalée : une panne côté notifications ne doit jamais faire
+// échouer — ni annuler — la transaction métier qui l'a déclenché (ex. publication d'un passeport).
+// Contrepartie assumée : si l'appelant échoue juste après l'appel, la notification reste écrite
+// malgré tout — cas rare, sans commune mesure avec bloquer l'action métier pour un souci de notif.
 @Service
 @RequiredArgsConstructor
 public class NotificationService {
@@ -40,27 +43,31 @@ public class NotificationService {
     @Value("${app.frontend-url}")
     private String frontendUrl;
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void notify(User recipient, NotificationType type, String title, String body,
                        String href, MarketplaceOrder order) {
         if (recipient == null) {
             return;
         }
-        save(recipient, type, title, body, href, order);
-        sendMail(recipient, type, () -> mailService.sendNotification(recipient.getEmail(), title, body));
-        sendPush(recipient, type, title, body, href);
+        try {
+            save(recipient, type, title, body, href, order);
+            sendMail(recipient, type, () -> mailService.sendNotification(recipient.getEmail(), title, body));
+            sendPush(recipient, type, title, body, href);
+        } catch (RuntimeException e) {
+            log.warn("Notification {} non traitée pour {}: {}", type, recipient.getId(), e.getMessage());
+        }
     }
 
     // Commande marketplace : gardé pour un futur appelant (ORDER_PAID couvre déjà cet événement
     // avec plus de contexte aujourd'hui — voir OrderLifecycleService.markPaid). Le seul appelant
     // actuel est la surcharge par abonnement ci-dessous, sans commande à lier.
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void notifyPaymentSuccess(User recipient, MarketplaceOrder order) {
         notifyPaymentSuccess(recipient, formatAmount(order), orderRef(order), order);
     }
 
     // Paiement d'abonnement (facture Stripe) : pas de MarketplaceOrder à lier.
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void notifyPaymentSuccess(User recipient, String amount, String reference) {
         notifyPaymentSuccess(recipient, amount, reference, null);
     }
@@ -69,20 +76,24 @@ public class NotificationService {
         if (recipient == null) {
             return;
         }
-        String title = "Paiement confirmé";
-        String body = "Votre paiement de " + amount + " (réf. " + reference + ") a bien été validé.";
-        save(recipient, NotificationType.PAYMENT_SUCCEEDED, title, body, null, order);
-        sendMail(recipient, NotificationType.PAYMENT_SUCCEEDED, () ->
-                mailService.sendPaymentSuccess(recipient.getEmail(), recipient.getName(), amount, reference));
-        sendPush(recipient, NotificationType.PAYMENT_SUCCEEDED, title, body, null);
+        try {
+            String title = "Paiement confirmé";
+            String body = "Votre paiement de " + amount + " (réf. " + reference + ") a bien été validé.";
+            save(recipient, NotificationType.PAYMENT_SUCCEEDED, title, body, null, order);
+            sendMail(recipient, NotificationType.PAYMENT_SUCCEEDED, () ->
+                    mailService.sendPaymentSuccess(recipient.getEmail(), recipient.getName(), amount, reference));
+            sendPush(recipient, NotificationType.PAYMENT_SUCCEEDED, title, body, null);
+        } catch (RuntimeException e) {
+            log.warn("Notification PAYMENT_SUCCEEDED non traitée pour {}: {}", recipient.getId(), e.getMessage());
+        }
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void notifyPaymentFailed(User recipient, MarketplaceOrder order) {
         notifyPaymentFailed(recipient, formatAmount(order), orderRef(order), order);
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void notifyPaymentFailed(User recipient, String amount, String reference) {
         notifyPaymentFailed(recipient, amount, reference, null);
     }
@@ -91,38 +102,50 @@ public class NotificationService {
         if (recipient == null) {
             return;
         }
-        String title = "Échec du paiement";
-        String body = "Le paiement de " + amount + " (réf. " + reference + ") n'a pas pu être traité.";
-        save(recipient, NotificationType.PAYMENT_FAILED, title, body, null, order);
-        sendMail(recipient, NotificationType.PAYMENT_FAILED, () ->
-                mailService.sendPaymentFailed(recipient.getEmail(), recipient.getName(), amount, reference));
-        sendPush(recipient, NotificationType.PAYMENT_FAILED, title, body, null);
+        try {
+            String title = "Échec du paiement";
+            String body = "Le paiement de " + amount + " (réf. " + reference + ") n'a pas pu être traité.";
+            save(recipient, NotificationType.PAYMENT_FAILED, title, body, null, order);
+            sendMail(recipient, NotificationType.PAYMENT_FAILED, () ->
+                    mailService.sendPaymentFailed(recipient.getEmail(), recipient.getName(), amount, reference));
+            sendPush(recipient, NotificationType.PAYMENT_FAILED, title, body, null);
+        } catch (RuntimeException e) {
+            log.warn("Notification PAYMENT_FAILED non traitée pour {}: {}", recipient.getId(), e.getMessage());
+        }
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void notifyPassportPublished(User recipient, String passportName, String passportUrl) {
         if (recipient == null) {
             return;
         }
-        String title = "Passeport produit publié";
-        String body = "Le passeport produit " + passportName + " est désormais publié.";
-        save(recipient, NotificationType.PASSPORT_PUBLISHED, title, body, passportUrl, null);
-        sendMail(recipient, NotificationType.PASSPORT_PUBLISHED, () -> mailService.sendPassportPublished(
-                recipient.getEmail(), recipient.getName(), passportName, absoluteUrl(passportUrl)));
-        sendPush(recipient, NotificationType.PASSPORT_PUBLISHED, title, body, passportUrl);
+        try {
+            String title = "Passeport produit publié";
+            String body = "Le passeport produit " + passportName + " est désormais publié.";
+            save(recipient, NotificationType.PASSPORT_PUBLISHED, title, body, passportUrl, null);
+            sendMail(recipient, NotificationType.PASSPORT_PUBLISHED, () -> mailService.sendPassportPublished(
+                    recipient.getEmail(), recipient.getName(), passportName, absoluteUrl(passportUrl)));
+            sendPush(recipient, NotificationType.PASSPORT_PUBLISHED, title, body, passportUrl);
+        } catch (RuntimeException e) {
+            log.warn("Notification PASSPORT_PUBLISHED non traitée pour {}: {}", recipient.getId(), e.getMessage());
+        }
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void notifyPassportScanned(User recipient, String passportName, String passportUrl) {
         if (recipient == null) {
             return;
         }
-        String title = "Passeport produit scanné";
-        String body = "Votre passeport produit " + passportName + " vient d'être scanné.";
-        save(recipient, NotificationType.PASSPORT_SCANNED, title, body, passportUrl, null);
-        sendMail(recipient, NotificationType.PASSPORT_SCANNED, () -> mailService.sendPassportScanned(
-                recipient.getEmail(), recipient.getName(), passportName, absoluteUrl(passportUrl)));
-        sendPush(recipient, NotificationType.PASSPORT_SCANNED, title, body, passportUrl);
+        try {
+            String title = "Passeport produit scanné";
+            String body = "Votre passeport produit " + passportName + " vient d'être scanné.";
+            save(recipient, NotificationType.PASSPORT_SCANNED, title, body, passportUrl, null);
+            sendMail(recipient, NotificationType.PASSPORT_SCANNED, () -> mailService.sendPassportScanned(
+                    recipient.getEmail(), recipient.getName(), passportName, absoluteUrl(passportUrl)));
+            sendPush(recipient, NotificationType.PASSPORT_SCANNED, title, body, passportUrl);
+        } catch (RuntimeException e) {
+            log.warn("Notification PASSPORT_SCANNED non traitée pour {}: {}", recipient.getId(), e.getMessage());
+        }
     }
 
     private void save(User recipient, NotificationType type, String title, String body,

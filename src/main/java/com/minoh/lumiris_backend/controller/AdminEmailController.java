@@ -1,6 +1,7 @@
 package com.minoh.lumiris_backend.controller;
 
 import com.minoh.lumiris_backend.dto.out.EmailOutboxResponse;
+import com.minoh.lumiris_backend.entity.EmailOutboxStatus;
 import com.minoh.lumiris_backend.service.MailService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -21,6 +22,16 @@ import java.util.UUID;
 public class AdminEmailController {
 
     private final MailService mailService;
+
+    // Log d'envoi complet, tous statuts (PENDING/SENT/DEAD). status et recipientEmail filtrent en
+    // option — la vue DLQ ci-dessous équivaut à ?status=DEAD, gardée telle quelle en plus pour la
+    // compatibilité avec ce qui l'utilise déjà.
+    @GetMapping
+    ResponseEntity<List<EmailOutboxResponse>> list(@RequestParam(required = false) EmailOutboxStatus status,
+                                                    @RequestParam(required = false) String recipientEmail,
+                                                    @RequestParam(defaultValue = "0") int page) {
+        return ResponseEntity.ok(mailService.list(status, recipientEmail, page));
+    }
 
     // Lignes email_outbox passées en DLQ (status DEAD) après épuisement des tentatives de retry.
     @GetMapping("/dead")

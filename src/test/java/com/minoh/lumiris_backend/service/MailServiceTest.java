@@ -14,6 +14,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -21,6 +22,8 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -73,6 +76,27 @@ class MailServiceTest {
         assertThatThrownBy(() -> service.retryDead(id))
                 .isInstanceOf(ConflictException.class);
         verify(emailOutboxRepository, never()).save(any());
+    }
+
+    @Test
+    void list_shouldPassThroughStatusAndRecipientFilters() {
+        EmailOutbox outbox = deadOutbox();
+        when(emailOutboxRepository.search(eq(EmailOutboxStatus.SENT), eq("client"), any()))
+                .thenReturn(List.of(outbox));
+
+        List<EmailOutboxResponse> result = service.list(EmailOutboxStatus.SENT, "client", 0);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).id()).isEqualTo(id);
+    }
+
+    @Test
+    void list_shouldTreatBlankRecipientAsNoFilter() {
+        when(emailOutboxRepository.search(isNull(), isNull(), any())).thenReturn(List.of());
+
+        service.list(null, "  ", 0);
+
+        verify(emailOutboxRepository).search(isNull(), isNull(), any());
     }
 
     private EmailOutbox deadOutbox() {

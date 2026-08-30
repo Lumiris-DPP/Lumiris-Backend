@@ -79,6 +79,7 @@ public class DppFormService {
     private final QuotaService quotaService;
     private final DppAccessTokenService accessTokenService;
     private final NotificationService notificationService;
+    private final CertificateLibraryService certificateLibraryService;
 
     // Invariants minimaux d'un passeport PUBLIÉ (un brouillon reste volontairement tolérant). Défense
     // en profondeur : le front valide déjà, mais un publish direct / hors UI ne doit pas créer un
@@ -108,6 +109,7 @@ public class DppFormService {
         return Objects.requireNonNull(transactionTemplate.execute(status -> {
             User user = userRepository.findByEmail(userEmail)
                     .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+            resolveCertificateLibraryRefs(request, files, uploadedIds, user);
 
             // Billing gate: require an active passport-granting subscription within quota.
             // Inside the create transaction so assertCanCreate's SELECT ... FOR UPDATE is TOCTOU-safe.
@@ -148,12 +150,40 @@ public class DppFormService {
         }));
     }
 
+    // Rattache un certificat de la bibliothèque au lieu d'un nouvel upload : résout l'id de
+    // bibliothèque en fileId et l'ajoute à uploadedIds, indiscernable ensuite d'un fichier
+    // fraîchement uploadé pour saveDocuments (même principe que duplicate() réutilisant un
+    // StoredFile existant).
+    private void resolveCertificateLibraryRefs(DppFormRequest request, Map<String, MultipartFile> files,
+                                                Map<String, UUID> uploadedIds, User user) {
+        resolveCertificateLibraryRef(CertificateType.TRANSACTION, request.transactionCertLibraryId(),
+                files, uploadedIds, user);
+        resolveCertificateLibraryRef(CertificateType.ORIGIN, request.originCertLibraryId(),
+                files, uploadedIds, user);
+    }
+
+    private void resolveCertificateLibraryRef(CertificateType type, UUID libraryId,
+                                               Map<String, MultipartFile> files,
+                                               Map<String, UUID> uploadedIds, User user) {
+        if (libraryId == null) {
+            return;
+        }
+        String partName = type.documentType.partName;
+        MultipartFile raw = files.get(partName);
+        if (raw != null && !raw.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "Choisissez soit un nouveau fichier, soit un certificat de votre bibliothèque, pas les deux.");
+        }
+        uploadedIds.put(partName, certificateLibraryService.resolveForAttach(libraryId, type, user).getId());
+    }
+
     public DppFormCreatedResponse update(UUID id, DppFormRequest request, Map<String, MultipartFile> files,
                                          String userEmail) {
         Map<String, UUID> uploadedIds = uploadFiles(files, userEmail);
 
         return Objects.requireNonNull(transactionTemplate.execute(status -> {
             DppForm form = loadOwnedDraft(id, userEmail);
+            resolveCertificateLibraryRefs(request, files, uploadedIds, form.getUser());
 
             dppFormMapper.applyScalars(form, request);
 

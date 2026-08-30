@@ -1,6 +1,7 @@
 package com.minoh.lumiris_backend.dto.in;
 
 import java.util.List;
+import java.util.UUID;
 
 public record DppFormRequest(
         String productName,
@@ -27,5 +28,11 @@ public record DppFormRequest(
         Boolean isRepairable,
         String endOfLifeInstructions,
 
-        Integer quantity
+        Integer quantity,
+
+        // Rattachement d'un certificat déjà présent dans la bibliothèque de l'artisan, en
+        // alternative à l'upload d'un fichier neuf pour ce champ (voir DppFormService —
+        // fournir les deux pour le même slot est rejeté avec un 400).
+        UUID transactionCertLibraryId,
+        UUID originCertLibraryId
 ) {}

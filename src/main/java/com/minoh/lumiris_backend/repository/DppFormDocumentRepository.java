@@ -8,6 +8,8 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.UUID;
 
 public interface DppFormDocumentRepository extends JpaRepository<DppFormDocument, UUID> {
@@ -22,4 +24,15 @@ public interface DppFormDocumentRepository extends JpaRepository<DppFormDocument
     @Modifying
     @Query("delete from DppFormDocument d where d.dppForm = :form and d.documentType = :type")
     void deleteByDppFormAndDocumentType(@Param("form") DppForm form, @Param("type") DocumentType type);
+
+    interface FileUsageCount {
+        UUID getFileId();
+        long getCount();
+    }
+
+    // "Utilisé sur N passeport(s)" côté bibliothèque de certificats : distinct sur dppForm, un
+    // même fichier ne compte qu'une fois par passeport même s'il y figure sous deux DocumentType.
+    @Query("select d.file.id as fileId, count(distinct d.dppForm.id) as count "
+            + "from DppFormDocument d where d.file.id in :fileIds group by d.file.id")
+    List<FileUsageCount> countDistinctDppFormsByFileIds(@Param("fileIds") Collection<UUID> fileIds);
 }

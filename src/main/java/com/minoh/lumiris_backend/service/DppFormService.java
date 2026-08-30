@@ -78,6 +78,7 @@ public class DppFormService {
     private final BlockchainService blockchainService;
     private final QuotaService quotaService;
     private final DppAccessTokenService accessTokenService;
+    private final NotificationService notificationService;
 
     // Invariants minimaux d'un passeport PUBLIÉ (un brouillon reste volontairement tolérant). Défense
     // en profondeur : le front valide déjà, mais un publish direct / hors UI ne doit pas créer un
@@ -139,6 +140,8 @@ public class DppFormService {
                         .collect(Collectors.toSet());
                 saveIrisScore(savedForm, uploadedDocTypes);
                 anchorAfterCommit(savedForm.getId(), savedForm.getDataHash());
+                notificationService.notifyPassportPublished(savedForm.getUser(), savedForm.getProductName(),
+                        publicPath(savedForm));
             }
 
             return new DppFormCreatedResponse(savedForm.getId());
@@ -264,6 +267,7 @@ public class DppFormService {
 
         saveIrisScore(savedForm, savedForm.attachedDocumentTypes());
         anchorAfterCommit(savedForm.getId(), savedForm.getDataHash());
+        notificationService.notifyPassportPublished(savedForm.getUser(), savedForm.getProductName(), publicPath(savedForm));
 
         return new DppFormCreatedResponse(savedForm.getId());
     }
@@ -567,6 +571,12 @@ public class DppFormService {
                         storageService.getPresignedUrl(d.getFile().getId())
                 ))
                 .toList();
+    }
+
+    // Chemin relatif de la page publique du passeport (apps/mobile/app/p, route `?c=<code>`) — les
+    // hrefs de notification restent relatifs, le front préfixe (voir Notification.href).
+    private String publicPath(DppForm form) {
+        return "/p?c=" + form.getPublicCode();
     }
 
     private String generateUniquePublicCode() {

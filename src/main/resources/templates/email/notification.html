@@ -1,0 +1,10 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{email/_layout :: layout(title=${title}, content=~{::main})}">
+<body>
+<main>
+    <p style="white-space:pre-line;" th:text="${body}">Contenu</p>
+    <p>Retrouvez le détail dans votre espace Lumiris.<br/>L'équipe Lumiris</p>
+</main>
+</body>
+</html>

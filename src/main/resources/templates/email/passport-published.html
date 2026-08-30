@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{email/_layout :: layout(title=${title}, content=~{::main})}">
+<body>
+<main>
+    <p>Bonjour <span th:text="${name}">Nom</span>,</p>
+    <p>Le passeport produit <strong th:text="${passportName}">Produit</strong> est désormais publié
+        et accessible via son QR code.</p>
+    <p><a th:href="${passportUrl}" style="color:#1f1b16;">Consulter le passeport</a></p>
+    <p>L'équipe Lumiris</p>
+</main>
+</body>
+</html>

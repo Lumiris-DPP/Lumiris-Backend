@@ -24,5 +24,9 @@ public enum NotificationType {
     // Garde-Robe active : les seuls rappels qu'on puisse envoyer après la livraison sans rien
     // vendre — l'entretien tiré du passeport et la garantie qui s'achève.
     WARDROBE_CARE,
-    WARDROBE_WARRANTY_ENDING
+    WARDROBE_WARRANTY_ENDING,
+    PAYMENT_SUCCEEDED,
+    PAYMENT_FAILED,
+    PASSPORT_PUBLISHED,
+    PASSPORT_SCANNED
 }

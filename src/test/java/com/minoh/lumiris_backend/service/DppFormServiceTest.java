@@ -115,6 +115,9 @@ class DppFormServiceTest {
     @Mock
     private DppAccessTokenService accessTokenService;
 
+    @Mock
+    private NotificationService notificationService;
+
     @InjectMocks
     private DppFormService service;
 

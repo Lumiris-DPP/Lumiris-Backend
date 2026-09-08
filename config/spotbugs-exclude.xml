@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SpotBugs false positives / accepted findings. Keep each entry commented with why. -->
+<FindBugsFilter>
+    <!-- Spring @Autowired/@Value fields are framework-injected, not truly nullable at use. -->
+    <Match>
+        <Bug pattern="NP_UNWRITTEN_FIELD,UWF_UNWRITTEN_FIELD,NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE"/>
+        <Class name="~.*\.config\..*"/>
+    </Match>
+</FindBugsFilter>

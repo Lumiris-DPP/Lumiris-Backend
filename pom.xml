@@ -324,4 +324,57 @@
 		</plugins>
 	</build>
 
+	<profiles>
+		<!-- Security gate, run in CI only (mvn -Psecurity verify): SpotBugs for Java code
+		     defects and OWASP dependency-check for known-vulnerable dependencies. Kept out of
+		     the default build so local `mvn verify` stays fast and offline. -->
+		<profile>
+			<id>security</id>
+			<build>
+				<plugins>
+					<plugin>
+						<groupId>com.github.spotbugs</groupId>
+						<artifactId>spotbugs-maven-plugin</artifactId>
+						<version>4.9.3.0</version>
+						<configuration>
+							<effort>Max</effort>
+							<threshold>High</threshold>
+							<includeTests>false</includeTests>
+							<excludeFilterFile>config/spotbugs-exclude.xml</excludeFilterFile>
+						</configuration>
+						<executions>
+							<execution>
+								<goals><goal>check</goal></goals>
+							</execution>
+						</executions>
+					</plugin>
+					<plugin>
+						<groupId>org.owasp</groupId>
+						<artifactId>dependency-check-maven</artifactId>
+						<version>12.1.3</version>
+						<configuration>
+							<!-- Merge de la PR bloqué sur toute CVE critique (CVSS >= 9). -->
+							<failBuildOnCVSS>9</failBuildOnCVSS>
+							<!--suppress UnresolvedMavenProperty -->
+							<nvdApiKey>${env.NVD_API_KEY}</nvdApiKey>
+							<skipTestScope>true</skipTestScope>
+							<formats>
+								<format>HTML</format>
+								<format>SARIF</format>
+							</formats>
+							<suppressionFiles>
+								<suppressionFile>config/dependency-check-suppressions.xml</suppressionFile>
+							</suppressionFiles>
+						</configuration>
+						<executions>
+							<execution>
+								<goals><goal>check</goal></goals>
+							</execution>
+						</executions>
+					</plugin>
+				</plugins>
+			</build>
+		</profile>
+	</profiles>
+
 </project>

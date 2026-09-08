@@ -16,17 +16,19 @@ ON CONFLICT (email) DO NOTHING;
 
 -- ============================================================================
 -- Profil artisan : KYB complet. L'auth-guard de l'app client ne fait confiance
--- à `status` que si `declaration_signed` est true (sinon → redirection
--- /onboarding SIRET), donc on seed siret + déclaration signée + VERIFIED.
--- DO UPDATE (et non DO NOTHING) pour que le profil converge vers cet état si
--- le seed évolue et re-tourne sur une base déjà peuplée.
+-- à `status` que si `declaration_signed` ET `kyb.termsAcceptedAt` sont posés
+-- (sinon → redirection /onboarding), donc on seed siret + déclaration signée
+-- + dossier KYB accepté + VERIFIED. DO UPDATE (et non DO NOTHING) pour que le
+-- profil converge vers cet état si le seed évolue et re-tourne sur une base
+-- déjà peuplée.
 -- ============================================================================
 INSERT INTO artisan_profiles (user_id, display_name, atelier_name, slug, city, region, tier, passport_limit,
                               status, siret, company_name, naf_code, declaration_signed, signature_timestamp, joined_at,
-                              published, specialties, story)
+                              published, specialties, story, kyb_terms_accepted_at, kyb_status)
 SELECT id, 'Artisan Démo', 'Atelier Démo', 'atelier-demo', 'Paris', 'Île-de-France', 'Solo', 50,
        'VERIFIED', '73282932000074', 'Atelier Démo SARL', '14.13Z', true, NOW(), NOW(),
-       true, ARRAY['couture', 'maroquinerie'], 'Atelier de démonstration LUMIRIS, spécialisé en couture et petite maroquinerie.'
+       true, ARRAY['couture', 'maroquinerie'], 'Atelier de démonstration LUMIRIS, spécialisé en couture et petite maroquinerie.',
+       NOW(), 'VALIDATED'
 FROM users WHERE email = 'artisan@lumiris.com'
 ON CONFLICT (user_id) DO UPDATE SET
     status = EXCLUDED.status,
@@ -37,23 +39,29 @@ ON CONFLICT (user_id) DO UPDATE SET
     signature_timestamp = EXCLUDED.signature_timestamp,
     published = EXCLUDED.published,
     specialties = EXCLUDED.specialties,
-    story = EXCLUDED.story;
+    story = EXCLUDED.story,
+    kyb_terms_accepted_at = EXCLUDED.kyb_terms_accepted_at,
+    kyb_status = EXCLUDED.kyb_status;
 
 -- ============================================================================
--- Profil retoucheur démo : KYB simplifié (VERIFIED direct, pas de déclaration).
+-- Profil retoucheur démo : KYB simplifié (VERIFIED direct, pas de déclaration),
+-- mais l'auth-guard exige quand même `kyb.termsAcceptedAt` (sinon →
+-- /onboarding), donc on le seed aussi.
 -- ============================================================================
 INSERT INTO repairer_profiles (user_id, display_name, company_name, status, specialties, zones, schedule,
-                                address, city, region, siret, location)
+                                address, city, region, siret, location, kyb_terms_accepted_at, kyb_status)
 SELECT id, 'Réparateur Démo', 'Atelier Réparation Démo', 'VERIFIED',
        ARRAY['couture', 'cordonnerie'], ARRAY['Paris'], 'Lun-Ven 9h-18h',
        '1 place de la République', 'Paris', 'Île-de-France', '73282932000074',
-       ST_SetSRID(ST_MakePoint(2.3631, 48.8674), 4326)
+       ST_SetSRID(ST_MakePoint(2.3631, 48.8674), 4326), NOW(), 'VALIDATED'
 FROM users WHERE email = 'repairer@lumiris.com'
 ON CONFLICT (user_id) DO UPDATE SET
     status = EXCLUDED.status,
     specialties = EXCLUDED.specialties,
     zones = EXCLUDED.zones,
-    location = EXCLUDED.location;
+    location = EXCLUDED.location,
+    kyb_terms_accepted_at = EXCLUDED.kyb_terms_accepted_at,
+    kyb_status = EXCLUDED.kyb_status;
 
 -- ============================================================================
 -- Échantillon annuaire CMA Île-de-France (fiches non réclamées, sans compte

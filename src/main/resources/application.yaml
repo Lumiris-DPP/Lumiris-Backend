@@ -148,6 +148,14 @@ management:
         metrics:
             export:
                 enabled: true
+    tracing:
+        sampling:
+            # 1.0 in dev/staging catches everything; drop it in prod (env override) once volume matters.
+            probability: ${OTEL_TRACES_SAMPLING_PROBABILITY:1.0}
+    otlp:
+        tracing:
+            # otel-collector (Lumiris-Infra) forwards to Tempo — see monitoring/otel/otel-collector-config.yml.
+            endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318}/v1/traces
 
 sentry:
     dsn: ${SENTRY_DSN:}

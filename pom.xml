@@ -57,6 +57,18 @@
 			<version>${sentry.version}</version>
 		</dependency>
 
+		<!-- OpenTelemetry traces → otel-collector → Tempo. micrometer-tracing-bridge-otel wires
+		     Spring's Micrometer Observation API to OTel spans; opentelemetry-exporter-otlp ships
+		     them over OTLP (management.otlp.tracing.endpoint). -->
+		<dependency>
+			<groupId>io.micrometer</groupId>
+			<artifactId>micrometer-tracing-bridge-otel</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>io.opentelemetry</groupId>
+			<artifactId>opentelemetry-exporter-otlp</artifactId>
+		</dependency>
+
 		<!-- JPA -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>

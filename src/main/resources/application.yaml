@@ -75,6 +75,15 @@ app:
 cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173,http://localhost:3001,http://localhost:3002,http://localhost:3003}
 
+lumiris:
+    # Filet anti-flood applicatif (RateLimitFilter). Le WAF Cloudflare reste la bordure dure.
+    rate-limit:
+        enabled: ${RATE_LIMIT_ENABLED:true}
+        per-minute: ${RATE_LIMIT_PER_MINUTE:100}
+    rgpd:
+        # Délai entre la suppression douce (DELETE /me) et l'anonymisation définitive.
+        soft-delete-retention-days: ${RGPD_SOFT_DELETE_RETENTION_DAYS:30}
+
 security:
     jwt:
         # No committed default: the app fails fast at startup if JWT_SECRET is unset (see .env.example).

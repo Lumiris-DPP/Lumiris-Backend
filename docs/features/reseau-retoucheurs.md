@@ -168,6 +168,27 @@ Registre des traitements : §9 « Prospection retoucheurs » ajouté (intérêt 
 
 ---
 
+## Escrow + reversement au retoucheur (Stripe Connect) — **différé, ~1 j**
+
+Aujourd'hui `pay` encaisse sur le compte **plateforme** ; le reversement au retoucheur se fait
+hors bande. Pour automatiser (comme la marketplace, `V35`) :
+
+1. **`V61`** : `repairer_stripe_account` (user_id, stripe_account_id, charges_enabled,
+   payouts_enabled) ; `repair_requests` gagne `stripe_transfer_id`, `net_cents`, `released_at`.
+2. **`RepairerConnectService`** : `createOnboardingLink(repairerEmail)` → Stripe `AccountLink`
+   (compte Express) ; `syncFromStripe(accountId)` branché sur le webhook `account.updated`
+   existant (`StripeWebhookService`). Endpoint `POST /api/repairers/me/connect/link` (REPAIRER).
+3. **`RepairRequestPaymentService`** : ajouter `transfer_group` au PaymentIntent (modèle
+   separate charges & transfers, fonds retenus).
+4. **`RepairRequestPayoutService.release(request)`** appelé à `complete` (clôture retoucheur) :
+   `Transfer` vers le compte connecté de `quote_amount_cents − commission` (config
+   `repairer.commission-rate`), pose `released_at` / `net_cents`.
+5. **Annulation après reversement** : `TransferReversal` + `Refund` (voir `OrderRefundService`).
+6. **Garde** : un retoucheur ne reçoit de demandes / de payout que `VERIFIED` **et**
+   `charges_enabled`.
+
+Alternative plus légère d'ici là : **acompte partiel** (ex. 30 %) au lieu du montant total.
+
 ## Risques & dépendances
 
 | Risque | Mitigation |
@@ -186,5 +207,6 @@ Registre des traitements : §9 « Prospection retoucheurs » ajouté (intérêt 
 3. ~~`RepairerClaimService` + endpoints~~ **fait**
 4. ~~`RepairerProspectingService` + `V56` + template + suppression + `/v1/prospecting/unsubscribe`~~ **fait**
 5. ~~Registre des traitements à jour~~ **fait** (§9)
-6. Admin : 3 onglets par état + boutons « Importer » / « Inviter » (`Lumiris-Front`)
+6. ~~Admin : onglets par état + boutons « Importer SIRENE » / « Inviter »~~ **fait**
+   (`RealRepairerAccounts`) ; ~~avis vérifiés côté mobile~~ **fait** (`my-repairs`)
 7. Front : préremplir l'onboarding retoucheur depuis `?token=` → `GET /v1/repairers/claim/{token}` puis `POST /api/repairers/claim` (`Lumiris-Front` — non fait, l'emplacement de l'onboarding retoucheur est encore en chantier côté front)

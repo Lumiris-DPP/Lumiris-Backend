@@ -129,10 +129,18 @@ Registre des traitements : §9 « Prospection retoucheurs » ajouté (intérêt 
   flux devis/RDV.
 - Tri : distance, note, réactivité ; pagination.
 
-## Phase 6 — Ops **[différé]**
+## Phase 6 — Ops **[partiel]**
 
-- Carte de couverture : zones avec demandes consommateur mais 0 retoucheur → cibler la
-  prospection.
+- **[FAIT]** Anti-faux-avis : `repair_request_id` sur `repairer_reviews` (V58), endpoint
+  `POST /api/repair-requests/{id}/review` réservé au client d'une intervention `COMPLETED`
+  (un avis/demande), flag `verified`. L'ancien `POST /v1/repairers/{id}/reviews` anonyme reste
+  (`@Deprecated`) jusqu'à migration du front mobile.
+- **[FAIT]** Métrique de réactivité : `medianResponseHours` + `completedJobs` sur
+  `RepairerPublicProfileResponse` (médiane `quote_submitted_at − created_at` en SQL).
+- **[différé]** Taux d'acceptation : le modèle d'état actuel (refus de devis → `COMPLETED`
+  direct, pas `REFUSED`) ne permet pas de distinguer « refusé » de « fait » — nécessite un
+  statut dédié.
+- **[différé]** Carte de couverture : zones avec demandes consommateur mais 0 retoucheur.
 
 ---
 
@@ -141,15 +149,11 @@ Registre des traitements : §9 « Prospection retoucheurs » ajouté (intérêt 
 1. **États de fiche** (`UNCLAIMED / PENDING / VERIFIED / SUSPENDED`) + `source`, et un onglet
    admin par état. → **Phase 0 (fait) + Phase 4**
 2. **Flux de réclamation** — c'est ça qui débloque la croissance. → **Phase 2 (fait)**
-3. **Anti-faux-avis** : `repairer_reviews` accepte n'importe quel `reviewer_name` sans lien avec
-   une `repair_request` terminée → rattacher chaque avis à une intervention réellement
-   effectuée. → **Phase 6** (migration : `repair_request_id` NOT NULL sur `repairer_reviews`,
-   création d'avis réservée au consommateur d'une request en statut `COMPLETED`).
+3. **Anti-faux-avis** → **FAIT** (V58, `POST /api/repair-requests/{id}/review`, flag `verified`).
 4. **Dédup import** : unicité. → **Phase 0 (fait)** via `(source, external_ref)` plutôt que
    `siret` brut (voir la note Phase 0).
-5. **Métriques Doctolib-like** par retoucheur : taux d'acceptation, délai de réponse moyen
-   (« répond sous 2 h »), affichés au tri. → **Phase 6** (colonnes dérivées de `repair_requests` :
-   `quote_submitted_at - created_at`, ratio accepté/total).
+5. **Métriques Doctolib-like** → **délai de réponse FAIT** (`medianResponseHours`,
+   `completedJobs`) ; taux d'acceptation différé (modèle d'état à revoir).
 6. **Tri & pagination** sur `/v1/repairers/search` (distance, note, réactivité). → **Phase 5**
    (ajouter `sort` + `page`/`size`, la note vient d'un `LEFT JOIN` sur la moyenne d'avis).
 7. **Carte de couverture** pour les ops. → **Phase 6** (agrégat des `repair_requests` sans

@@ -2,14 +2,17 @@ package com.minoh.lumiris_backend.controller;
 
 import com.minoh.lumiris_backend.dto.in.RepairAppointmentRequest;
 import com.minoh.lumiris_backend.dto.in.RepairMessageRequest;
+import com.minoh.lumiris_backend.dto.in.RepairPayRequest;
 import com.minoh.lumiris_backend.dto.in.RepairRequestCreateRequest;
 import com.minoh.lumiris_backend.dto.in.RepairRequestReviewRequest;
 import com.minoh.lumiris_backend.dto.out.RepairMessageResponse;
+import com.minoh.lumiris_backend.dto.out.RepairPaymentIntentResponse;
 import com.minoh.lumiris_backend.dto.out.RepairRequestResponse;
 import com.minoh.lumiris_backend.dto.out.RepairerReviewResponse;
 import com.minoh.lumiris_backend.service.RepairMessageService;
 import com.minoh.lumiris_backend.service.RepairRequestService;
 import com.minoh.lumiris_backend.service.RepairerReviewService;
+import com.minoh.lumiris_backend.service.stripe.RepairRequestPaymentService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -31,6 +34,7 @@ public class RepairRequestController {
     private final RepairRequestService requestService;
     private final RepairMessageService messageService;
     private final RepairerReviewService reviewService;
+    private final RepairRequestPaymentService paymentService;
 
     @PostMapping
     ResponseEntity<RepairRequestResponse> create(
@@ -52,6 +56,18 @@ public class RepairRequestController {
             @AuthenticationPrincipal UserDetails principal
     ) {
         return ResponseEntity.ok(requestService.acceptQuote(principal.getUsername(), id, request));
+    }
+
+    // Règle le devis (Payment Element embarqué). Le paiement vaut acceptation : la demande passe
+    // en ACCEPTED au webhook payment_intent.succeeded.
+    @PostMapping("/{id}/pay")
+    ResponseEntity<RepairPaymentIntentResponse> pay(
+            @PathVariable UUID id,
+            @RequestBody(required = false) RepairPayRequest request,
+            @AuthenticationPrincipal UserDetails principal
+    ) {
+        return ResponseEntity.ok(paymentService.createQuotePaymentIntent(
+                principal.getUsername(), id, request != null ? request.appointmentAt() : null));
     }
 
     @PostMapping("/{id}/refuse-quote")

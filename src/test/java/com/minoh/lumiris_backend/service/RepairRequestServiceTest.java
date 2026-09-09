@@ -45,6 +45,7 @@ class RepairRequestServiceTest {
     @Mock private SubscriptionRepository subscriptionRepo;
     @Mock private MailService mailService;
     @Mock private AffiliateTrackingService affiliateTrackingService;
+    @Mock private com.minoh.lumiris_backend.service.stripe.RepairRequestRefundService refundService;
 
     @InjectMocks
     private RepairRequestService service;
@@ -180,5 +181,64 @@ class RepairRequestServiceTest {
         RepairRequestResponse response = service.cancel("client@lumiris.com", request.getId());
 
         assertThat(response.status()).isEqualTo(RepairRequestStatus.COMPLETED);
+    }
+
+    @Test
+    void cancel_refundsWhenTheQuoteWasPaidAndWorkNotStarted() {
+        RepairRequest request = newRequest(RepairRequestStatus.ACCEPTED);
+        request.setPaidAt(Instant.now());
+        request.setStripePaymentIntentId("pi_123");
+        when(requestRepo.findById(request.getId())).thenReturn(Optional.of(request));
+
+        service.cancel("client@lumiris.com", request.getId());
+
+        verify(refundService).refundQuotePayment(request);
+    }
+
+    @Test
+    void cancel_doesNotRefundOnceWorkHasStarted() {
+        RepairRequest request = newRequest(RepairRequestStatus.IN_PROGRESS);
+        request.setPaidAt(Instant.now());
+        when(requestRepo.findById(request.getId())).thenReturn(Optional.of(request));
+
+        service.cancel("client@lumiris.com", request.getId());
+
+        verify(refundService, never()).refundQuotePayment(any());
+    }
+
+    @Test
+    void requirePayableQuote_rejectsAQuoteWithoutAmount() {
+        RepairRequest request = newRequest(RepairRequestStatus.DRAFT);
+        when(requestRepo.findById(request.getId())).thenReturn(Optional.of(request));
+
+        assertThatThrownBy(() -> service.requirePayableQuote("client@lumiris.com", request.getId()))
+                .isInstanceOf(ConflictException.class);
+    }
+
+    @Test
+    void requirePayableQuote_rejectsAnAlreadyPaidQuote() {
+        RepairRequest request = newRequest(RepairRequestStatus.DRAFT);
+        request.setQuoteAmountCents(5000L);
+        request.setPaidAt(Instant.now());
+        when(requestRepo.findById(request.getId())).thenReturn(Optional.of(request));
+
+        assertThatThrownBy(() -> service.requirePayableQuote("client@lumiris.com", request.getId()))
+                .isInstanceOf(ConflictException.class);
+    }
+
+    @Test
+    void confirmQuotePaid_isIdempotentAndAcceptsTheQuote() {
+        RepairRequest request = newRequest(RepairRequestStatus.DRAFT);
+        request.setQuoteAmountCents(5000L);
+        request.setStripePaymentIntentId("pi_abc");
+        when(requestRepo.findByStripePaymentIntentId("pi_abc")).thenReturn(Optional.of(request));
+        when(subscriptionRepo.findByUserId(repairerUser.getId())).thenReturn(Optional.empty());
+
+        service.confirmQuotePaid("pi_abc");
+        Instant firstPaidAt = request.getPaidAt();
+        service.confirmQuotePaid("pi_abc");
+
+        assertThat(request.getStatus()).isEqualTo(RepairRequestStatus.ACCEPTED);
+        assertThat(request.getPaidAt()).isEqualTo(firstPaidAt);
     }
 }

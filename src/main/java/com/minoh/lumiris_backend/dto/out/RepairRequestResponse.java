@@ -19,5 +19,6 @@ public record RepairRequestResponse(
         String quoteDescription,
         Instant quoteSubmittedAt,
         Instant appointmentAt,
+        Instant paidAt,
         Instant createdAt
 ) {}

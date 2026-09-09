@@ -158,10 +158,13 @@ Registre des traitements : §9 « Prospection retoucheurs » ajouté (intérêt 
    (ajouter `sort` + `page`/`size`, la note vient d'un `LEFT JOIN` sur la moyenne d'avis).
 7. **Carte de couverture** pour les ops. → **Phase 6** (agrégat des `repair_requests` sans
    retoucheur à proximité, ou des recherches consommateur infructueuses).
-8. **Cycle devis → paiement** : le devis existe (`quote_amount_cents`), brancher l'acceptation +
-   acompte via le Stripe déjà en place. → **Phase 5/6** (endpoint consommateur
-   `POST /api/repair-requests/{id}/accept-quote` → `PaymentIntent` d'acompte, transition de
-   statut, notification).
+8. **Cycle devis → paiement** → **FAIT (MVP)** : `V59` (`stripe_payment_intent_id`, `paid_at`
+   sur `repair_requests`), `POST /api/repair-requests/{id}/pay` → `PaymentIntent` du montant du
+   devis encaissé sur le compte plateforme, webhook `payment_intent.succeeded` (order_type=repair)
+   → `ACCEPTED`, remboursement automatique si le client annule avant démarrage. `acceptQuote`
+   reste la voie sans paiement (Stripe non configuré). **Différé** : escrow + reversement au
+   retoucheur (Transfer) — nécessite un compte Connect par retoucheur ; l'acompte partiel
+   plutôt que le montant total.
 
 ---
 

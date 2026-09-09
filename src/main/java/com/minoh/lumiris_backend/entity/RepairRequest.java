@@ -46,4 +46,11 @@ public class RepairRequest extends Auditable {
 
     @Column(name = "appointment_at")
     private Instant appointmentAt;
+
+    // Paiement du devis : PaymentIntent encaissé sur le compte plateforme.
+    @Column(name = "stripe_payment_intent_id")
+    private String stripePaymentIntentId;
+
+    @Column(name = "paid_at")
+    private Instant paidAt;
 }

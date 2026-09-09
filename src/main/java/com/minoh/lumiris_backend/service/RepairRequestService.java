@@ -38,6 +38,7 @@ public class RepairRequestService {
     private final SubscriptionRepository subscriptionRepo;
     private final MailService mailService;
     private final AffiliateTrackingService affiliateTrackingService;
+    private final com.minoh.lumiris_backend.service.stripe.RepairRequestRefundService refundService;
 
     // Client VISION : crée la demande depuis un passeport de sa garde-robe (identifié par code public).
     @Transactional
@@ -83,20 +84,62 @@ public class RepairRequestService {
         return toResponse(requestRepo.save(request));
     }
 
-    // Client : accepte le devis + prend RDV -> DRAFT -> ACCEPTED. Déclenche le tracking
-    // d'affiliation si le retoucheur a un abonnement LOCAL actif (pour lui démontrer le ROI).
+    // Client : accepte le devis + prend RDV -> DRAFT -> ACCEPTED. Voie SANS paiement (Stripe non
+    // configuré / dev local) ; sinon le front passe par /pay et c'est le webhook qui accepte.
+    // Déclenche le tracking d'affiliation si le retoucheur a un abonnement LOCAL actif.
     @Transactional
     public RepairRequestResponse acceptQuote(String consumerEmail, UUID requestId, RepairAppointmentRequest body) {
         RepairRequest request = findOwnedByConsumer(consumerEmail, requestId);
         requireStatus(request, RepairRequestStatus.DRAFT);
+        return toResponse(markQuoteAccepted(request, body.appointmentAt()));
+    }
 
-        request.setAppointmentAt(body.appointmentAt());
+    // Charge le devis payable du client (contrôles avant tout appel Stripe). Appelé par
+    // RepairRequestPaymentService.
+    @Transactional(readOnly = true)
+    public RepairRequest requirePayableQuote(String consumerEmail, UUID requestId) {
+        RepairRequest request = findOwnedByConsumer(consumerEmail, requestId);
+        requireStatus(request, RepairRequestStatus.DRAFT);
+        if (request.getQuoteAmountCents() == null || request.getQuoteAmountCents() <= 0) {
+            throw new ConflictException("Ce devis n'a pas de montant à régler.");
+        }
+        if (request.getPaidAt() != null) {
+            throw new ConflictException("Ce devis a déjà été réglé.");
+        }
+        return request;
+    }
+
+    // Rattache le PaymentIntent au devis (avant paiement).
+    @Transactional
+    public void attachPaymentIntent(UUID requestId, String paymentIntentId, Instant appointmentAt) {
+        RepairRequest request = requestRepo.findById(requestId)
+                .orElseThrow(() -> new ResourceNotFoundException("Demande introuvable"));
+        request.setStripePaymentIntentId(paymentIntentId);
+        if (appointmentAt != null) {
+            request.setAppointmentAt(appointmentAt);
+        }
+        requestRepo.save(request);
+    }
+
+    // Webhook payment_intent.succeeded (order_type=repair) : le paiement vaut acceptation du devis.
+    // Idempotent.
+    @Transactional
+    public void confirmQuotePaid(String paymentIntentId) {
+        requestRepo.findByStripePaymentIntentId(paymentIntentId).ifPresent(request -> {
+            if (request.getPaidAt() != null) {
+                return;
+            }
+            request.setPaidAt(Instant.now());
+            markQuoteAccepted(request, request.getAppointmentAt());
+        });
+    }
+
+    private RepairRequest markQuoteAccepted(RepairRequest request, Instant appointmentAt) {
+        request.setAppointmentAt(appointmentAt);
         request.setStatus(RepairRequestStatus.ACCEPTED);
         RepairRequest saved = requestRepo.save(request);
-
         trackAffiliateIfSubscribed(saved);
-
-        return toResponse(saved);
+        return saved;
     }
 
     // Client : refuse le devis -> DRAFT -> COMPLETED direct (le refus est terminal), retoucheur notifié.
@@ -142,6 +185,10 @@ public class RepairRequestService {
         RepairRequest request = findOwnedByConsumer(consumerEmail, requestId);
         if (request.getStatus() == RepairRequestStatus.COMPLETED) {
             throw new ConflictException("Cette demande est déjà terminée.");
+        }
+        // Devis payé mais intervention pas encore démarrée : on rembourse le client.
+        if (request.getPaidAt() != null && request.getStatus() == RepairRequestStatus.ACCEPTED) {
+            refundService.refundQuotePayment(request);
         }
         request.setStatus(RepairRequestStatus.COMPLETED);
         return toResponse(requestRepo.save(request));
@@ -212,6 +259,7 @@ public class RepairRequestService {
                 r.getQuoteDescription(),
                 r.getQuoteSubmittedAt(),
                 r.getAppointmentAt(),
+                r.getPaidAt(),
                 r.getCreatedAt()
         );
     }

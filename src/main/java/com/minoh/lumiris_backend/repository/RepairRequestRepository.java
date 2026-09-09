@@ -11,11 +11,13 @@ import org.springframework.data.repository.query.Param;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 public interface RepairRequestRepository extends JpaRepository<RepairRequest, UUID> {
     List<RepairRequest> findByRepairerProfileOrderByCreatedAtDesc(RepairerProfile repairerProfile);
     List<RepairRequest> findByConsumerUserOrderByCreatedAtDesc(User consumerUser);
+    Optional<RepairRequest> findByStripePaymentIntentId(String stripePaymentIntentId);
 
     // Délai médian de réponse (demande -> devis), en secondes. Null si le retoucheur n'a pas
     // encore chiffré la moindre demande.

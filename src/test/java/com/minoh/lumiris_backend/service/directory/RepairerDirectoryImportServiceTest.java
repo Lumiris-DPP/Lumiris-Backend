@@ -27,12 +27,13 @@ import static org.mockito.Mockito.when;
 class RepairerDirectoryImportServiceTest {
 
     @Mock private RepairerProfileRepository repairerRepo;
+    @Mock private com.minoh.lumiris_backend.service.GeocodingService geocodingService;
 
     private RepairerDirectoryImportService service;
 
     private final DirectoryEntry entry = new DirectoryEntry(
             "73282932000074", "Retouche Bastille", "Retouche Bastille EURL", "73282932000074",
-            "25 rue de la Roquette", "Paris", "Île-de-France", 48.855, 2.372, "{}");
+            "25 rue de la Roquette", "Paris", "Île-de-France", 48.855, 2.372, true, "{}");
 
     @BeforeEach
     void setUp() {
@@ -40,7 +41,7 @@ class RepairerDirectoryImportServiceTest {
             @Override public RepairerSource source() { return RepairerSource.SIRENE; }
             @Override public List<DirectoryEntry> fetch(ImportCriteria criteria) { return List.of(entry); }
         };
-        service = new RepairerDirectoryImportService(repairerRepo, List.of(fakeSource));
+        service = new RepairerDirectoryImportService(repairerRepo, geocodingService, List.of(fakeSource));
     }
 
     @Test
@@ -82,6 +83,28 @@ class RepairerDirectoryImportServiceTest {
 
         assertThat(report.updated()).isEqualTo(1);
         assertThat(existing.getDisplayName()).isEqualTo("Retouche Bastille");
+    }
+
+    @Test
+    void closedEstablishment_suspendsAnExistingListing_andSkipsNewOnes() {
+        DirectoryEntry closed = new DirectoryEntry(
+                "99999999900001", "Ex-Atelier", "Ex-Atelier", "99999999900001",
+                "1 rue X", "Paris", "Île-de-France", null, null, false, "{}");
+        RepairerDirectorySource src = new RepairerDirectorySource() {
+            @Override public RepairerSource source() { return RepairerSource.SIRENE; }
+            @Override public List<DirectoryEntry> fetch(ImportCriteria c) { return List.of(closed); }
+        };
+        service = new RepairerDirectoryImportService(repairerRepo, geocodingService, List.of(src));
+
+        RepairerProfile existing = new RepairerProfile();
+        existing.setStatus(RepairerStatus.UNCLAIMED);
+        when(repairerRepo.findBySourceAndExternalRef(RepairerSource.SIRENE, "99999999900001"))
+                .thenReturn(Optional.of(existing));
+        when(repairerRepo.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        service.importFrom(RepairerSource.SIRENE, new ImportCriteria(null, null, 1));
+
+        assertThat(existing.getStatus()).isEqualTo(RepairerStatus.SUSPENDED);
     }
 
     @Test

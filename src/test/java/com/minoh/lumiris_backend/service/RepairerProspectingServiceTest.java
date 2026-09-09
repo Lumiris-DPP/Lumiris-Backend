@@ -57,7 +57,7 @@ class RepairerProspectingServiceTest {
     void invite_issuesTokenSavesOutreachAndSendsEmail() {
         when(suppressionRepo.existsByEmailIgnoreCase("pro@atelier.fr")).thenReturn(false);
         when(repairerRepo.findById(profileId)).thenReturn(Optional.of(profile));
-        when(claimService.issueClaimToken(profileId)).thenReturn(UUID.randomUUID());
+        when(claimService.issueClaimToken(profileId, "pro@atelier.fr")).thenReturn(UUID.randomUUID());
         when(outreachRepo.save(any())).thenAnswer(i -> {
             RepairerProspectOutreach o = i.getArgument(0);
             o.setId(UUID.randomUUID());
@@ -66,7 +66,7 @@ class RepairerProspectingServiceTest {
 
         service.invite(profileId, "  PRO@Atelier.fr ");
 
-        verify(claimService).issueClaimToken(profileId);
+        verify(claimService).issueClaimToken(profileId, "pro@atelier.fr");
         verify(mailService).sendRepairerProspecting(
                 eq("pro@atelier.fr"), eq("Retouche Bastille"), anyString(), anyString(), anyString());
     }
@@ -77,7 +77,7 @@ class RepairerProspectingServiceTest {
 
         assertThatThrownBy(() -> service.invite(profileId, "pro@atelier.fr"))
                 .isInstanceOf(ConflictException.class);
-        verify(claimService, never()).issueClaimToken(any());
+        verify(claimService, never()).issueClaimToken(any(), any());
     }
 
     @Test

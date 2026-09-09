@@ -42,9 +42,12 @@ public class PublicRepairerController {
             @RequestParam double lat,
             @RequestParam double lng,
             @RequestParam(required = false) String specialty,
-            @RequestParam(required = false) Double radiusKm
+            @RequestParam(required = false) Double radiusKm,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size
     ) {
-        return ResponseEntity.ok(onboardingService.search(lat, lng, specialty, radiusKm));
+        return ResponseEntity.ok(onboardingService.search(lat, lng, specialty, radiusKm, sort, page, size));
     }
 
     @GetMapping("/{id}/reviews")

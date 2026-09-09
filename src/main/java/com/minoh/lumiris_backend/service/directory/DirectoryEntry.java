@@ -11,5 +11,6 @@ public record DirectoryEntry(
         String region,
         Double latitude,        // null si la source ne géolocalise pas
         Double longitude,
+        boolean active,         // false = établissement fermé (etat_administratif)
         String rawJson
 ) {}

@@ -9,6 +9,8 @@ import org.springframework.web.client.RestClient;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.regex.Pattern;
 
 /**
  * Import depuis l'API « Recherche d'entreprises » (recherche-entreprises.api.gouv.fr) — ouverte,
@@ -22,6 +24,13 @@ public class SireneDirectorySource implements RepairerDirectorySource {
     // Cordonnerie / réparation d'articles personnels — inclut la retouche textile.
     private static final List<String> DEFAULT_NAF = List.of("95.29A", "95.29B");
     private static final int PER_PAGE = 25;
+
+    // 95.29A = cordonnerie (spécifique, on garde tout). Les autres codes sont larges (95.29B
+    // attrape réparation de montres, de vélos…) : on n'y garde que les raisons sociales évoquant
+    // la retouche / couture / cordonnerie.
+    private static final Set<String> ALWAYS_KEEP_NAF = Set.of("95.29A");
+    private static final Pattern TEXTILE_KEYWORDS = Pattern.compile(
+            "retouch|coutur|cordonn|tailleu|couseu|maroquin|repris|ourlet|piqu[eè]", Pattern.CASE_INSENSITIVE);
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private final RestClient restClient;
@@ -58,7 +67,7 @@ public class SireneDirectorySource implements RepairerDirectorySource {
             }
             JsonNode results = root.path("results");
             for (JsonNode match : results) {
-                DirectoryEntry entry = toEntry(match);
+                DirectoryEntry entry = toEntry(match, naf);
                 if (entry != null) {
                     entries.add(entry);
                 }
@@ -92,7 +101,7 @@ public class SireneDirectorySource implements RepairerDirectorySource {
         }
     }
 
-    private DirectoryEntry toEntry(JsonNode match) {
+    private DirectoryEntry toEntry(JsonNode match, String naf) {
         JsonNode siege = match.path("siege");
         String siret = siege.path("siret").asText(null);
         if (siret == null || siret.isBlank()) {
@@ -100,6 +109,17 @@ public class SireneDirectorySource implements RepairerDirectorySource {
         }
         String name = firstNonBlank(match.path("nom_complet").asText(null),
                 match.path("nom_raison_sociale").asText(null));
+
+        // Filtre anti-bruit : sur un code NAF large, on n'importe que si la raison sociale évoque
+        // clairement la retouche / couture / cordonnerie.
+        if (!ALWAYS_KEEP_NAF.contains(naf) && (name == null || !TEXTILE_KEYWORDS.matcher(name).find())) {
+            return null;
+        }
+
+        boolean active = !"F".equalsIgnoreCase(
+                firstNonBlank(siege.path("etat_administratif").asText(null),
+                        match.path("etat_administratif").asText(null)));
+
         return new DirectoryEntry(
                 siret,
                 name,
@@ -110,6 +130,7 @@ public class SireneDirectorySource implements RepairerDirectorySource {
                 blankToNull(siege.path("region").asText(null)),
                 parseDouble(siege.path("latitude").asText(null)),
                 parseDouble(siege.path("longitude").asText(null)),
+                active,
                 match.toString()
         );
     }

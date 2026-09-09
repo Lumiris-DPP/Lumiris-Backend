@@ -61,7 +61,7 @@ public class RepairerProspectingService {
         RepairerProfile profile = repairerRepo.findById(profileId)
                 .orElseThrow(() -> new ResourceNotFoundException("Fiche retoucheur introuvable : " + profileId));
 
-        UUID token = claimService.issueClaimToken(profileId); // vérifie que la fiche est sans compte
+        UUID token = claimService.issueClaimToken(profileId, email); // lie le jeton à l'adresse invitée
 
         RepairerProspectOutreach outreach = new RepairerProspectOutreach();
         outreach.setRepairerProfile(profile);

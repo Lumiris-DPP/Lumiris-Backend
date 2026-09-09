@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.Optional;
 import java.util.UUID;
@@ -41,6 +42,7 @@ class RepairerClaimServiceTest {
     @BeforeEach
     void setUp() {
         service = new RepairerClaimService(repairerRepo, outreachRepo, userRepo, onboardingService);
+        ReflectionTestUtils.setField(service, "tokenTtlDays", 30);
 
         user = new User();
         user.setId(UUID.randomUUID());
@@ -116,6 +118,32 @@ class RepairerClaimServiceTest {
         when(repairerRepo.findById(listing.getId())).thenReturn(Optional.of(listing));
 
         assertThatThrownBy(() -> service.issueClaimToken(listing.getId()))
+                .isInstanceOf(ConflictException.class);
+    }
+
+    @Test
+    void claim_rejectsWhenSignedUpWithADifferentEmailThanTheOneInvited() {
+        listing.setClaimTokenEmail("invited@atelier.fr");
+
+        assertThatThrownBy(() -> service.claim("bob@atelier.fr", token))
+                .isInstanceOf(ConflictException.class);
+    }
+
+    @Test
+    void claim_acceptsWhenTheEmailMatches_caseInsensitive() {
+        listing.setClaimTokenEmail("BOB@atelier.fr");
+
+        service.claim("bob@atelier.fr", token);
+
+        assertThat(listing.getUser()).isSameAs(user);
+        assertThat(listing.getClaimTokenEmail()).isNull();
+    }
+
+    @Test
+    void claim_rejectsAnExpiredToken() {
+        listing.setClaimTokenExpiresAt(java.time.Instant.now().minusSeconds(60));
+
+        assertThatThrownBy(() -> service.claim("bob@atelier.fr", token))
                 .isInstanceOf(ConflictException.class);
     }
 }

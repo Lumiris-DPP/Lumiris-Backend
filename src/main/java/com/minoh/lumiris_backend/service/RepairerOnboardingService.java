@@ -251,18 +251,29 @@ public class RepairerOnboardingService {
     }
 
     @Transactional(readOnly = true)
-    public List<RepairerSearchResult> search(double lat, double lng, String specialty, Double radiusKm) {
+    public List<RepairerSearchResult> search(double lat, double lng, String specialty, Double radiusKm,
+                                             String sort, Integer page, Integer size) {
         double radiusMeters = (radiusKm != null ? radiusKm : DEFAULT_RADIUS_KM) * 1000;
-        List<RepairerSearchResult> results = repairerRepo.searchNearby(lat, lng, specialty, radiusMeters).stream()
+        String effectiveSort = switch (sort == null ? "" : sort) {
+            case "rating", "responsiveness" -> sort;
+            default -> "distance";
+        };
+        int pageSize = size != null && size > 0 && size <= 100 ? size : 20;
+        int offset = page != null && page > 0 ? page * pageSize : 0;
+
+        List<RepairerSearchResult> results = repairerRepo
+                .searchNearby(lat, lng, specialty, radiusMeters, effectiveSort, pageSize, offset).stream()
                 .map(this::toSearchResult)
                 .toList();
-        if (results.isEmpty()) {
+        // Une première page vide = demande non satisfaite ; les pages suivantes vides, non.
+        if (results.isEmpty() && offset == 0) {
             coverageGapService.recordMiss(lat, lng, specialty);
         }
         return results;
     }
 
     private RepairerSearchResult toSearchResult(Object[] row) {
+        long reviewCount = row[13] != null ? ((Number) row[13]).longValue() : 0L;
         return new RepairerSearchResult(
                 (UUID) row[0],
                 (String) row[1],
@@ -275,7 +286,10 @@ public class RepairerOnboardingService {
                 (String) row[8],
                 ((Number) row[9]).doubleValue() / 1000.0,
                 ((Number) row[10]).doubleValue(),
-                ((Number) row[11]).doubleValue()
+                ((Number) row[11]).doubleValue(),
+                reviewCount > 0 ? ((Number) row[12]).doubleValue() : null,
+                reviewCount,
+                row[14] != null ? Math.round(((Number) row[14]).doubleValue() / 360.0) / 10.0 : null
         );
     }
 

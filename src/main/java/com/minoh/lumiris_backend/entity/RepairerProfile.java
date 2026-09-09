@@ -54,6 +54,13 @@ public class RepairerProfile extends Auditable {
     @Column(name = "claim_token")
     private UUID claimToken;
 
+    // Adresse à laquelle le jeton a été envoyé (null = lien admin non nominatif) et échéance.
+    @Column(name = "claim_token_email")
+    private String claimTokenEmail;
+
+    @Column(name = "claim_token_expires_at")
+    private Instant claimTokenExpiresAt;
+
     @Column(name = "claimed_at")
     private Instant claimedAt;
 

@@ -99,24 +99,28 @@ class RepairerOnboardingServiceTest {
     void search_convertsDistanceFromMetersToKilometers() {
         UUID id = UUID.randomUUID();
         // Postgres text[] columns surface as String[] (JDBC array) in a native query row, not List.
-        Object[] row = {id, "Atelier Test", "Atelier Test SARL", new String[]{"couture"}, new String[]{"Paris"}, "Lun-Ven", "1 rue Test", "Paris", "Île-de-France", 2500.0, 48.86, 2.34};
-        when(repairerRepo.searchNearby(48.85, 2.35, null, 20_000.0)).thenReturn(Collections.singletonList(row));
+        Object[] row = {id, "Atelier Test", "Atelier Test SARL", new String[]{"couture"}, new String[]{"Paris"},
+                "Lun-Ven", "1 rue Test", "Paris", "Île-de-France", 2500.0, 48.86, 2.34, 4.5, 12L, 7200.0};
+        when(repairerRepo.searchNearby(48.85, 2.35, null, 20_000.0, "distance", 20, 0))
+                .thenReturn(Collections.singletonList(row));
 
-        List<RepairerSearchResult> results = service.search(48.85, 2.35, null, null);
+        List<RepairerSearchResult> results = service.search(48.85, 2.35, null, null, null, null, null);
 
         assertThat(results).hasSize(1);
         assertThat(results.get(0).id()).isEqualTo(id);
         assertThat(results.get(0).specialties()).containsExactly("couture");
         assertThat(results.get(0).distanceKm()).isEqualTo(2.5);
-        assertThat(results.get(0).lat()).isEqualTo(48.86);
-        assertThat(results.get(0).lng()).isEqualTo(2.34);
+        assertThat(results.get(0).averageRating()).isEqualTo(4.5);
+        assertThat(results.get(0).reviewCount()).isEqualTo(12L);
+        assertThat(results.get(0).medianResponseHours()).isEqualTo(2.0);
     }
 
     @Test
     void search_recordsACoverageGap_whenNothingIsFound() {
-        when(repairerRepo.searchNearby(45.0, 5.0, "cordonnerie", 20_000.0)).thenReturn(Collections.emptyList());
+        when(repairerRepo.searchNearby(45.0, 5.0, "cordonnerie", 20_000.0, "distance", 20, 0))
+                .thenReturn(Collections.emptyList());
 
-        List<RepairerSearchResult> results = service.search(45.0, 5.0, "cordonnerie", null);
+        List<RepairerSearchResult> results = service.search(45.0, 5.0, "cordonnerie", null, null, null, null);
 
         assertThat(results).isEmpty();
         org.mockito.Mockito.verify(coverageGapService).recordMiss(45.0, 5.0, "cordonnerie");

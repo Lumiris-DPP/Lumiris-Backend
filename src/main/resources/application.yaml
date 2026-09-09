@@ -91,6 +91,11 @@ lumiris:
     rgpd:
         # Délai entre la suppression douce (DELETE /me) et l'anonymisation définitive.
         soft-delete-retention-days: ${RGPD_SOFT_DELETE_RETENTION_DAYS:30}
+    repairer:
+        # Validité d'un lien de réclamation de fiche annuaire.
+        claim-token-ttl-days: ${REPAIRER_CLAIM_TOKEN_TTL_DAYS:30}
+        # Purge des fiches annuaire jamais réclamées ni recontactées récemment.
+        unclaimed-retention-months: ${REPAIRER_UNCLAIMED_RETENTION_MONTHS:18}
 
 security:
     jwt:

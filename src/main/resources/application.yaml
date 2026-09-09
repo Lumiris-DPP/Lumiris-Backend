@@ -48,6 +48,10 @@ app:
     # d'une URL absolue.
     frontend-url: ${FRONTEND_URL:http://localhost:3002}
 
+    # Origine publique de l'API elle-même (api.lumiris.fr en prod) — pour les liens one-click
+    # servis directement par le back, comme la désinscription de la prospection retoucheurs.
+    public-base-url: ${PUBLIC_BASE_URL:http://localhost:8080}
+
     # Cycle de vie des commandes marketplace. return-window-days porte le droit de rétractation
     # légal (14 jours) ; les deux échéances suivantes empêchent une commande de rester ouverte
     # indéfiniment quand ni l'acheteur ni le transporteur ne confirment quoi que ce soit.

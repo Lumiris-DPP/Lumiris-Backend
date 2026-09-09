@@ -40,6 +40,8 @@ public class SecurityConfig {
         "/v1/repairers/**",
         // Web Vitals emitted by sendBeacon, which cannot carry an Authorization header.
         "/api/telemetry/**",
+        // One-click unsubscribe from repairer prospecting (RFC 8058, GET-safe).
+        "/v1/prospecting/**",
         // Stripe → server webhook: unauthenticated, secured by HMAC signature verification.
         "/api/stripe/webhook",
         // Carrier aggregator → server webhook: same contract (unauthenticated, HMAC-verified).

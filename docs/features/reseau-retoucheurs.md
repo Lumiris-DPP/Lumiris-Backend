@@ -39,7 +39,7 @@ part. MVP d'abord, le reste en différé.
   répéter un SIRET.
 - Index unique partiel sur `claim_token`.
 
-## Phase 1 — Import annuaire **[MVP : SIRENE ; OSM/CMA différés]**
+## Phase 1 — Import annuaire **[FAIT : SIRENE ; OSM/CMA différés]**
 
 ```
 service/directory/
@@ -83,7 +83,7 @@ Front : l'onboarding retoucheur accepte `?claim=<token>` → préremplit → à 
 **Tests :** token à usage unique ; fiche déjà réclamée → 404 ; compte ayant déjà un profil →
 409 ; `issueClaimToken` sur fiche avec compte → 409 ; le rattachement ne duplique pas.
 
-## Phase 3 — Prospection e-mail + conformité **[différé — MVP : envoi manuel unitaire]**
+## Phase 3 — Prospection e-mail + conformité **[FAIT : envoi manuel unitaire ; suivi ouvertures/clics différé]**
 
 ```
 V56  →  repairer_prospect_outreach (profile, email, sent/opened/clicked/claimed/unsubscribed_at)
@@ -167,8 +167,9 @@ leur métier, opt-out simple, source citée).
 ## Séquencement MVP (~1 à 1,5 semaine, 1 dev)
 
 1. ~~`V55` + entités + `UNCLAIMED`~~ **fait**
-2. `SireneDirectorySource` + `RepairerDirectoryImportService` + endpoint import manuel
-3. ~~`RepairerClaimService` + endpoints~~ **fait** — reste : préremplissage onboarding (front)
-4. `RepairerProspectingService` + template + suppression + page unsubscribe
-5. Admin 3 onglets + bouton inviter
-6. Registre des traitements à jour
+2. ~~`SireneDirectorySource` + `RepairerDirectoryImportService` + `POST /api/admin/repairers/import`~~ **fait**
+3. ~~`RepairerClaimService` + endpoints~~ **fait**
+4. ~~`RepairerProspectingService` + `V56` + template + suppression + `/v1/prospecting/unsubscribe`~~ **fait**
+5. ~~Registre des traitements à jour~~ **fait** (§9)
+6. Admin : 3 onglets par état + boutons « Importer » / « Inviter » (`Lumiris-Front`)
+7. Front : préremplir l'onboarding retoucheur depuis `?token=` → `GET /v1/repairers/claim/{token}` puis `POST /api/repairers/claim` (`Lumiris-Front` — non fait, l'emplacement de l'onboarding retoucheur est encore en chantier côté front)

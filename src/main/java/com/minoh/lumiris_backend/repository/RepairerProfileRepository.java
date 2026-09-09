@@ -1,6 +1,7 @@
 package com.minoh.lumiris_backend.repository;
 
 import com.minoh.lumiris_backend.entity.RepairerProfile;
+import com.minoh.lumiris_backend.entity.RepairerSource;
 import com.minoh.lumiris_backend.entity.RepairerStatus;
 import com.minoh.lumiris_backend.entity.User;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -16,6 +17,8 @@ public interface RepairerProfileRepository extends JpaRepository<RepairerProfile
     Optional<RepairerProfile> findByUser(User user);
 
     Optional<RepairerProfile> findByClaimToken(UUID claimToken);
+
+    Optional<RepairerProfile> findBySourceAndExternalRef(RepairerSource source, String externalRef);
 
     List<RepairerProfile> findByStatus(RepairerStatus status);
 

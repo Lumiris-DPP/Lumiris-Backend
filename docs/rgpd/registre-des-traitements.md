@@ -96,7 +96,21 @@
 | Données transmises | Adresse professionnelle du retoucheur → Nominatim (OpenStreetMap) |
 | Durée | Coordonnées stockées tant que le profil existe |
 
-## 9. Ancrage blockchain des passeports
+## 9. Prospection retoucheurs (annuaire → réclamation de fiche)
+
+| Champ | Valeur |
+|---|---|
+| Finalité | Constituer le réseau de retoucheurs : importer des fiches depuis le registre public des entreprises, inviter les professionnels à réclamer leur fiche |
+| Base légale | Intérêt légitime (art. 6.1.f) — prospection B2B : destinataires professionnels, message lié à leur activité, opt-out simple |
+| Catégories de personnes | Retoucheurs / cordonniers / couturiers (souvent entrepreneurs individuels → données personnelles) |
+| Catégories de données | Raison sociale, SIRET, adresse professionnelle, coordonnées de contact ; jeton de réclamation ; suivi d'envoi (`repairer_prospect_outreach`) |
+| Source | API « Recherche d'entreprises » (recherche-entreprises.api.gouv.fr), données publiques du registre |
+| Information des personnes | Mentionnée dans chaque e-mail : identité de Lumiris, source des données, finalité, lien de désinscription, contact `privacy@lumiris.fr` |
+| Destinataires | Interne ; Resend (envoi e-mail) |
+| Durée de conservation | Fiche non réclamée : jusqu'à réclamation ou purge annuelle des fiches inactives ; `email_suppression` (désinscrits) : conservée sans limite pour ne plus recontacter |
+| Droits | Désinscription en un clic (`/v1/prospecting/unsubscribe/{id}`) ; opposition / effacement via `privacy@lumiris.fr` |
+
+## 10. Ancrage blockchain des passeports
 
 | Champ | Valeur |
 |---|---|

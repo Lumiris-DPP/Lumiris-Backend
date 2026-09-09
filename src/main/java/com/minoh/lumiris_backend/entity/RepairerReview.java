@@ -29,6 +29,11 @@ public class RepairerReview {
     @Column(name = "reviewer_name")
     private String reviewerName;
 
+    // Rattachement à l'intervention terminée qui donne droit à l'avis. Null pour les avis
+    // historiques (seed / imports). Un avis « vérifié » = repairRequestId non null.
+    @Column(name = "repair_request_id")
+    private UUID repairRequestId;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt = Instant.now();
 }

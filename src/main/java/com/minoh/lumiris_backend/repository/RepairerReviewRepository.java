@@ -13,6 +13,8 @@ public interface RepairerReviewRepository extends JpaRepository<RepairerReview, 
 
     List<RepairerReview> findByRepairerProfileOrderByCreatedAtDesc(RepairerProfile repairerProfile);
 
+    boolean existsByRepairRequestId(java.util.UUID repairRequestId);
+
     @Query("select avg(r.rating) from RepairerReview r where r.repairerProfile = :profile")
     Double averageRating(@Param("profile") RepairerProfile profile);
 

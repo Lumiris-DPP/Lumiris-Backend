@@ -3,10 +3,13 @@ package com.minoh.lumiris_backend.controller;
 import com.minoh.lumiris_backend.dto.in.RepairAppointmentRequest;
 import com.minoh.lumiris_backend.dto.in.RepairMessageRequest;
 import com.minoh.lumiris_backend.dto.in.RepairRequestCreateRequest;
+import com.minoh.lumiris_backend.dto.in.RepairRequestReviewRequest;
 import com.minoh.lumiris_backend.dto.out.RepairMessageResponse;
 import com.minoh.lumiris_backend.dto.out.RepairRequestResponse;
+import com.minoh.lumiris_backend.dto.out.RepairerReviewResponse;
 import com.minoh.lumiris_backend.service.RepairMessageService;
 import com.minoh.lumiris_backend.service.RepairRequestService;
+import com.minoh.lumiris_backend.service.RepairerReviewService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -27,6 +30,7 @@ public class RepairRequestController {
 
     private final RepairRequestService requestService;
     private final RepairMessageService messageService;
+    private final RepairerReviewService reviewService;
 
     @PostMapping
     ResponseEntity<RepairRequestResponse> create(
@@ -64,6 +68,17 @@ public class RepairRequestController {
             @AuthenticationPrincipal UserDetails principal
     ) {
         return ResponseEntity.ok(requestService.cancel(principal.getUsername(), id));
+    }
+
+    // Avis vérifié : le client note l'intervention terminée (un seul avis par demande).
+    @PostMapping("/{id}/review")
+    ResponseEntity<RepairerReviewResponse> review(
+            @PathVariable UUID id,
+            @Valid @RequestBody RepairRequestReviewRequest request,
+            @AuthenticationPrincipal UserDetails principal
+    ) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(reviewService.submitForRequest(principal.getUsername(), id, request.rating(), request.comment()));
     }
 
     @GetMapping("/{id}/messages")

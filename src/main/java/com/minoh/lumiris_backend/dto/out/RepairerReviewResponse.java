@@ -8,5 +8,7 @@ public record RepairerReviewResponse(
         int rating,
         String comment,
         String reviewerName,
+        // true si l'avis est rattaché à une intervention terminée (« avis vérifié »).
+        boolean verified,
         Instant createdAt
 ) {}

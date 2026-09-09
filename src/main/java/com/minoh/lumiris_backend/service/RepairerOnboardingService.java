@@ -10,10 +10,12 @@ import com.minoh.lumiris_backend.dto.out.RepairerPublicProfileResponse;
 import com.minoh.lumiris_backend.dto.out.RepairerSearchResult;
 import com.minoh.lumiris_backend.entity.KybDocumentLabel;
 import com.minoh.lumiris_backend.entity.KybStatus;
+import com.minoh.lumiris_backend.entity.RepairRequestStatus;
 import com.minoh.lumiris_backend.entity.RepairerProfile;
 import com.minoh.lumiris_backend.entity.RepairerStatus;
 import com.minoh.lumiris_backend.entity.User;
 import com.minoh.lumiris_backend.exception.ResourceNotFoundException;
+import com.minoh.lumiris_backend.repository.RepairRequestRepository;
 import com.minoh.lumiris_backend.repository.RepairerProfileRepository;
 import com.minoh.lumiris_backend.repository.RepairerReviewRepository;
 import com.minoh.lumiris_backend.repository.UserRepository;
@@ -38,6 +40,7 @@ public class RepairerOnboardingService {
 
     private final RepairerProfileRepository repairerRepo;
     private final RepairerReviewRepository reviewRepo;
+    private final RepairRequestRepository requestRepo;
     private final UserRepository userRepo;
     private final SireneService sireneService;
     private final GeocodingService geocodingService;
@@ -227,10 +230,16 @@ public class RepairerOnboardingService {
         RepairerProfile p = repairerRepo.findById(id)
                 .filter(profile -> profile.getStatus() == RepairerStatus.VERIFIED)
                 .orElseThrow(() -> new ResourceNotFoundException("Retoucheur introuvable"));
+        Double medianSeconds = requestRepo.medianResponseSeconds(p.getId());
+        Double medianHours = medianSeconds != null ? Math.round(medianSeconds / 360.0) / 10.0 : null;
+        long completedJobs = requestRepo.countByRepairerProfileAndStatusAndQuoteSubmittedAtIsNotNull(
+                p, RepairRequestStatus.COMPLETED);
+
         return new RepairerPublicProfileResponse(
                 p.getId(), p.getDisplayName(), p.getCompanyName(), p.getSpecialties(), p.getZones(),
                 p.getSchedule(), p.getAddress(), p.getCity(), p.getRegion(),
-                reviewRepo.averageRating(p), reviewRepo.countByRepairerProfile(p)
+                reviewRepo.averageRating(p), reviewRepo.countByRepairerProfile(p),
+                medianHours, completedJobs
         );
     }
 

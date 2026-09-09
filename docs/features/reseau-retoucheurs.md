@@ -43,32 +43,32 @@ part. MVP d'abord, le reste en différé.
 
 ```
 service/directory/
-  DirectorySource            interface  Stream<DirectoryEntry> fetch(criteria)
-  SireneDirectorySource      NAF 95.29Z, 15.20Z, 14.13Z, 13.30Z + départements ciblés
-  OsmDirectorySource         craft=tailor / shop=shoe_repair            [différé]
+  SireneDirectorySource      NAF 95.29A/B + départements ; filtre anti-bruit (mots-clés
+                             retouche/couture/cordonnerie sur code large) ; etat_administratif
   RepairerDirectoryImportService.importFrom(source, criteria)
       - upsert par (source, external_ref) → jamais de doublon
-      - géocode via GeocodingService (throttle 1 req/s)
+      - coords de l'API, sinon secours GeocodingService
+      - établissement fermé → ignoré (nouveau) / SUSPENDED (existant)
       - status = UNCLAIMED, source, external_ref, imported_at
   RepairerDirectoryImportScheduler   @Scheduled hebdo                   [différé]
+  RepairerDirectoryPurgeScheduler    @Scheduled hebdo : purge des UNCLAIMED > 18 mois jamais
+                                     réclamés ni recontactés depuis 6 mois (RGPD)
+  OsmDirectorySource / CmaDirectorySource / RefashionDirectorySource   [différé]
 ```
 
-Endpoint : `POST /api/admin/repairers/import?source=SIRENE&departments=75,92,93` (ADMIN,
-déclenchement manuel au MVP).
-
-**Tests :** ré-import idempotent (0 doublon) ; entrée sans `external_ref` ignorée ; géocodage
-KO → fiche créée sans `location`.
+Endpoint : `POST /api/admin/repairers/import` `{source, departments, nafCodes, maxPages}` (ADMIN,
+manuel ; l'action est audit-loguée).
 
 ## Phase 2 — Réclamation de fiche **[FAIT]**
 
 ```
-service/RepairerClaimService
-  issueClaimToken(profileId)   → UUID   (fiche doit être sans compte)
-  resolveToken(token)          → RepairerClaimPreview  (nom, siret, adresse, spécialités)
-  claim(userEmail, token)      :
+service/RepairerClaimService   (jeton lié à l'e-mail invité + expiration 30 j — V61)
+  issueClaimToken(profileId[, email])  → UUID
+  resolveToken(token)                  → RepairerClaimPreview
+  claim(userEmail, token)              :
       - refuse si le compte a déjà un profil retoucheur
-      - fiche trouvée par token && user == null
-      - profile.user = compte courant, claimed_at = now, status = PENDING, claim_token = null
+      - refuse si jeton expiré, ou si lié à une autre adresse que userEmail
+      - profile.user = compte courant, claimed_at = now, status = PENDING, jeton effacé
       - PAS de nouvelle ligne
 ```
 
@@ -154,8 +154,9 @@ Registre des traitements : §9 « Prospection retoucheurs » ajouté (intérêt 
    `siret` brut (voir la note Phase 0).
 5. **Métriques Doctolib-like** → **délai de réponse FAIT** (`medianResponseHours`,
    `completedJobs`) ; taux d'acceptation différé (modèle d'état à revoir).
-6. **Tri & pagination** sur `/v1/repairers/search` (distance, note, réactivité). → **Phase 5**
-   (ajouter `sort` + `page`/`size`, la note vient d'un `LEFT JOIN` sur la moyenne d'avis).
+6. **Tri & pagination** sur `/v1/repairers/search` → **FAIT** : `sort`
+   (`distance`|`rating`|`responsiveness`) + `page`/`size` ; résultats avec `averageRating`,
+   `reviewCount`, `medianResponseHours` (LEFT JOIN agrégats avis + `repair_requests`).
 7. **Carte de couverture** pour les ops. → **Phase 6** (agrégat des `repair_requests` sans
    retoucheur à proximité, ou des recherches consommateur infructueuses).
 8. **Cycle devis → paiement** → **FAIT (MVP)** : `V59` (`stripe_payment_intent_id`, `paid_at`

@@ -45,7 +45,7 @@ class RepairerProspectingServiceTest {
     void setUp() {
         service = new RepairerProspectingService(
                 repairerRepo, outreachRepo, suppressionRepo, claimService, mailService);
-        ReflectionTestUtils.setField(service, "frontendUrl", "https://app.lumiris.fr");
+        ReflectionTestUtils.setField(service, "repairerAppUrl", "https://atelier.lumiris.fr");
         ReflectionTestUtils.setField(service, "publicBaseUrl", "https://api.lumiris.fr");
 
         profile = new RepairerProfile();

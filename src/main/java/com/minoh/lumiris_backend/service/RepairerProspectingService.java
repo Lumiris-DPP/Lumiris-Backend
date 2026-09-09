@@ -33,8 +33,9 @@ public class RepairerProspectingService {
     private final RepairerClaimService claimService;
     private final MailService mailService;
 
-    @Value("${app.frontend-url}")
-    private String frontendUrl;
+    // App ATELIER (client) — c'est là que les retoucheurs s'inscrivent, pas l'app consommateur.
+    @Value("${app.repairer-app-url}")
+    private String repairerAppUrl;
 
     @Value("${app.public-base-url}")
     private String publicBaseUrl;
@@ -60,7 +61,7 @@ public class RepairerProspectingService {
         outreach.setSentAt(Instant.now());
         outreach = outreachRepo.save(outreach);
 
-        String claimUrl = UriComponentsBuilder.fromUriString(frontendUrl)
+        String claimUrl = UriComponentsBuilder.fromUriString(repairerAppUrl)
                 .path("/retoucheurs/reclamer").queryParam("token", token).toUriString();
         String unsubscribeUrl = UriComponentsBuilder.fromUriString(publicBaseUrl)
                 .path("/v1/prospecting/unsubscribe/{id}").build(outreach.getId()).toString();

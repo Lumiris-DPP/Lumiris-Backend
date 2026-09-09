@@ -52,6 +52,10 @@ app:
     # servis directement par le back, comme la désinscription de la prospection retoucheurs.
     public-base-url: ${PUBLIC_BASE_URL:http://localhost:8080}
 
+    # Origine de l'app ATELIER (client), où artisans et retoucheurs s'inscrivent et gèrent leur
+    # compte — cible du lien « réclamer ma fiche » des e-mails de prospection.
+    repairer-app-url: ${REPAIRER_APP_URL:http://localhost:3003}
+
     # Cycle de vie des commandes marketplace. return-window-days porte le droit de rétractation
     # légal (14 jours) ; les deux échéances suivantes empêchent une commande de rester ouverte
     # indéfiniment quand ni l'acheteur ni le transporteur ne confirment quoi que ce soit.

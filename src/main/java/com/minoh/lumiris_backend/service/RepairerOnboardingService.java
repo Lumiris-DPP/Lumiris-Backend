@@ -48,6 +48,7 @@ public class RepairerOnboardingService {
     private final StorageService storageService;
     private final MailService mailService;
     private final OcrService ocrService;
+    private final CoverageGapService coverageGapService;
 
     @Transactional(readOnly = true)
     public RepairerProfileResponse findByUserEmail(String userEmail) {
@@ -235,20 +236,30 @@ public class RepairerOnboardingService {
         long completedJobs = requestRepo.countByRepairerProfileAndStatusAndQuoteSubmittedAtIsNotNull(
                 p, RepairRequestStatus.COMPLETED);
 
+        long accepted = requestRepo.countAcceptedQuotes(p.getId());
+        long refused = requestRepo.countRefusedQuotes(p.getId());
+        Double acceptanceRate = (accepted + refused) > 0
+                ? Math.round((double) accepted / (accepted + refused) * 100) / 100.0
+                : null;
+
         return new RepairerPublicProfileResponse(
                 p.getId(), p.getDisplayName(), p.getCompanyName(), p.getSpecialties(), p.getZones(),
                 p.getSchedule(), p.getAddress(), p.getCity(), p.getRegion(),
                 reviewRepo.averageRating(p), reviewRepo.countByRepairerProfile(p),
-                medianHours, completedJobs
+                medianHours, acceptanceRate, completedJobs
         );
     }
 
     @Transactional(readOnly = true)
     public List<RepairerSearchResult> search(double lat, double lng, String specialty, Double radiusKm) {
         double radiusMeters = (radiusKm != null ? radiusKm : DEFAULT_RADIUS_KM) * 1000;
-        return repairerRepo.searchNearby(lat, lng, specialty, radiusMeters).stream()
+        List<RepairerSearchResult> results = repairerRepo.searchNearby(lat, lng, specialty, radiusMeters).stream()
                 .map(this::toSearchResult)
                 .toList();
+        if (results.isEmpty()) {
+            coverageGapService.recordMiss(lat, lng, specialty);
+        }
+        return results;
     }
 
     private RepairerSearchResult toSearchResult(Object[] row) {

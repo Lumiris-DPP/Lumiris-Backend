@@ -44,6 +44,9 @@ public class RepairRequest extends Auditable {
     @Column(name = "quote_submitted_at")
     private Instant quoteSubmittedAt;
 
+    @Column(name = "quote_refused_at")
+    private Instant quoteRefusedAt;
+
     @Column(name = "appointment_at")
     private Instant appointmentAt;
 

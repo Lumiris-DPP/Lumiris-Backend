@@ -3,7 +3,9 @@ package com.minoh.lumiris_backend.controller;
 import com.minoh.lumiris_backend.dto.in.RejectionRequest;
 import com.minoh.lumiris_backend.dto.in.RepairerImportRequest;
 import com.minoh.lumiris_backend.dto.in.RepairerInviteRequest;
+import com.minoh.lumiris_backend.dto.out.CoverageGapResponse;
 import com.minoh.lumiris_backend.dto.out.RepairerProfileResponse;
+import com.minoh.lumiris_backend.service.CoverageGapService;
 import com.minoh.lumiris_backend.service.RepairerClaimService;
 import com.minoh.lumiris_backend.service.RepairerOnboardingService;
 import com.minoh.lumiris_backend.service.RepairerProspectingService;
@@ -28,6 +30,14 @@ public class AdminRepairerController {
     private final RepairerClaimService claimService;
     private final RepairerDirectoryImportService importService;
     private final RepairerProspectingService prospectingService;
+    private final CoverageGapService coverageGapService;
+
+    // Zones où des consommateurs cherchent un retoucheur sans en trouver → cibler la prospection.
+    @GetMapping("/coverage-gaps")
+    ResponseEntity<List<CoverageGapResponse>> coverageGaps(
+            @RequestParam(defaultValue = "30") int days) {
+        return ResponseEntity.ok(coverageGapService.hotspots(days));
+    }
 
     // Déclenche un import annuaire (SIRENE…). Les fiches arrivent en UNCLAIMED, à promouvoir.
     @PostMapping("/import")

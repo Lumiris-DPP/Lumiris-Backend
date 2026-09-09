@@ -20,6 +20,8 @@ public record RepairerPublicProfileResponse(
         long reviewCount,
         // Délai médian entre la demande et l'envoi du devis (heures), null si aucun devis encore.
         Double medianResponseHours,
+        // Part de devis acceptés parmi les devis tranchés (0..1), null si aucune décision.
+        Double acceptanceRate,
         // Nombre d'interventions terminées avec un devis (proxy d'expérience).
         long completedJobs
 ) {}

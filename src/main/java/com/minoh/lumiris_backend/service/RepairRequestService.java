@@ -148,6 +148,7 @@ public class RepairRequestService {
         RepairRequest request = findOwnedByConsumer(consumerEmail, requestId);
         requireStatus(request, RepairRequestStatus.DRAFT);
 
+        request.setQuoteRefusedAt(Instant.now());
         request.setStatus(RepairRequestStatus.COMPLETED);
         RepairRequest saved = requestRepo.save(request);
 

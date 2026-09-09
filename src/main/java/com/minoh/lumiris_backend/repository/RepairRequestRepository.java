@@ -32,6 +32,21 @@ public interface RepairRequestRepository extends JpaRepository<RepairRequest, UU
     long countByRepairerProfileAndStatusAndQuoteSubmittedAtIsNotNull(
             RepairerProfile repairerProfile, RepairRequestStatus status);
 
+    // Devis acceptés (RDV pris ou devis payé, et non refusé).
+    @Query(value = """
+            SELECT COUNT(*) FROM repair_requests
+            WHERE repairer_profile_id = :profileId
+              AND quote_submitted_at IS NOT NULL AND quote_refused_at IS NULL
+              AND (appointment_at IS NOT NULL OR paid_at IS NOT NULL)
+            """, nativeQuery = true)
+    long countAcceptedQuotes(@Param("profileId") UUID profileId);
+
+    @Query(value = """
+            SELECT COUNT(*) FROM repair_requests
+            WHERE repairer_profile_id = :profileId AND quote_refused_at IS NOT NULL
+            """, nativeQuery = true)
+    long countRefusedQuotes(@Param("profileId") UUID profileId);
+
     // Gate for DppEventService: a repairer may only log history on a DPP they're actually
     // servicing (accepted the job at least once), not any DPP with a pending/refused request.
     boolean existsByDppFormAndRepairerProfileUserAndStatusIn(

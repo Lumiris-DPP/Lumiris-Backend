@@ -7,6 +7,7 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 import org.locationtech.jts.geom.Point;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -37,6 +38,24 @@ public class RepairerProfile extends Auditable {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private RepairerStatus status = RepairerStatus.PENDING;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private RepairerSource source = RepairerSource.SELF;
+
+    // Identifiant dans la source d'import (SIRET pour SIRENE, id OSM, …). Unique par source.
+    @Column(name = "external_ref")
+    private String externalRef;
+
+    @Column(name = "imported_at")
+    private Instant importedAt;
+
+    // Jeton à usage unique remis dans l'e-mail de prospection pour réclamer la fiche.
+    @Column(name = "claim_token")
+    private UUID claimToken;
+
+    @Column(name = "claimed_at")
+    private Instant claimedAt;
 
     @Column(columnDefinition = "text[]")
     @JdbcTypeCode(SqlTypes.ARRAY)

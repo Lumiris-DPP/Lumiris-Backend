@@ -2,12 +2,14 @@ package com.minoh.lumiris_backend.controller;
 
 import com.minoh.lumiris_backend.dto.in.RejectionRequest;
 import com.minoh.lumiris_backend.dto.out.RepairerProfileResponse;
+import com.minoh.lumiris_backend.service.RepairerClaimService;
 import com.minoh.lumiris_backend.service.RepairerOnboardingService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -16,6 +18,14 @@ import java.util.UUID;
 public class AdminRepairerController {
 
     private final RepairerOnboardingService onboardingService;
+    private final RepairerClaimService claimService;
+
+    // (Re)génère un jeton de réclamation pour une fiche annuaire encore sans compte. Renvoyé à
+    // l'admin ; l'envoi de l'e-mail de prospection viendra avec RepairerProspectingService.
+    @PostMapping("/{id}/claim-token")
+    ResponseEntity<Map<String, UUID>> issueClaimToken(@PathVariable UUID id) {
+        return ResponseEntity.ok(Map.of("claimToken", claimService.issueClaimToken(id)));
+    }
 
     @GetMapping
     ResponseEntity<List<RepairerProfileResponse>> listPending() {

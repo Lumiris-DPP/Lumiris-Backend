@@ -68,8 +68,8 @@ ON CONFLICT (user_id) DO UPDATE SET
 -- utilisateur — un retoucheur peut s'inscrire séparément). Coordonnées
 -- approximatives. Identifiées par company_name pour l'idempotence.
 -- ============================================================================
-INSERT INTO repairer_profiles (display_name, company_name, status, specialties, zones, schedule, address, city, region, location)
-SELECT v.display_name, v.company_name, 'VERIFIED', v.specialties, v.zones, v.schedule, v.address, v.city, 'Île-de-France',
+INSERT INTO repairer_profiles (display_name, company_name, status, source, imported_at, specialties, zones, schedule, address, city, region, location)
+SELECT v.display_name, v.company_name, 'VERIFIED', 'CMA', NOW(), v.specialties, v.zones, v.schedule, v.address, v.city, 'Île-de-France',
        ST_SetSRID(ST_MakePoint(v.lng, v.lat), 4326)
 FROM (VALUES
     ('Atelier Cordonnerie du Marais', 'Cordonnerie du Marais SARL', ARRAY['cordonnerie', 'maroquinerie'], ARRAY['Paris 3e', 'Paris 4e'], 'Lun-Sam 9h-19h', '12 rue des Rosiers', 'Paris', 48.8571, 2.3617),

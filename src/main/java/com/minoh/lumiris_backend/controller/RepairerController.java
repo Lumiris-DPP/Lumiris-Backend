@@ -3,6 +3,7 @@ package com.minoh.lumiris_backend.controller;
 import com.minoh.lumiris_backend.dto.in.KybDetailsRequest;
 import com.minoh.lumiris_backend.dto.in.RepairMessageRequest;
 import com.minoh.lumiris_backend.dto.in.RepairQuoteRequest;
+import com.minoh.lumiris_backend.dto.in.RepairerClaimRequest;
 import com.minoh.lumiris_backend.dto.in.RepairerProfileUpdateRequest;
 import com.minoh.lumiris_backend.dto.in.RepairerRegisterRequest;
 import com.minoh.lumiris_backend.dto.out.RepairMessageResponse;
@@ -11,6 +12,7 @@ import com.minoh.lumiris_backend.dto.out.RepairerProfileResponse;
 import com.minoh.lumiris_backend.entity.KybDocumentLabel;
 import com.minoh.lumiris_backend.service.RepairMessageService;
 import com.minoh.lumiris_backend.service.RepairRequestService;
+import com.minoh.lumiris_backend.service.RepairerClaimService;
 import com.minoh.lumiris_backend.service.RepairerOnboardingService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +34,7 @@ import java.util.UUID;
 public class RepairerController {
 
     private final RepairerOnboardingService onboardingService;
+    private final RepairerClaimService claimService;
     private final RepairRequestService requestService;
     private final RepairMessageService messageService;
 
@@ -47,6 +50,17 @@ public class RepairerController {
     ) {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(onboardingService.register(principal.getUsername(), request));
+    }
+
+    // Réclamation d'une fiche annuaire : rattache la fiche existante (jeton reçu par e-mail) au
+    // compte courant, au lieu de créer un profil vierge.
+    @PostMapping("/claim")
+    ResponseEntity<RepairerProfileResponse> claim(
+            @Valid @RequestBody RepairerClaimRequest request,
+            @AuthenticationPrincipal UserDetails principal
+    ) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(claimService.claim(principal.getUsername(), request.token()));
     }
 
     @PutMapping("/me/kyb")

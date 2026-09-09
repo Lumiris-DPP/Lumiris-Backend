@@ -1,9 +1,11 @@
 package com.minoh.lumiris_backend.controller;
 
 import com.minoh.lumiris_backend.dto.in.RepairerReviewRequest;
+import com.minoh.lumiris_backend.dto.out.RepairerClaimPreview;
 import com.minoh.lumiris_backend.dto.out.RepairerPublicProfileResponse;
 import com.minoh.lumiris_backend.dto.out.RepairerReviewResponse;
 import com.minoh.lumiris_backend.dto.out.RepairerSearchResult;
+import com.minoh.lumiris_backend.service.RepairerClaimService;
 import com.minoh.lumiris_backend.service.RepairerOnboardingService;
 import com.minoh.lumiris_backend.service.RepairerReviewService;
 import jakarta.validation.Valid;
@@ -22,6 +24,13 @@ public class PublicRepairerController {
 
     private final RepairerOnboardingService onboardingService;
     private final RepairerReviewService reviewService;
+    private final RepairerClaimService claimService;
+
+    // Prévisualisation d'une fiche annuaire à réclamer (données pré-remplies pour l'inscription).
+    @GetMapping("/claim/{token}")
+    ResponseEntity<RepairerClaimPreview> claimPreview(@PathVariable UUID token) {
+        return ResponseEntity.ok(claimService.resolveToken(token));
+    }
 
     @GetMapping("/{id}")
     ResponseEntity<RepairerPublicProfileResponse> findById(@PathVariable UUID id) {

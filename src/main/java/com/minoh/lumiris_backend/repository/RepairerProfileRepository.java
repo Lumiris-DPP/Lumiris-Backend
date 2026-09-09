@@ -15,6 +15,8 @@ public interface RepairerProfileRepository extends JpaRepository<RepairerProfile
 
     Optional<RepairerProfile> findByUser(User user);
 
+    Optional<RepairerProfile> findByClaimToken(UUID claimToken);
+
     List<RepairerProfile> findByStatus(RepairerStatus status);
 
     // ST_DWithin uses the spatial GIST index to pre-filter before computing exact

@@ -3,22 +3,24 @@ package com.minoh.lumiris_backend.controller;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.minoh.lumiris_backend.entity.EmailSuppression;
+import com.minoh.lumiris_backend.exception.WebhookSignatureException;
 import com.minoh.lumiris_backend.service.RepairerProspectingService;
+import com.minoh.lumiris_backend.service.SvixSignature;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
  * Webhook Resend : sur un bounce dur ou une plainte, l'adresse rejoint la liste de suppression
- * (plus aucun e-mail de prospection). Sans ça, l'outbox retente indéfiniment une adresse morte.
- *
- * ponytail: pas de vérification de signature Svix. Le seul effet d'un appel falsifié est de
- * sur-supprimer une adresse (on cesse de lui écrire) — sans fuite ni envoi indésirable. Ajouter
- * la vérif HMAC (svix-id.svix-timestamp.body) si l'endpoint est abusé.
+ * (plus aucun e-mail de prospection). Signature Svix vérifiée dès que {@code resend.webhook-secret}
+ * est configuré ; sinon (dev) on accepte sans vérifier — un appel falsifié ne fait que
+ * sur-supprimer une adresse, sans fuite ni envoi indésirable.
  */
 @Slf4j
 @RestController
@@ -30,8 +32,21 @@ public class ResendWebhookController {
 
     private final RepairerProspectingService prospectingService;
 
+    @Value("${resend.webhook-secret:}")
+    private String webhookSecret;
+
     @PostMapping("/webhook")
-    ResponseEntity<String> webhook(@RequestBody String payload) {
+    ResponseEntity<String> webhook(
+            @RequestBody String payload,
+            @RequestHeader(value = "svix-id", required = false) String svixId,
+            @RequestHeader(value = "svix-timestamp", required = false) String svixTimestamp,
+            @RequestHeader(value = "svix-signature", required = false) String svixSignature
+    ) {
+        if (webhookSecret != null && !webhookSecret.isBlank()
+                && !SvixSignature.verify(webhookSecret, svixId, svixTimestamp, svixSignature, payload)) {
+            throw new WebhookSignatureException("Signature de webhook Resend invalide.");
+        }
+
         JsonNode root;
         try {
             root = MAPPER.readTree(payload);
@@ -39,8 +54,7 @@ public class ResendWebhookController {
             return ResponseEntity.badRequest().body("invalid payload");
         }
 
-        String type = root.path("type").asText("");
-        EmailSuppression.Reason reason = switch (type) {
+        EmailSuppression.Reason reason = switch (root.path("type").asText("")) {
             case "email.bounced" -> EmailSuppression.Reason.BOUNCE;
             case "email.complained" -> EmailSuppression.Reason.COMPLAINT;
             default -> null;

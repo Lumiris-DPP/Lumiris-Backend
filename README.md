@@ -129,6 +129,17 @@ consultable côté admin (`GET /api/admin/emails`).
 silencieusement sans clé (aucun email ne part, mais l'outbox et les notifications
 in-app fonctionnent normalement).
 
+**Webhook Resend (bounces / plaintes)** — `RESEND_WEBHOOK_SECRET`. À configurer
+en prod pour alimenter la liste de suppression e-mail (`email_suppression`) :
+
+1. Resend → **Webhooks** → *Add Endpoint* : URL `https://<api>/api/resend/webhook`,
+   événements `email.bounced` et `email.complained`.
+2. Copier le *Signing Secret* (`whsec_…`) dans `RESEND_WEBHOOK_SECRET`.
+
+Sans le secret, `POST /api/resend/webhook` accepte sans vérifier la signature (OK
+en dev — un appel falsifié ne fait que sur-supprimer une adresse). Avec le secret,
+la signature Svix est exigée.
+
 **Push (Web Push / VAPID)** — identifie le serveur auprès des navigateurs pour
 autoriser l'envoi de notifications push (standard [RFC 8292](https://datatracker.ietf.org/doc/html/rfc8292)).
 Vide en local par défaut, même comportement : `PushNotificationService` s'efface

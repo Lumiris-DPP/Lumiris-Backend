@@ -130,6 +130,9 @@ minio:
 # (voir MailService), comme les autres intégrations optionnelles ci-dessus — jamais bloquant.
 resend:
     api-key: ${RESEND_API_KEY:}
+    # Signing secret du webhook Resend (Dashboard → Webhooks → Signing Secret, format whsec_…).
+    # Vide → la signature n'est pas vérifiée (dev). À CONFIGURER en prod.
+    webhook-secret: ${RESEND_WEBHOOK_SECRET:}
 
 # Web Push (VAPID). Vide par défaut : PushNotificationService détecte l'absence de clés et
 # n'envoie rien, sans bloquer — même logique que Resend/Sendcloud ci-dessus. Générer une paire

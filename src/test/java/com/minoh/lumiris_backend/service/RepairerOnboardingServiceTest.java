@@ -100,7 +100,7 @@ class RepairerOnboardingServiceTest {
         UUID id = UUID.randomUUID();
         // Postgres text[] columns surface as String[] (JDBC array) in a native query row, not List.
         Object[] row = {id, "Atelier Test", "Atelier Test SARL", new String[]{"couture"}, new String[]{"Paris"},
-                "Lun-Ven", "1 rue Test", "Paris", "Île-de-France", 2500.0, 48.86, 2.34, 4.5, 12L, 7200.0};
+                "Lun-Ven", "1 rue Test", "Paris", "Île-de-France", 2500.0, 48.86, 2.34, 4.5, 12L, 7200.0, true};
         when(repairerRepo.searchNearby(48.85, 2.35, null, 20_000.0, "distance", 20, 0))
                 .thenReturn(Collections.singletonList(row));
 
@@ -113,6 +113,7 @@ class RepairerOnboardingServiceTest {
         assertThat(results.get(0).averageRating()).isEqualTo(4.5);
         assertThat(results.get(0).reviewCount()).isEqualTo(12L);
         assertThat(results.get(0).medianResponseHours()).isEqualTo(2.0);
+        assertThat(results.get(0).claimed()).isTrue();
     }
 
     @Test

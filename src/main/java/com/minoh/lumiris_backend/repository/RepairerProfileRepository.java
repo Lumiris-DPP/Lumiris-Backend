@@ -49,7 +49,8 @@ public interface RepairerProfileRepository extends JpaRepository<RepairerProfile
                    ST_Y(r.location) AS lat, ST_X(r.location) AS lng,
                    COALESCE(rv.avg_rating, 0)   AS avg_rating,
                    COALESCE(rv.review_count, 0) AS review_count,
-                   med.median_response_seconds
+                   med.median_response_seconds,
+                   (r.user_id IS NOT NULL) AS claimed
             FROM repairer_profiles r
             LEFT JOIN (
                 SELECT repairer_profile_id, AVG(rating) AS avg_rating, COUNT(*) AS review_count

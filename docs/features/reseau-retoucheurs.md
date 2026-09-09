@@ -105,8 +105,9 @@ Endpoints (tous publics, GET-safe) :
 - `GET /v1/prospecting/open/{id}` → GIF 1×1
 - `GET /v1/prospecting/click/{id}` → 302 vers la landing de réclamation
 - `GET /v1/prospecting/unsubscribe/{id}` → page HTML de confirmation
-- `POST /api/resend/webhook` → bounces/plaintes Resend → suppression (pas de vérif de
-  signature : un appel falsifié ne fait que sur-supprimer, sans risque)
+- `POST /api/resend/webhook` → bounces/plaintes Resend → suppression. Signature Svix vérifiée
+  dès que `RESEND_WEBHOOK_SECRET` est configuré (setup dans le README). Sans secret : accepté
+  sans vérif (dev) — un appel falsifié ne fait que sur-supprimer.
 
 Template e-mail : identité Lumiris, **source de la donnée**, finalité, lien de réclamation
 (tracé), **lien de désinscription**, contact `privacy@lumiris.fr`, pixel d'ouverture.
@@ -122,12 +123,15 @@ Registre des traitements : §9 « Prospection retoucheurs » ajouté (intérêt 
 - Différé : import CSV, invitation en masse, entonnoir (envoyés → ouverts → réclamés →
   vérifiés).
 
-## Phase 5 — Côté consommateur **[différé]**
+## Phase 5 — Côté consommateur **[FAIT]**
 
-- `searchNearby` inclut aussi les `UNCLAIMED` avec un flag `claimed: false`.
-- Fiche non réclamée : CTA doux (« Pas encore sur Lumiris — on le contacte pour vous »), pas de
-  flux devis/RDV.
-- Tri : distance, note, réactivité ; pagination.
+- `searchNearby` renvoie un flag `claimed` (`user_id IS NOT NULL`). Les fiches annuaire curées
+  (VERIFIED sans compte, ex. seed CMA) apparaissent avec `claimed: false` ; les imports bruts
+  `UNCLAIMED` restent masqués (non revus).
+- Carte retoucheur `claimed: false` → CTA doux « Pas encore sur Lumiris — on le contacte pour
+  vous », pas de KPI ni de RDV direct.
+- Tri (distance / note / réactivité) + pagination — voir liste d'amélioration §6.
+- **Différé** : auto-invitation quand N consommateurs tapent sur la même fiche non réclamée.
 
 ## Phase 6 — Ops **[partiel]**
 

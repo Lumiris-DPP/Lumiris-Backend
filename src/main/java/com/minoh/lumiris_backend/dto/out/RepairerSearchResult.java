@@ -22,5 +22,7 @@ public record RepairerSearchResult(
         Double averageRating,
         long reviewCount,
         // Délai médian demande -> devis, en heures (null si aucun devis).
-        Double medianResponseHours
+        Double medianResponseHours,
+        // false = fiche annuaire sans compte : afficher un CTA doux plutôt qu'une prise de RDV.
+        boolean claimed
 ) {}

@@ -289,7 +289,8 @@ public class RepairerOnboardingService {
                 ((Number) row[11]).doubleValue(),
                 reviewCount > 0 ? ((Number) row[12]).doubleValue() : null,
                 reviewCount,
-                row[14] != null ? Math.round(((Number) row[14]).doubleValue() / 360.0) / 10.0 : null
+                row[14] != null ? Math.round(((Number) row[14]).doubleValue() / 360.0) / 10.0 : null,
+                Boolean.TRUE.equals(row[15])
         );
     }
 

@@ -67,7 +67,8 @@ class RepairerProspectingServiceTest {
         service.invite(profileId, "  PRO@Atelier.fr ");
 
         verify(claimService).issueClaimToken(profileId);
-        verify(mailService).sendRepairerProspecting(eq("pro@atelier.fr"), eq("Retouche Bastille"), anyString(), anyString());
+        verify(mailService).sendRepairerProspecting(
+                eq("pro@atelier.fr"), eq("Retouche Bastille"), anyString(), anyString(), anyString());
     }
 
     @Test
@@ -83,6 +84,50 @@ class RepairerProspectingServiceTest {
     void invite_rejectsABlankAddress() {
         assertThatThrownBy(() -> service.invite(profileId, "   "))
                 .isInstanceOf(ConflictException.class);
+    }
+
+    @Test
+    void recordClick_stampsClickedAtAndReturnsTheLandingUrl() {
+        UUID outreachId = UUID.randomUUID();
+        UUID token = UUID.randomUUID();
+        RepairerProspectOutreach outreach = new RepairerProspectOutreach();
+        outreach.setToken(token);
+        when(outreachRepo.findById(outreachId)).thenReturn(Optional.of(outreach));
+
+        String url = service.recordClick(outreachId);
+
+        assertThat(outreach.getClickedAt()).isNotNull();
+        assertThat(url).isEqualTo("https://atelier.lumiris.fr/retoucheurs/reclamer?token=" + token);
+    }
+
+    @Test
+    void followUp_reSendsAndBumpsContactCount() {
+        UUID outreachId = UUID.randomUUID();
+        RepairerProspectOutreach outreach = new RepairerProspectOutreach();
+        outreach.setEmail("pro@atelier.fr");
+        outreach.setToken(UUID.randomUUID());
+        outreach.setRepairerProfile(profile);
+        outreach.setContactCount(1);
+        when(outreachRepo.findById(outreachId)).thenReturn(Optional.of(outreach));
+        when(suppressionRepo.existsByEmailIgnoreCase("pro@atelier.fr")).thenReturn(false);
+
+        service.followUp(outreachId);
+
+        assertThat(outreach.getContactCount()).isEqualTo(2);
+        assertThat(outreach.getLastContactedAt()).isNotNull();
+        verify(mailService).sendRepairerProspecting(eq("pro@atelier.fr"), any(), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void followUp_skipsAnAlreadyClaimedOrUnsubscribedProspect() {
+        UUID outreachId = UUID.randomUUID();
+        RepairerProspectOutreach outreach = new RepairerProspectOutreach();
+        outreach.setClaimedAt(java.time.Instant.now());
+        when(outreachRepo.findById(outreachId)).thenReturn(Optional.of(outreach));
+
+        service.followUp(outreachId);
+
+        verify(mailService, never()).sendRepairerProspecting(any(), any(), any(), any(), any());
     }
 
     @Test

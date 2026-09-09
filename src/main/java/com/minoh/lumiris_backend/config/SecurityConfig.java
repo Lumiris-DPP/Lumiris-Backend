@@ -46,6 +46,8 @@ public class SecurityConfig {
         "/api/stripe/webhook",
         // Carrier aggregator → server webhook: same contract (unauthenticated, HMAC-verified).
         "/api/shipping/webhook",
+        // Resend → server webhook: bounce/complaint events feed the email suppression list.
+        "/api/resend/webhook",
         "/swagger-ui/**",
         "/swagger-ui.html",
         "/v3/api-docs/**",

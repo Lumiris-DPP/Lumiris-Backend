@@ -1,6 +1,7 @@
 package com.minoh.lumiris_backend.dto.out;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.minoh.lumiris_backend.entity.RepairerSource;
 import com.minoh.lumiris_backend.entity.RepairerStatus;
 
 import java.time.Instant;
@@ -12,6 +13,9 @@ public record RepairerProfileResponse(
         UUID id,
         String userEmail,
         RepairerStatus status,
+        RepairerSource source,
+        Instant importedAt,
+        Instant claimedAt,
         String siret,
         String companyName,
         String displayName,

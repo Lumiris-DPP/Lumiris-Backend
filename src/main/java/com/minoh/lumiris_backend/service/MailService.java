@@ -62,11 +62,13 @@ public class MailService {
 
     // Prospection : invite un retoucheur listé dans un annuaire à réclamer sa fiche. B2B, avec
     // lien de désinscription obligatoire.
-    public void sendRepairerProspecting(String to, String displayName, String claimUrl, String unsubscribeUrl) {
+    public void sendRepairerProspecting(String to, String displayName, String claimUrl,
+                                        String openPixelUrl, String unsubscribeUrl) {
         String subject = "Votre atelier est référencé sur le réseau Lumiris";
         Context context = titledContext(subject);
         context.setVariable("displayName", displayName);
         context.setVariable("claimUrl", claimUrl);
+        context.setVariable("openPixelUrl", openPixelUrl);
         context.setVariable("unsubscribeUrl", unsubscribeUrl);
         send(to, subject, "email/repairer-prospecting", context);
     }

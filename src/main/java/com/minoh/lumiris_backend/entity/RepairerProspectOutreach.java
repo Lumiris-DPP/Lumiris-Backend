@@ -25,6 +25,17 @@ public class RepairerProspectOutreach {
     @Column(nullable = false)
     private String email;
 
+    // Jeton de réclamation porté par l'e-mail — permet de tracer le clic et de relier la
+    // réclamation à cet envoi.
+    @Column
+    private UUID token;
+
+    @Column(name = "contact_count", nullable = false)
+    private int contactCount = 1;
+
+    @Column(name = "last_contacted_at")
+    private Instant lastContactedAt;
+
     @Column(name = "sent_at")
     private Instant sentAt;
 

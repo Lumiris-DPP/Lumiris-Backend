@@ -9,6 +9,8 @@ import com.minoh.lumiris_backend.repository.EmailSuppressionRepository;
 import com.minoh.lumiris_backend.repository.RepairerProfileRepository;
 import com.minoh.lumiris_backend.repository.RepairerProspectOutreachRepository;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,10 +24,16 @@ import java.util.UUID;
  * Prospection B2B — destinataire professionnel, message lié à son métier, source des données
  * citée, désinscription en un clic (RGPD + LCEN art. L34-5). Toute adresse dans
  * {@code email_suppression} est écartée avant envoi.
+ *
+ * Suivi de tunnel : chaque envoi porte un jeton et passe par des liens tracés
+ * ({@code /v1/prospecting/open|click|unsubscribe/{id}}) ; {@link RepairerProspectingReminderScheduler}
+ * relance les prospects restés silencieux.
  */
 @Service
 @RequiredArgsConstructor
 public class RepairerProspectingService {
+
+    private static final Logger log = LoggerFactory.getLogger(RepairerProspectingService.class);
 
     private final RepairerProfileRepository repairerRepo;
     private final RepairerProspectOutreachRepository outreachRepo;
@@ -42,7 +50,7 @@ public class RepairerProspectingService {
 
     @Transactional
     public void invite(UUID profileId, String rawEmail) {
-        String email = rawEmail == null ? "" : rawEmail.trim().toLowerCase();
+        String email = normalize(rawEmail);
         if (email.isEmpty()) {
             throw new ConflictException("Adresse e-mail manquante.");
         }
@@ -58,15 +66,62 @@ public class RepairerProspectingService {
         RepairerProspectOutreach outreach = new RepairerProspectOutreach();
         outreach.setRepairerProfile(profile);
         outreach.setEmail(email);
+        outreach.setToken(token);
         outreach.setSentAt(Instant.now());
+        outreach.setLastContactedAt(Instant.now());
         outreach = outreachRepo.save(outreach);
 
-        String claimUrl = UriComponentsBuilder.fromUriString(repairerAppUrl)
-                .path("/retoucheurs/reclamer").queryParam("token", token).toUriString();
-        String unsubscribeUrl = UriComponentsBuilder.fromUriString(publicBaseUrl)
-                .path("/v1/prospecting/unsubscribe/{id}").build(outreach.getId()).toString();
+        send(outreach, profile);
+    }
 
-        mailService.sendRepairerProspecting(email, profile.getDisplayName(), claimUrl, unsubscribeUrl);
+    // Relance : réutilise le jeton (il n'expire pas), incrémente le compteur.
+    @Transactional
+    public void followUp(UUID outreachId) {
+        RepairerProspectOutreach outreach = outreachRepo.findById(outreachId)
+                .orElseThrow(() -> new ResourceNotFoundException("Envoi introuvable : " + outreachId));
+        if (outreach.getClaimedAt() != null || outreach.getUnsubscribedAt() != null) {
+            return;
+        }
+        if (suppressionRepo.existsByEmailIgnoreCase(outreach.getEmail())) {
+            return;
+        }
+        outreach.setContactCount(outreach.getContactCount() + 1);
+        outreach.setLastContactedAt(Instant.now());
+        send(outreach, outreach.getRepairerProfile());
+    }
+
+    private void send(RepairerProspectOutreach outreach, RepairerProfile profile) {
+        String base = publicBaseUrl + "/v1/prospecting";
+        String claimUrl = base + "/click/" + outreach.getId();
+        String openPixelUrl = base + "/open/" + outreach.getId();
+        String unsubscribeUrl = base + "/unsubscribe/" + outreach.getId();
+        mailService.sendRepairerProspecting(
+                outreach.getEmail(), profile.getDisplayName(), claimUrl, openPixelUrl, unsubscribeUrl);
+    }
+
+    // Cible réelle du lien de réclamation, servie après enregistrement du clic.
+    public String claimLandingUrl(UUID token) {
+        return UriComponentsBuilder.fromUriString(repairerAppUrl)
+                .path("/retoucheurs/reclamer").queryParam("token", token).toUriString();
+    }
+
+    @Transactional
+    public String recordClick(UUID outreachId) {
+        RepairerProspectOutreach outreach = outreachRepo.findById(outreachId)
+                .orElseThrow(() -> new ResourceNotFoundException("Lien inconnu."));
+        if (outreach.getClickedAt() == null) {
+            outreach.setClickedAt(Instant.now());
+        }
+        return claimLandingUrl(outreach.getToken());
+    }
+
+    @Transactional
+    public void recordOpen(UUID outreachId) {
+        outreachRepo.findById(outreachId).ifPresent(o -> {
+            if (o.getOpenedAt() == null) {
+                o.setOpenedAt(Instant.now());
+            }
+        });
     }
 
     @Transactional
@@ -74,9 +129,21 @@ public class RepairerProspectingService {
         RepairerProspectOutreach outreach = outreachRepo.findById(outreachId)
                 .orElseThrow(() -> new ResourceNotFoundException("Lien de désinscription inconnu."));
         outreach.setUnsubscribedAt(Instant.now());
+        suppress(outreach.getEmail(), EmailSuppression.Reason.UNSUBSCRIBE);
+    }
 
-        if (!suppressionRepo.existsByEmailIgnoreCase(outreach.getEmail())) {
-            suppressionRepo.save(new EmailSuppression(outreach.getEmail(), EmailSuppression.Reason.UNSUBSCRIBE));
+    // Depuis le webhook Resend (bounce dur / plainte) : on ne recontacte plus cette adresse.
+    @Transactional
+    public void suppress(String rawEmail, EmailSuppression.Reason reason) {
+        String email = normalize(rawEmail);
+        if (email.isEmpty() || suppressionRepo.existsByEmailIgnoreCase(email)) {
+            return;
         }
+        suppressionRepo.save(new EmailSuppression(email, reason));
+        log.info("Prospection : {} ajoutée à la liste de suppression ({})", email, reason);
+    }
+
+    private static String normalize(String email) {
+        return email == null ? "" : email.trim().toLowerCase();
     }
 }

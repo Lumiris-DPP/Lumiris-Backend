@@ -83,27 +83,35 @@ Front : l'onboarding retoucheur accepte `?claim=<token>` → préremplit → à 
 **Tests :** token à usage unique ; fiche déjà réclamée → 404 ; compte ayant déjà un profil →
 409 ; `issueClaimToken` sur fiche avec compte → 409 ; le rattachement ne duplique pas.
 
-## Phase 3 — Prospection e-mail + conformité **[FAIT : envoi manuel unitaire ; suivi ouvertures/clics différé]**
+## Phase 3 — Prospection e-mail + conformité **[FAIT — incl. tunnel : pixel d'ouverture, clic tracé, conversion, relances J+7/J+21, webhook bounces Resend]**
 
 ```
 V56  →  repairer_prospect_outreach (profile, email, sent/opened/clicked/claimed/unsubscribed_at)
         email_suppression (email PK, reason UNSUBSCRIBE|BOUNCE|COMPLAINT|MANUAL)
+V57  →  + token, contact_count, last_contacted_at (suivi de tunnel + cadence de relance)
 
 service/RepairerProspectingService
-  invite(profileId, email)  refuse si email ∈ email_suppression ; issueClaimToken ;
-                            ligne email_outbox (template 'repairer-prospecting') ; trace outreach
-  unsubscribe(token)        → email_suppression + outreach.unsubscribed_at
+  invite(profileId, email)   refuse si email ∈ email_suppression ; issueClaimToken ; trace
+                             l'outreach (token) ; envoie via liens tracés
+  followUp(outreachId)       relance (réutilise le token, contact_count++)
+  recordOpen / recordClick   pose opened_at / clicked_at
+  suppress(email, reason)    ajoute à email_suppression (désinscription, bounce, plainte)
+RepairerClaimService.claim() pose outreach.claimed_at si le token correspond (conversion)
+RepairerProspectingReminderScheduler  @Scheduled quotidien : 2e contact J+7, 3e J+21, stop
 ```
 
-Endpoints : `POST /api/admin/repairers/{id}/invite {email}` (ADMIN) ;
-`GET /unsubscribe/{token}` (public).
+Endpoints (tous publics, GET-safe) :
+- `POST /api/admin/repairers/{id}/invite {email}` (ADMIN)
+- `GET /v1/prospecting/open/{id}` → GIF 1×1
+- `GET /v1/prospecting/click/{id}` → 302 vers la landing de réclamation
+- `GET /v1/prospecting/unsubscribe/{id}` → page HTML de confirmation
+- `POST /api/resend/webhook` → bounces/plaintes Resend → suppression (pas de vérif de
+  signature : un appel falsifié ne fait que sur-supprimer, sans risque)
 
-Template e-mail **obligatoire** : identité Lumiris, **source de la donnée**, finalité, lien de
-réclamation, **lien de désinscription**, contact `privacy@lumiris.fr`.
+Template e-mail : identité Lumiris, **source de la donnée**, finalité, lien de réclamation
+(tracé), **lien de désinscription**, contact `privacy@lumiris.fr`, pixel d'ouverture.
 
-Mettre à jour `docs/rgpd/registre-des-traitements.md` → traitement « Prospection retoucheurs »
-(base légale : intérêt légitime, prospection B2B — destinataires professionnels, message lié à
-leur métier, opt-out simple, source citée).
+Registre des traitements : §9 « Prospection retoucheurs » ajouté (intérêt légitime, B2B).
 
 ## Phase 4 — Console admin **[différé — MVP : 3 onglets + bouton inviter]**
 

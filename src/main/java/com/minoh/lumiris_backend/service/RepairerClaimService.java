@@ -8,6 +8,7 @@ import com.minoh.lumiris_backend.entity.User;
 import com.minoh.lumiris_backend.exception.ConflictException;
 import com.minoh.lumiris_backend.exception.ResourceNotFoundException;
 import com.minoh.lumiris_backend.repository.RepairerProfileRepository;
+import com.minoh.lumiris_backend.repository.RepairerProspectOutreachRepository;
 import com.minoh.lumiris_backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -27,6 +28,7 @@ import java.util.UUID;
 public class RepairerClaimService {
 
     private final RepairerProfileRepository repairerRepo;
+    private final RepairerProspectOutreachRepository outreachRepo;
     private final UserRepository userRepo;
     private final RepairerOnboardingService onboardingService;
 
@@ -55,6 +57,14 @@ public class RepairerClaimService {
         profile.setStatus(RepairerStatus.PENDING);
         profile.setClaimedAt(Instant.now());
         profile.setClaimToken(null);
+
+        // Relie la conversion à l'e-mail de prospection, s'il y en a un.
+        outreachRepo.findByToken(token).ifPresent(o -> {
+            if (o.getClaimedAt() == null) {
+                o.setClaimedAt(Instant.now());
+            }
+        });
+
         return onboardingService.toResponse(repairerRepo.save(profile));
     }
 

@@ -7,6 +7,7 @@ import com.minoh.lumiris_backend.entity.User;
 import com.minoh.lumiris_backend.exception.ConflictException;
 import com.minoh.lumiris_backend.exception.ResourceNotFoundException;
 import com.minoh.lumiris_backend.repository.RepairerProfileRepository;
+import com.minoh.lumiris_backend.repository.RepairerProspectOutreachRepository;
 import com.minoh.lumiris_backend.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -27,6 +28,7 @@ import static org.mockito.Mockito.when;
 class RepairerClaimServiceTest {
 
     @Mock private RepairerProfileRepository repairerRepo;
+    @Mock private RepairerProspectOutreachRepository outreachRepo;
     @Mock private UserRepository userRepo;
     @Mock private RepairerOnboardingService onboardingService;
 
@@ -38,7 +40,7 @@ class RepairerClaimServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new RepairerClaimService(repairerRepo, userRepo, onboardingService);
+        service = new RepairerClaimService(repairerRepo, outreachRepo, userRepo, onboardingService);
 
         user = new User();
         user.setId(UUID.randomUUID());

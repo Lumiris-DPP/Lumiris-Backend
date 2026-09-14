@@ -20,7 +20,7 @@
 		<jjwt.version>0.12.6</jjwt.version>
 		<stripe.version>28.4.0</stripe.version>
 		<sentry.version>8.28.0</sentry.version>
-		<tomcat.version>11.0.22</tomcat.version>
+		<tomcat.version>11.0.25</tomcat.version>
 		<bouncycastle.version>1.84</bouncycastle.version>
 	</properties>
 

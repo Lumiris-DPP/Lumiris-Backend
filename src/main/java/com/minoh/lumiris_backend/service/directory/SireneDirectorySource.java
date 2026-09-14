@@ -8,6 +8,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -21,14 +22,15 @@ import java.util.regex.Pattern;
 @Component
 public class SireneDirectorySource implements RepairerDirectorySource {
 
-    // Cordonnerie / réparation d'articles personnels — inclut la retouche textile.
-    private static final List<String> DEFAULT_NAF = List.of("95.29A", "95.29B");
+    // Cordonnerie / réparation d'articles personnels — inclut la retouche textile. NAF Rév. 2 réel
+    // (95.29A/95.29B n'existent pas dans la nomenclature — /search les rejette avec 400).
+    private static final List<String> DEFAULT_NAF = List.of("95.23Z", "95.29Z");
     private static final int PER_PAGE = 25;
 
-    // 95.29A = cordonnerie (spécifique, on garde tout). Les autres codes sont larges (95.29B
-    // attrape réparation de montres, de vélos…) : on n'y garde que les raisons sociales évoquant
-    // la retouche / couture / cordonnerie.
-    private static final Set<String> ALWAYS_KEEP_NAF = Set.of("95.29A");
+    // 95.23Z = réparation de chaussures et d'articles en cuir — cordonnerie (spécifique, on garde
+    // tout). 95.29Z est large (attrape aussi réparation de montres, de vélos…) : on n'y garde que
+    // les raisons sociales évoquant la retouche / couture / cordonnerie.
+    private static final Set<String> ALWAYS_KEEP_NAF = Set.of("95.23Z");
     private static final Pattern TEXTILE_KEYWORDS = Pattern.compile(
             "retouch|coutur|cordonn|tailleu|couseu|maroquin|repris|ourlet|piqu[eè]", Pattern.CASE_INSENSITIVE);
 
@@ -47,7 +49,10 @@ public class SireneDirectorySource implements RepairerDirectorySource {
     @Override
     public List<DirectoryEntry> fetch(ImportCriteria criteria) {
         List<String> nafCodes = criteria.nafCodes().isEmpty() ? DEFAULT_NAF : criteria.nafCodes();
-        List<String> departments = criteria.departments().isEmpty() ? List.of((String) null) : criteria.departments();
+        // List.of(null) throws (it rejects null elements) — Collections.singletonList allows it,
+        // and null here means "no department filter" (fetchSlice/call skip the query param).
+        List<String> departments =
+                criteria.departments().isEmpty() ? Collections.singletonList(null) : criteria.departments();
 
         List<DirectoryEntry> out = new ArrayList<>();
         for (String naf : nafCodes) {

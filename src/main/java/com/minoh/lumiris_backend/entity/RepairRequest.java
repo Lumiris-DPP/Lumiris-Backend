@@ -56,4 +56,15 @@ public class RepairRequest extends Auditable {
 
     @Column(name = "paid_at")
     private Instant paidAt;
+
+    // Reversement au retoucheur (Stripe Connect), net de commission plateforme — même mécanique
+    // que MarketplaceOrder pour les artisans (cf. SellerPayoutService).
+    @Column(name = "net_cents")
+    private Integer netCents;
+
+    @Column(name = "stripe_transfer_id")
+    private String stripeTransferId;
+
+    @Column(name = "released_at")
+    private Instant releasedAt;
 }

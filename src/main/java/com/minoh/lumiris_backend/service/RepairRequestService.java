@@ -39,6 +39,61 @@ public class RepairRequestService {
     private final MailService mailService;
     private final AffiliateTrackingService affiliateTrackingService;
     private final com.minoh.lumiris_backend.service.stripe.RepairRequestRefundService refundService;
+    private final com.minoh.lumiris_backend.service.stripe.RepairPayoutService payoutService;
+    private final RepairPayoutScheduleResolver payoutScheduleResolver;
+    private final com.minoh.lumiris_backend.config.MarketplaceProperties marketplaceProperties;
+
+    private static final java.util.Set<RepairRequestStatus> UNRELEASED_STATUSES =
+            java.util.Set.of(RepairRequestStatus.ACCEPTED, RepairRequestStatus.IN_PROGRESS, RepairRequestStatus.COMPLETED);
+
+    // Échéancier de versement du retoucheur — même forme que SellerStatsService.getPayoutSchedule
+    // côté artisan.
+    @Transactional(readOnly = true)
+    public com.minoh.lumiris_backend.dto.out.RepairPayoutScheduleResponse payoutSchedule(String repairerEmail) {
+        User user = findUser(repairerEmail);
+        List<com.minoh.lumiris_backend.dto.out.RepairPayoutEntryResponse> entries = requestRepo
+                .findUnreleasedByRepairerUser(user.getId(), UNRELEASED_STATUSES).stream()
+                .map(this::toPayoutEntry)
+                .sorted(java.util.Comparator.comparing(
+                        com.minoh.lumiris_backend.dto.out.RepairPayoutEntryResponse::expectedAt,
+                        java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder())))
+                .toList();
+
+        long scheduled = sumWhere(entries, com.minoh.lumiris_backend.entity.PayoutExpectation.SCHEDULED);
+        long onHold = sumWhere(entries, com.minoh.lumiris_backend.entity.PayoutExpectation.ON_HOLD)
+                + sumWhere(entries, com.minoh.lumiris_backend.entity.PayoutExpectation.IMMINENT);
+        return new com.minoh.lumiris_backend.dto.out.RepairPayoutScheduleResponse(
+                scheduled, requestRepo.releasedNetCentsByRepairerUser(user.getId()), onHold, "EUR", entries);
+    }
+
+    private com.minoh.lumiris_backend.dto.out.RepairPayoutEntryResponse toPayoutEntry(RepairRequest r) {
+        RepairPayoutScheduleResolver.PayoutForecast forecast = payoutScheduleResolver.forecast(r);
+        // Net déjà figé à la clôture (payoutService), ou projeté tant que la demande n'est pas
+        // terminée — pour que le retoucheur sache déjà ce qu'il touchera une fois le travail fini.
+        int projectedNet = r.getNetCents() != null
+                ? r.getNetCents()
+                : (int) Math.round((r.getQuoteAmountCents() != null ? r.getQuoteAmountCents() : 0)
+                        * (1 - marketplaceProperties.getCommissionRate()));
+        return new com.minoh.lumiris_backend.dto.out.RepairPayoutEntryResponse(
+                r.getId(),
+                r.getDppForm().getProductName(),
+                r.getConsumerUser().getName(),
+                projectedNet,
+                "EUR",
+                forecast.expectedAt(),
+                forecast.expectation(),
+                r.getStatus()
+        );
+    }
+
+    private static long sumWhere(
+            List<com.minoh.lumiris_backend.dto.out.RepairPayoutEntryResponse> entries,
+            com.minoh.lumiris_backend.entity.PayoutExpectation expectation) {
+        return entries.stream()
+                .filter(e -> e.expectation() == expectation)
+                .mapToLong(com.minoh.lumiris_backend.dto.out.RepairPayoutEntryResponse::netCents)
+                .sum();
+    }
 
     // Client VISION : crée la demande depuis un passeport de sa garde-robe (identifié par code public).
     @Transactional
@@ -177,7 +232,9 @@ public class RepairRequestService {
         RepairRequest request = findOwnedByRepairer(repairerEmail, requestId);
         requireStatus(request, RepairRequestStatus.IN_PROGRESS);
         request.setStatus(RepairRequestStatus.COMPLETED);
-        return toResponse(requestRepo.save(request));
+        RepairRequest saved = requestRepo.save(request);
+        payoutService.releaseFunds(saved);
+        return toResponse(saved);
     }
 
     // Client : met fin à la demande à tout moment, sauf si déjà Terminé.

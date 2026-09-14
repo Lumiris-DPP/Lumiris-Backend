@@ -94,6 +94,14 @@ public class RepairerController {
         return ResponseEntity.ok(requestService.findForRepairer(principal.getUsername()));
     }
 
+    // Échéancier de versement — même logique que /api/seller/payouts côté artisan, adapté aux
+    // devis de réparation. Le compte Stripe Connect lui-même se gère via /api/seller/{onboarding,status}.
+    @GetMapping("/me/payouts")
+    ResponseEntity<com.minoh.lumiris_backend.dto.out.RepairPayoutScheduleResponse> myPayouts(
+            @AuthenticationPrincipal UserDetails principal) {
+        return ResponseEntity.ok(requestService.payoutSchedule(principal.getUsername()));
+    }
+
     @PostMapping("/me/requests/{id}/quote")
     ResponseEntity<RepairRequestResponse> submitQuote(
             @PathVariable UUID id,

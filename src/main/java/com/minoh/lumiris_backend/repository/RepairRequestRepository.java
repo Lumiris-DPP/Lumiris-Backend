@@ -51,4 +51,19 @@ public interface RepairRequestRepository extends JpaRepository<RepairRequest, UU
     // servicing (accepted the job at least once), not any DPP with a pending/refused request.
     boolean existsByDppFormAndRepairerProfileUserAndStatusIn(
             DppForm dppForm, User repairerUser, Collection<RepairRequestStatus> statuses);
+
+    // ── Trésorerie / versements (même mécanique que MarketplaceOrderRepository côté artisan) ──
+    @Query("""
+            select r from RepairRequest r
+            where r.repairerProfile.user.id = :userId
+              and r.status in :statuses
+              and r.paidAt is not null
+              and r.stripeTransferId is null
+            """)
+    List<RepairRequest> findUnreleasedByRepairerUser(
+            @Param("userId") UUID userId, @Param("statuses") Collection<RepairRequestStatus> statuses);
+
+    @Query("select coalesce(sum(r.netCents), 0) from RepairRequest r "
+            + "where r.repairerProfile.user.id = :userId and r.stripeTransferId is not null")
+    long releasedNetCentsByRepairerUser(@Param("userId") UUID userId);
 }

@@ -15,6 +15,7 @@ import java.util.List;
 public class AdminAuditService {
 
     public static final String TARGET_REPAIRER = "repairer";
+    public static final String TARGET_ARTISAN = "artisan";
 
     private final AdminAuditLogRepository repo;
 

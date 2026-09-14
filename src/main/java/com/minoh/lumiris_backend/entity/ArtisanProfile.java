@@ -5,6 +5,7 @@ import lombok.Getter;
 import lombok.Setter;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
+import org.locationtech.jts.geom.Point;
 
 import java.time.Instant;
 import java.util.List;
@@ -21,8 +22,9 @@ public class ArtisanProfile extends Auditable {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
+    // Null tant que la fiche est un import annuaire non réclamé (voir ArtisanStatus.UNCLAIMED).
     @OneToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id", nullable = false, unique = true)
+    @JoinColumn(name = "user_id", unique = true)
     private User user;
 
     @Column(name = "atelier_name")
@@ -37,6 +39,9 @@ public class ArtisanProfile extends Auditable {
     private String city;
 
     private String region;
+
+    // Fiches SIRENE géocodées uniquement — pas de saisie manuelle côté onboarding SELF.
+    private Point location;
 
     @Column(nullable = false)
     private String tier = "Solo";
@@ -116,16 +121,18 @@ public class ArtisanProfile extends Auditable {
     @Column(nullable = false)
     private boolean published = false;
 
-    @Embedded
-    private KybDetails kyb = new KybDetails();
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private ArtisanSource source = ArtisanSource.SELF;
 
-    // Hibernate leaves `kyb` null after loading a row where every kyb_* column is still NULL
-    // (no KYB dossier submitted yet) instead of using the field initializer above — guarantee
-    // callers never see a null embeddable regardless of load path.
-    @PostLoad
-    private void initKyb() {
-        if (kyb == null) kyb = new KybDetails();
-    }
+    @Column(name = "external_ref")
+    private String externalRef;
+
+    @Column(name = "imported_at")
+    private Instant importedAt;
+
+    @Column(name = "interest_count", nullable = false)
+    private int interestCount = 0;
 
     // Congés : les pièces restent achetables, le délai d'expédition annoncé est allongé jusqu'à
     // cette date. La pause se termine d'elle-même quand la date passe — aucun job de reprise.

@@ -1,6 +1,7 @@
 package com.minoh.lumiris_backend.dto.out;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.minoh.lumiris_backend.entity.ArtisanSource;
 import com.minoh.lumiris_backend.entity.ArtisanStatus;
 
 import java.time.Instant;
@@ -14,6 +15,7 @@ public record ArtisanProfileResponse(
         String userEmail,
         String userName,
         ArtisanStatus status,
+        ArtisanSource source,
         String siret,
         String companyName,
         String nafCode,

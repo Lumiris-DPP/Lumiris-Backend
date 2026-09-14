@@ -228,9 +228,10 @@ public class ArtisanOnboardingService {
     ArtisanProfileResponse toResponse(ArtisanProfile p) {
         return new ArtisanProfileResponse(
                 p.getId(),
-                p.getUser().getEmail(),
-                p.getUser().getName(),
+                p.getUser() != null ? p.getUser().getEmail() : null,
+                p.getUser() != null ? p.getUser().getName() : null,
                 p.getStatus(),
+                p.getSource(),
                 p.getSiret(),
                 p.getCompanyName(),
                 p.getNafCode(),

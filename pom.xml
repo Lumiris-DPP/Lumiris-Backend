@@ -283,6 +283,12 @@
 				<artifactId>bcprov-jdk18on</artifactId>
 				<version>${bouncycastle.version}</version>
 			</dependency>
+			<!-- CVE-2026-75595 (CRITICAL), pulled in transitively via web-push -> async-http-client. -->
+			<dependency>
+				<groupId>io.netty</groupId>
+				<artifactId>netty-handler</artifactId>
+				<version>4.2.17.Final</version>
+			</dependency>
 		</dependencies>
 	</dependencyManagement>
 

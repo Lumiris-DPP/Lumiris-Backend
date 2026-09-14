@@ -37,6 +37,14 @@ public class PublicRepairerController {
         return ResponseEntity.ok(onboardingService.findPublicById(id));
     }
 
+    // Bandeau "pas encore dans le réseau" (fiche annuaire sans compte) — signal d'intérêt anonyme,
+    // sans email ni aucune autre donnée personnelle.
+    @PostMapping("/{id}/interest")
+    ResponseEntity<Void> signalInterest(@PathVariable UUID id) {
+        onboardingService.signalInterest(id);
+        return ResponseEntity.accepted().build();
+    }
+
     @GetMapping("/search")
     ResponseEntity<List<RepairerSearchResult>> search(
             @RequestParam double lat,

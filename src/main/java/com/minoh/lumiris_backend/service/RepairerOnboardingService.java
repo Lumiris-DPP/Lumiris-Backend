@@ -229,7 +229,8 @@ public class RepairerOnboardingService {
     @Transactional(readOnly = true)
     public RepairerPublicProfileResponse findPublicById(UUID id) {
         RepairerProfile p = repairerRepo.findById(id)
-                .filter(profile -> profile.getStatus() == RepairerStatus.VERIFIED)
+                .filter(profile -> profile.getStatus() == RepairerStatus.VERIFIED
+                        || profile.getStatus() == RepairerStatus.UNCLAIMED)
                 .orElseThrow(() -> new ResourceNotFoundException("Retoucheur introuvable"));
         Double medianSeconds = requestRepo.medianResponseSeconds(p.getId());
         Double medianHours = medianSeconds != null ? Math.round(medianSeconds / 360.0) / 10.0 : null;
@@ -246,8 +247,19 @@ public class RepairerOnboardingService {
                 p.getId(), p.getDisplayName(), p.getCompanyName(), p.getSpecialties(), p.getZones(),
                 p.getSchedule(), p.getAddress(), p.getCity(), p.getRegion(),
                 reviewRepo.averageRating(p), reviewRepo.countByRepairerProfile(p),
-                medianHours, acceptanceRate, completedJobs
+                medianHours, acceptanceRate, completedJobs,
+                p.getUser() != null, p.getInterestCount()
         );
+    }
+
+    // Signal d'intérêt anonyme sur une fiche non réclamée — pas de compte requis, aucune donnée
+    // personnelle capturée (voir V63__repairer_interest_signal.sql).
+    @Transactional
+    public void signalInterest(UUID id) {
+        RepairerProfile p = repairerRepo.findById(id)
+                .filter(profile -> profile.getStatus() == RepairerStatus.UNCLAIMED)
+                .orElseThrow(() -> new ResourceNotFoundException("Retoucheur introuvable"));
+        repairerRepo.incrementInterest(p.getId());
     }
 
     @Transactional(readOnly = true)

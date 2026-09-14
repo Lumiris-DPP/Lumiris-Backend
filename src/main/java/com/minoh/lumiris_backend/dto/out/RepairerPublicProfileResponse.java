@@ -23,5 +23,8 @@ public record RepairerPublicProfileResponse(
         // Part de devis acceptés parmi les devis tranchés (0..1), null si aucune décision.
         Double acceptanceRate,
         // Nombre d'interventions terminées avec un devis (proxy d'expérience).
-        long completedJobs
+        long completedJobs,
+        // false = fiche annuaire sans compte : bandeau "pas encore dans le réseau" côté front.
+        boolean claimed,
+        int interestCount
 ) {}

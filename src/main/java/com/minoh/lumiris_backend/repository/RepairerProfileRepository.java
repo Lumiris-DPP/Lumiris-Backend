@@ -5,6 +5,7 @@ import com.minoh.lumiris_backend.entity.RepairerSource;
 import com.minoh.lumiris_backend.entity.RepairerStatus;
 import com.minoh.lumiris_backend.entity.User;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -22,6 +23,12 @@ public interface RepairerProfileRepository extends JpaRepository<RepairerProfile
     Optional<RepairerProfile> findBySourceAndExternalRef(RepairerSource source, String externalRef);
 
     List<RepairerProfile> findByStatus(RepairerStatus status);
+
+    // Signal d'intérêt anonyme (bandeau "pas encore dans le réseau") — incrément atomique en SQL,
+    // pas de lecture-modification-écriture depuis Java (concurrence sans souci).
+    @Modifying
+    @Query("update RepairerProfile p set p.interestCount = p.interestCount + 1 where p.id = :id")
+    int incrementInterest(@Param("id") UUID id);
 
     // Fiches annuaire jamais réclamées, importées il y a longtemps et pas recontactées récemment :
     // à purger (RGPD — on ne garde pas indéfiniment des pros qui n'ont rien demandé).
@@ -63,7 +70,7 @@ public interface RepairerProfileRepository extends JpaRepository<RepairerProfile
                 FROM repair_requests WHERE quote_submitted_at IS NOT NULL
                 GROUP BY repairer_profile_id
             ) med ON med.repairer_profile_id = r.id
-            WHERE r.status = 'VERIFIED'
+            WHERE r.status IN ('VERIFIED', 'UNCLAIMED')
               AND r.location IS NOT NULL
               AND (:specialty IS NULL OR :specialty = ANY(r.specialties))
               AND ST_DWithin(r.location::geography, ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography, :radiusMeters)

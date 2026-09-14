@@ -82,6 +82,9 @@ public class RepairerProfile extends Auditable {
 
     private Point location;
 
+    @Column(nullable = false)
+    private int interestCount = 0;
+
     @Embedded
     private KybDetails kyb = new KybDetails();
 

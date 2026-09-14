@@ -57,9 +57,15 @@
 			<version>${sentry.version}</version>
 		</dependency>
 
-		<!-- OpenTelemetry traces → otel-collector → Tempo. micrometer-tracing-bridge-otel wires
-		     Spring's Micrometer Observation API to OTel spans; opentelemetry-exporter-otlp ships
-		     them over OTLP (management.otlp.tracing.endpoint). -->
+		<!-- OpenTelemetry traces → otel-collector → Tempo. spring-boot-micrometer-tracing is the
+		     Spring Boot 4 autoconfiguration module (split out of actuator-autoconfigure, mirroring
+		     spring-boot-micrometer-metrics) — without it, management.tracing/otlp.tracing.* in
+		     application.yaml are inert. micrometer-tracing-bridge-otel wires Micrometer Observation
+		     to OTel spans; opentelemetry-exporter-otlp ships them over OTLP. -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-micrometer-tracing</artifactId>
+		</dependency>
 		<dependency>
 			<groupId>io.micrometer</groupId>
 			<artifactId>micrometer-tracing-bridge-otel</artifactId>

@@ -82,11 +82,13 @@ public class DppEventService {
                 .toList();
     }
 
+    // Même règle d'accès que create() : le propriétaire, ou un retoucheur en cours d'intervention
+    // (ou l'ayant terminée) sur ce DPP — sinon il pourrait écrire l'historique sans jamais le relire.
     private DppForm findOwnedForm(UUID dppFormId, String userEmail) {
         User user = findUser(userEmail);
         DppForm form = dppFormRepository.findById(dppFormId)
                 .orElseThrow(() -> new ResourceNotFoundException("DPP not found"));
-        if (!isOwner(form, user)) {
+        if (!isOwner(form, user) && !isServicingRepairer(form, user)) {
             throw new ResourceNotFoundException("DPP not found");
         }
         return form;

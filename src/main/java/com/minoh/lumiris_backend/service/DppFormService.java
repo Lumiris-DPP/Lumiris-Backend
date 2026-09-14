@@ -27,6 +27,7 @@ import com.minoh.lumiris_backend.repository.DppFormDocumentRepository;
 import com.minoh.lumiris_backend.repository.DppFormRepository;
 import com.minoh.lumiris_backend.repository.DppMaterialRepository;
 import com.minoh.lumiris_backend.repository.IrisScoreRepository;
+import com.minoh.lumiris_backend.repository.RepairRequestRepository;
 import com.minoh.lumiris_backend.repository.StoredFileRepository;
 import com.minoh.lumiris_backend.repository.UserRepository;
 import com.minoh.lumiris_backend.service.scoring.IrisScoreCalculator;
@@ -80,6 +81,17 @@ public class DppFormService {
     private final DppAccessTokenService accessTokenService;
     private final NotificationService notificationService;
     private final CertificateLibraryService certificateLibraryService;
+    private final RepairRequestRepository repairRequestRepository;
+
+    // Même règle que DppEventService.isServicingRepairer : un retoucheur en cours d'intervention
+    // (ou l'ayant terminée) sur ce DPP peut consulter la fiche, pas seulement y écrire un événement.
+    private static final Set<RepairRequestStatus> REPAIRER_VIEW_STATUSES =
+            Set.of(RepairRequestStatus.ACCEPTED, RepairRequestStatus.IN_PROGRESS, RepairRequestStatus.COMPLETED);
+
+    private boolean isServicingRepairer(DppForm form, User user) {
+        return repairRequestRepository.existsByDppFormAndRepairerProfileUserAndStatusIn(
+                form, user, REPAIRER_VIEW_STATUSES);
+    }
 
     // Invariants minimaux d'un passeport PUBLIÉ (un brouillon reste volontairement tolérant). Défense
     // en profondeur : le front valide déjà, mais un publish direct / hors UI ne doit pas créer un
@@ -423,7 +435,7 @@ public class DppFormService {
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
         DppForm form = dppFormRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("DPP not found"));
-        if (!form.getUser().getId().equals(user.getId())) {
+        if (!form.getUser().getId().equals(user.getId()) && !isServicingRepairer(form, user)) {
             throw new ResourceNotFoundException("DPP not found");
         }
         Hibernate.initialize(form.getMaterials());

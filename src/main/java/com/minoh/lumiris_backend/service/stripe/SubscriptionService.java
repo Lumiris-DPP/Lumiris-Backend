@@ -327,6 +327,7 @@ public class SubscriptionService {
                 SubscriptionResponse.from(current),
                 QuotaResponse.from(quota),
                 quota.hasActiveSubscription(),
+                current != null && StripeSubscriptionStatus.isLive(current.getStatus()),
                 properties.publishableKey()
         );
     }

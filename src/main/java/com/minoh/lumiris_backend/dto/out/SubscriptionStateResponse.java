@@ -4,5 +4,6 @@ public record SubscriptionStateResponse(
         SubscriptionResponse subscription,
         QuotaResponse quota,
         boolean hasActiveSubscription,
+        boolean hasLiveSubscription,
         String publishableKey
 ) {}

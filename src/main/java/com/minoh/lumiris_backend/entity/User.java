@@ -42,6 +42,14 @@ public class User extends Auditable {
     @Column(name = "is_verified", nullable = false)
     private boolean verified = false;
 
+    // RGPD — suppression douce : posé au DELETE /me, déclenche la révocation des sessions et
+    // bloque la connexion. anonymizedAt est posé plus tard par AccountPurgeScheduler.
+    @Column(name = "deleted_at")
+    private Instant deletedAt;
+
+    @Column(name = "anonymized_at")
+    private Instant anonymizedAt;
+
     @OneToOne(mappedBy = "user", fetch = FetchType.LAZY, cascade = CascadeType.ALL)
     private ArtisanProfile artisanProfile;
 }

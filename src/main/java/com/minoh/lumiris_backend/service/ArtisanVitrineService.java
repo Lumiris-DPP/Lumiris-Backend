@@ -128,9 +128,11 @@ public class ArtisanVitrineService {
 
     // Annuaire public du site : la même vitrine, mais listée. Sans cet endpoint l'annuaire ne
     // pouvait qu'inventer ses ateliers, et chaque fiche renvoyait un 404.
+    private static final List<ArtisanStatus> PUBLIC_STATUSES = List.of(ArtisanStatus.VERIFIED, ArtisanStatus.UNCLAIMED);
+
     @Transactional(readOnly = true)
     public List<ArtisanPublicProfileResponse> listPublic() {
-        return artisanRepo.findByPublishedTrueAndStatusOrderByAtelierNameAsc(ArtisanStatus.VERIFIED).stream()
+        return artisanRepo.findByPublishedTrueAndStatusInOrderByAtelierNameAsc(PUBLIC_STATUSES).stream()
                 .map(this::toPublicProfile)
                 .toList();
     }
@@ -139,10 +141,29 @@ public class ArtisanVitrineService {
     public ArtisanPublicProfileResponse findPublicBySlug(String slug) {
         ArtisanProfile profile = artisanRepo.findBySlug(slug)
                 .filter(ArtisanProfile::isPublished)
-                .filter(p -> p.getStatus() == ArtisanStatus.VERIFIED)
+                .filter(p -> PUBLIC_STATUSES.contains(p.getStatus()))
                 .orElseThrow(() -> new ResourceNotFoundException("Artisan introuvable"));
 
         return toPublicProfile(profile);
+    }
+
+    // Public directory listing (no geo-search: artisans have no stored coordinates, unlike
+    // repairers) — every published, verified atelier, for VISION's /local hub.
+    @Transactional(readOnly = true)
+    public List<ArtisanPublicProfileResponse> findAllPublished() {
+        return artisanRepo.findByPublishedTrueAndStatus(ArtisanStatus.VERIFIED).stream()
+                .map(this::toPublicProfile)
+                .toList();
+    }
+
+    // Bandeau "pas encore dans le réseau" (fiche annuaire sans compte) — signal d'intérêt anonyme,
+    // sans email ni aucune autre donnée personnelle.
+    @Transactional
+    public void signalInterest(String slug) {
+        ArtisanProfile profile = artisanRepo.findBySlug(slug)
+                .filter(p -> p.getStatus() == ArtisanStatus.UNCLAIMED)
+                .orElseThrow(() -> new ResourceNotFoundException("Artisan introuvable"));
+        artisanRepo.incrementInterest(profile.getId());
     }
 
     private ArtisanPublicProfileResponse toPublicProfile(ArtisanProfile profile) {
@@ -167,7 +188,10 @@ public class ArtisanVitrineService {
                 profile.isOfgLabeled(),
                 profile.isGotsLabeled(),
                 profile.isOekoTexLabeled(),
-                preparationDelayResolver.activePauseUntil(profile, Instant.now())
+                preparationDelayResolver.activePauseUntil(profile, Instant.now()),
+                profile.getUser() != null, profile.getInterestCount(),
+                profile.getLocation() != null ? profile.getLocation().getY() : null,
+                profile.getLocation() != null ? profile.getLocation().getX() : null
         );
     }
 

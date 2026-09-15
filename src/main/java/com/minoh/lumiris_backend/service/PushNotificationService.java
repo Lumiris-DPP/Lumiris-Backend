@@ -15,6 +15,7 @@ import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.nio.charset.StandardCharsets;
 import java.security.Security;
 import java.util.List;
 import java.util.Map;
@@ -75,7 +76,7 @@ public class PushNotificationService {
                 subscriptionRepository.delete(subscription);
             } else if (status < 200 || status >= 300) {
                 String responseBody = response.getEntity() != null
-                        ? new String(response.getEntity().getContent().readAllBytes())
+                        ? new String(response.getEntity().getContent().readAllBytes(), StandardCharsets.UTF_8)
                         : "";
                 log.warn("Push non envoyé (abonnement {}): HTTP {} — {}", subscription.getId(), status, responseBody);
             }

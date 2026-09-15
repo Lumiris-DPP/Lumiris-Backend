@@ -6,6 +6,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -19,12 +20,20 @@ public class PublicArtisanController {
     private final ArtisanVitrineService vitrineService;
 
     @GetMapping
-    ResponseEntity<List<ArtisanPublicProfileResponse>> list() {
-        return ResponseEntity.ok(vitrineService.listPublic());
+    ResponseEntity<List<ArtisanPublicProfileResponse>> listPublished() {
+        return ResponseEntity.ok(vitrineService.findAllPublished());
     }
 
     @GetMapping("/{slug}")
     ResponseEntity<ArtisanPublicProfileResponse> findBySlug(@PathVariable String slug) {
         return ResponseEntity.ok(vitrineService.findPublicBySlug(slug));
+    }
+
+    // Bandeau "pas encore dans le réseau" (fiche annuaire sans compte) — signal d'intérêt anonyme,
+    // sans email ni aucune autre donnée personnelle.
+    @PostMapping("/{slug}/interest")
+    ResponseEntity<Void> signalInterest(@PathVariable String slug) {
+        vitrineService.signalInterest(slug);
+        return ResponseEntity.accepted().build();
     }
 }

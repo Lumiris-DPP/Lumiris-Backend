@@ -36,12 +36,18 @@ public class SecurityConfig {
         "/v1/artisans/**",
         // Anonymous analytics ingestion (passport scans/views/clicks) — no PII collected.
         "/v1/events",
+        // Public repairer directory: search and reviews.
+        "/v1/repairers/**",
         // Web Vitals emitted by sendBeacon, which cannot carry an Authorization header.
         "/api/telemetry/**",
+        // One-click unsubscribe from repairer prospecting (RFC 8058, GET-safe).
+        "/v1/prospecting/**",
         // Stripe → server webhook: unauthenticated, secured by HMAC signature verification.
         "/api/stripe/webhook",
         // Carrier aggregator → server webhook: same contract (unauthenticated, HMAC-verified).
         "/api/shipping/webhook",
+        // Resend → server webhook: bounce/complaint events feed the email suppression list.
+        "/api/resend/webhook",
         "/swagger-ui/**",
         "/swagger-ui.html",
         "/v3/api-docs/**",
@@ -58,6 +64,9 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(PUBLIC_URLS).permitAll()
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                .requestMatchers("/api/artisans/register", "/api/artisans/me", "/api/artisans/me/**").hasRole("ARTISAN")
+                .requestMatchers("/api/repairers/register", "/api/repairers/claim", "/api/repairers/me", "/api/repairers/me/**").hasRole("REPAIRER")
+                .requestMatchers("/api/repair-requests/**").hasRole("CONSUMER")
                 .anyRequest().authenticated()
             )
             .authenticationProvider(authenticationProvider())

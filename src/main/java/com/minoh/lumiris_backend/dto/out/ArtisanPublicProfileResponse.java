@@ -21,5 +21,12 @@ public record ArtisanPublicProfileResponse(
         boolean ofgLabeled,
         boolean gotsLabeled,
         boolean oekoTexLabeled,
-        Instant pausedUntil
+        Instant pausedUntil,
+        // false = fiche annuaire sans compte : bandeau "pas encore dans le réseau" côté front.
+        boolean claimed,
+        int interestCount,
+        // null pour les ateliers SELF (pas d'adresse structurée) : invisibles sur la carte, restent
+        // en liste. Non-null pour les imports SIRENE géocodés.
+        Double lat,
+        Double lng
 ) {}

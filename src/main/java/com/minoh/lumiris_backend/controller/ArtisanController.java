@@ -3,8 +3,10 @@ package com.minoh.lumiris_backend.controller;
 import com.minoh.lumiris_backend.dto.in.ArtisanPauseRequest;
 import com.minoh.lumiris_backend.dto.in.ArtisanRegisterRequest;
 import com.minoh.lumiris_backend.dto.in.ArtisanVitrineUpdateRequest;
+import com.minoh.lumiris_backend.dto.in.KybDetailsRequest;
 import com.minoh.lumiris_backend.dto.out.ArtisanPhotoResponse;
 import com.minoh.lumiris_backend.dto.out.ArtisanProfileResponse;
+import com.minoh.lumiris_backend.entity.KybDocumentLabel;
 import com.minoh.lumiris_backend.service.ArtisanOnboardingService;
 import com.minoh.lumiris_backend.service.ArtisanVitrineService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -14,9 +16,11 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.time.LocalDate;
 import java.util.UUID;
 
 @RestController
@@ -48,6 +52,24 @@ public class ArtisanController {
     ) {
         String ip = resolveClientIp(httpRequest);
         return ResponseEntity.ok(onboardingService.signDeclaration(principal.getUsername(), ip));
+    }
+
+    @PutMapping("/me/kyb")
+    ResponseEntity<ArtisanProfileResponse> submitKyb(
+            @Valid @RequestBody KybDetailsRequest request,
+            @AuthenticationPrincipal UserDetails principal
+    ) {
+        return ResponseEntity.ok(onboardingService.submitKyb(principal.getUsername(), request));
+    }
+
+    @PostMapping(value = "/me/kyb/documents/{label}", consumes = "multipart/form-data")
+    ResponseEntity<ArtisanProfileResponse> uploadKybDocument(
+            @PathVariable KybDocumentLabel label,
+            @RequestPart("file") MultipartFile file,
+            @RequestParam(value = "expiresAt", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate expiresAt,
+            @AuthenticationPrincipal UserDetails principal
+    ) {
+        return ResponseEntity.ok(onboardingService.uploadKybDocument(principal.getUsername(), label, file, expiresAt));
     }
 
     @PutMapping("/me/profile")

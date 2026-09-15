@@ -5,6 +5,7 @@ import com.minoh.lumiris_backend.entity.User;
 import com.minoh.lumiris_backend.exception.WebhookSignatureException;
 import com.minoh.lumiris_backend.repository.UserRepository;
 import com.minoh.lumiris_backend.service.NotificationService;
+import com.minoh.lumiris_backend.service.RepairRequestService;
 import com.stripe.exception.SignatureVerificationException;
 import com.stripe.model.Account;
 import com.stripe.model.Event;
@@ -33,6 +34,7 @@ public class StripeWebhookService {
     private final DirectSaleService directSaleService;
     private final SellerConnectService sellerConnectService;
     private final NotificationService notificationService;
+    private final RepairRequestService repairRequestService;
     private final UserRepository userRepository;
 
     public void handle(String payload, String signatureHeader) {
@@ -73,9 +75,14 @@ public class StripeWebhookService {
             // à l'atelier qu'à la livraison, pour qu'un remboursement reste possible entre-temps.
             case "payment_intent.succeeded" -> {
                 StripeObject object = deserialize(event);
-                if (object instanceof PaymentIntent pi && pi.getMetadata() != null
-                        && "marketplace".equals(pi.getMetadata().get("order_type"))) {
-                    directSaleService.fulfillByPaymentIntent(pi.getId());
+                if (object instanceof PaymentIntent pi && pi.getMetadata() != null) {
+                    String orderType = pi.getMetadata().get("order_type");
+                    if ("marketplace".equals(orderType)) {
+                        directSaleService.fulfillByPaymentIntent(pi.getId());
+                    } else if ("repair".equals(orderType)) {
+                        // Le paiement du devis vaut acceptation : la demande passe en ACCEPTED.
+                        repairRequestService.confirmQuotePaid(pi.getId());
+                    }
                 }
             }
             // LUMIRIS-22 : état d'un compte vendeur Connect (charges/payouts activés après onboarding).

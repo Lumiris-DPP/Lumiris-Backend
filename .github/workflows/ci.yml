@@ -159,6 +159,39 @@ jobs:
           tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
           /tmp/gitleaks git . --redact --verbose --exit-code 1
 
+  security-java:
+    name: Java security scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+          # Also caches ~/.m2/repository/org/owasp/dependency-check-data (the NVD mirror).
+          cache: maven
+
+      # SpotBugs (High-confidence defects) + OWASP dependency-check. The dependency-check goal
+      # fails the build — and blocks the merge — on any dependency CVE with CVSS >= 9.
+      - name: SpotBugs + OWASP dependency-check
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+        run: ./mvnw -B -ntp -Psecurity -DskipTests verify
+
+      - name: Upload the security reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: java-security-reports
+          path: |
+            target/spotbugsXml.xml
+            target/dependency-check-report.html
+            target/dependency-check-report.sarif
+          retention-days: 14
+          if-no-files-found: ignore
+
   actionlint:
     name: actionlint
     runs-on: ubuntu-latest

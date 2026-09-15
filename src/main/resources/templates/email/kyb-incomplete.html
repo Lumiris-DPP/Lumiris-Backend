@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{email/_layout :: layout(title=${title}, content=~{::main})}">
+<body>
+<main>
+    <p>Bonjour <span th:text="${name}">Nom</span>,</p>
+    <p>Votre dossier KYB Lumiris est incomplet et doit être complété avant de pouvoir être validé.</p>
+    <p th:if="${note != null and !note.isBlank()}">
+        Détail : <span th:text="${note}">Détail</span>
+    </p>
+    <p>Connectez-vous à votre espace pour le mettre à jour.<br/>L'équipe Lumiris</p>
+</main>
+</body>
+</html>

@@ -52,6 +52,35 @@ public class MailService {
         send(to, subject, "email/registration-rejected", context);
     }
 
+    public void sendKybIncomplete(String to, String name, String note) {
+        String subject = "Votre dossier KYB Lumiris est incomplet";
+        Context context = titledContext(subject);
+        context.setVariable("name", name);
+        context.setVariable("note", note);
+        send(to, subject, "email/kyb-incomplete", context);
+    }
+
+    // Prospection : invite un retoucheur listé dans un annuaire à réclamer sa fiche. B2B, avec
+    // lien de désinscription obligatoire.
+    public void sendRepairerProspecting(String to, String displayName, String claimUrl,
+                                        String openPixelUrl, String unsubscribeUrl) {
+        String subject = "Votre atelier est référencé sur le réseau Lumiris";
+        Context context = titledContext(subject);
+        context.setVariable("displayName", displayName);
+        context.setVariable("claimUrl", claimUrl);
+        context.setVariable("openPixelUrl", openPixelUrl);
+        context.setVariable("unsubscribeUrl", unsubscribeUrl);
+        send(to, subject, "email/repairer-prospecting", context);
+    }
+
+    public void sendRepairRequestRefused(String to, String name, String productName) {
+        String subject = "Devis refusé";
+        Context context = titledContext(subject);
+        context.setVariable("name", name);
+        context.setVariable("productName", productName);
+        send(to, subject, "email/repair-request-refused", context);
+    }
+
     public void sendPaymentSuccess(String to, String name, String amount, String orderRef) {
         String subject = "Paiement confirmé";
         Context context = titledContext(subject);

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SpotBugs false positives / accepted findings. Keep each entry commented with why. -->
+<FindBugsFilter>
+    <!-- Spring @Autowired/@Value fields are framework-injected, not truly nullable at use. -->
+    <Match>
+        <Bug pattern="NP_UNWRITTEN_FIELD,UWF_UNWRITTEN_FIELD,NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE"/>
+        <Class name="~.*\.config\..*"/>
+    </Match>
+
+    <!-- Stripe's Java SDK configures itself via the static Stripe.apiKey field — there is no
+         instance-scoped alternative, so writing it from @PostConstruct is unavoidable. -->
+    <Match>
+        <Bug pattern="ST_WRITE_TO_STATIC_FROM_INSTANCE_METHOD"/>
+        <Class name="com.minoh.lumiris_backend.config.stripe.StripeConfig"/>
+    </Match>
+</FindBugsFilter>

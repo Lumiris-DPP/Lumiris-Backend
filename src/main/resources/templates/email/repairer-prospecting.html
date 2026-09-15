@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{email/_layout :: layout(title=${title}, content=~{::main})}">
+<body>
+<main>
+    <p>Bonjour,</p>
+    <p>
+        Votre atelier<span th:if="${displayName}" th:text="' « ' + ${displayName} + ' »'"></span>
+        figure dans notre annuaire de retoucheurs et cordonniers. Lumiris met en relation des
+        consommateurs qui veulent faire réparer un vêtement avec des professionnels près de chez eux.
+    </p>
+    <p>
+        Vous pouvez <strong>réclamer votre fiche</strong> pour la compléter, recevoir des demandes
+        et gérer vos devis :
+    </p>
+    <p>
+        <a th:href="${claimUrl}"
+           style="display:inline-block;background-color:#1f1b16;color:#f4f1ea;text-decoration:none;padding:12px 20px;border-radius:6px;font-weight:600;">
+            Réclamer ma fiche
+        </a>
+    </p>
+    <p style="color:#8a8378;font-size:13px;">
+        Vos coordonnées professionnelles proviennent du registre public des entreprises
+        (recherche-entreprises.api.gouv.fr). Ce message vous est adressé à titre professionnel.
+        Pour ne plus être contacté :
+        <a th:href="${unsubscribeUrl}" style="color:#8a8378;">se désinscrire</a>.
+        Questions sur vos données : <a href="mailto:privacy@lumiris.fr" style="color:#8a8378;">privacy@lumiris.fr</a>.
+    </p>
+    <img th:src="${openPixelUrl}" width="1" height="1" alt="" style="display:none;"/>
+</main>
+</body>
+</html>

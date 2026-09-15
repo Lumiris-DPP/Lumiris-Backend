@@ -1,14 +1,24 @@
 package com.minoh.lumiris_backend.controller;
 
-import com.minoh.lumiris_backend.dto.in.ArtisanStatusUpdateRequest;
+import com.minoh.lumiris_backend.dto.in.ArtisanImportRequest;
+import com.minoh.lumiris_backend.dto.in.RejectionRequest;
 import com.minoh.lumiris_backend.dto.out.ArtisanProfileResponse;
+import com.minoh.lumiris_backend.service.AdminAuditService;
 import com.minoh.lumiris_backend.service.ArtisanOnboardingService;
+import com.minoh.lumiris_backend.service.directory.ArtisanDirectoryImportService;
+import com.minoh.lumiris_backend.service.directory.ArtisanImportReport;
+import com.minoh.lumiris_backend.service.directory.ImportCriteria;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.UUID;
+
+import static com.minoh.lumiris_backend.service.AdminAuditService.TARGET_ARTISAN;
 
 @RestController
 @RequestMapping("/api/admin/artisans")
@@ -16,10 +26,33 @@ import java.util.UUID;
 public class AdminArtisanController {
 
     private final ArtisanOnboardingService onboardingService;
+    private final ArtisanDirectoryImportService importService;
+    private final AdminAuditService auditService;
+
+    // Déclenche un import annuaire (SIRENE…). Les fiches arrivent en UNCLAIMED, publiées direct.
+    @PostMapping("/import")
+    ResponseEntity<ArtisanImportReport> importDirectory(
+            @Valid @RequestBody ArtisanImportRequest request,
+            @AuthenticationPrincipal UserDetails principal
+    ) {
+        ImportCriteria criteria = new ImportCriteria(
+                request.departments(),
+                request.nafCodes(),
+                request.maxPages() != null ? request.maxPages() : 0);
+        ArtisanImportReport report = importService.importFrom(request.source(), criteria);
+        auditService.record(principal.getUsername(), "artisan.import", TARGET_ARTISAN, null,
+                request.source() + " · " + report.created() + " créée(s), " + report.updated() + " maj");
+        return ResponseEntity.ok(report);
+    }
 
     @GetMapping
     ResponseEntity<List<ArtisanProfileResponse>> listPending() {
         return ResponseEntity.ok(onboardingService.findPending());
+    }
+
+    @GetMapping("/all")
+    ResponseEntity<List<ArtisanProfileResponse>> listAll() {
+        return ResponseEntity.ok(onboardingService.findAll());
     }
 
     @PatchMapping("/{id}/verify")
@@ -30,8 +63,22 @@ public class AdminArtisanController {
     @PatchMapping("/{id}/reject")
     ResponseEntity<ArtisanProfileResponse> reject(
             @PathVariable UUID id,
-            @RequestBody(required = false) ArtisanStatusUpdateRequest request
+            @RequestBody(required = false) RejectionRequest request
     ) {
-        return ResponseEntity.ok(onboardingService.reject(id, request != null ? request : new ArtisanStatusUpdateRequest(null)));
+        return ResponseEntity.ok(onboardingService.reject(id, request != null ? request : new RejectionRequest(null)));
+    }
+
+    @PatchMapping("/{id}/kyb-ongoing")
+    ResponseEntity<ArtisanProfileResponse> markOngoing(@PathVariable UUID id) {
+        return ResponseEntity.ok(onboardingService.markKybOngoing(id));
+    }
+
+    @PatchMapping("/{id}/kyb-incomplete")
+    ResponseEntity<ArtisanProfileResponse> markIncomplete(
+            @PathVariable UUID id,
+            @RequestBody(required = false) RejectionRequest request
+    ) {
+        String note = request != null ? request.reason() : null;
+        return ResponseEntity.ok(onboardingService.markKybIncomplete(id, note));
     }
 }

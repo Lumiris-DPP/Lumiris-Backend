@@ -6,9 +6,9 @@ import com.fasterxml.jackson.annotation.JsonValue;
 public enum UserRole {
     ARTISAN, CONSUMER, ADMIN, REPAIRER;
 
-    // Roles a user may pick for themselves at sign-up. ADMIN/REPAIRER are provisioned internally only.
+    // Roles a user may pick for themselves at sign-up. ADMIN is provisioned internally only.
     public boolean isSelfAssignable() {
-        return this == ARTISAN || this == CONSUMER;
+        return this == ARTISAN || this == CONSUMER || this == REPAIRER;
     }
 
     @JsonValue

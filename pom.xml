@@ -20,7 +20,7 @@
 		<jjwt.version>0.12.6</jjwt.version>
 		<stripe.version>28.4.0</stripe.version>
 		<sentry.version>8.28.0</sentry.version>
-		<tomcat.version>11.0.22</tomcat.version>
+		<tomcat.version>11.0.25</tomcat.version>
 		<bouncycastle.version>1.84</bouncycastle.version>
 	</properties>
 
@@ -55,6 +55,24 @@
 			<groupId>io.sentry</groupId>
 			<artifactId>sentry-spring-boot-4</artifactId>
 			<version>${sentry.version}</version>
+		</dependency>
+
+		<!-- OpenTelemetry traces → otel-collector → Tempo. spring-boot-micrometer-tracing is the
+		     Spring Boot 4 autoconfiguration module (split out of actuator-autoconfigure, mirroring
+		     spring-boot-micrometer-metrics) — without it, management.tracing/otlp.tracing.* in
+		     application.yaml are inert. micrometer-tracing-bridge-otel wires Micrometer Observation
+		     to OTel spans; opentelemetry-exporter-otlp ships them over OTLP. -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-micrometer-tracing</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>io.micrometer</groupId>
+			<artifactId>micrometer-tracing-bridge-otel</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>io.opentelemetry</groupId>
+			<artifactId>opentelemetry-exporter-otlp</artifactId>
 		</dependency>
 
 		<!-- JPA -->
@@ -104,6 +122,12 @@
 			<groupId>org.postgresql</groupId>
 			<artifactId>postgresql</artifactId>
 			<scope>runtime</scope>
+		</dependency>
+
+		<!-- Hibernate Spatial (PostGIS geometry types, ST_Distance queries) -->
+		<dependency>
+			<groupId>org.hibernate.orm</groupId>
+			<artifactId>hibernate-spatial</artifactId>
 		</dependency>
 
 		<!-- Flyway -->
@@ -259,6 +283,12 @@
 				<artifactId>bcprov-jdk18on</artifactId>
 				<version>${bouncycastle.version}</version>
 			</dependency>
+			<!-- CVE-2026-75595 (CRITICAL), pulled in transitively via web-push -> async-http-client. -->
+			<dependency>
+				<groupId>io.netty</groupId>
+				<artifactId>netty-handler</artifactId>
+				<version>4.2.17.Final</version>
+			</dependency>
 		</dependencies>
 	</dependencyManagement>
 
@@ -305,5 +335,58 @@
 			</plugin>
 		</plugins>
 	</build>
+
+	<profiles>
+		<!-- Security gate, run in CI only (mvn -Psecurity verify): SpotBugs for Java code
+		     defects and OWASP dependency-check for known-vulnerable dependencies. Kept out of
+		     the default build so local `mvn verify` stays fast and offline. -->
+		<profile>
+			<id>security</id>
+			<build>
+				<plugins>
+					<plugin>
+						<groupId>com.github.spotbugs</groupId>
+						<artifactId>spotbugs-maven-plugin</artifactId>
+						<version>4.9.3.0</version>
+						<configuration>
+							<effort>Max</effort>
+							<threshold>High</threshold>
+							<includeTests>false</includeTests>
+							<excludeFilterFile>config/spotbugs-exclude.xml</excludeFilterFile>
+						</configuration>
+						<executions>
+							<execution>
+								<goals><goal>check</goal></goals>
+							</execution>
+						</executions>
+					</plugin>
+					<plugin>
+						<groupId>org.owasp</groupId>
+						<artifactId>dependency-check-maven</artifactId>
+						<version>12.1.3</version>
+						<configuration>
+							<!-- Merge de la PR bloqué sur toute CVE critique (CVSS >= 9). -->
+							<failBuildOnCVSS>9</failBuildOnCVSS>
+							<!--suppress UnresolvedMavenProperty -->
+							<nvdApiKey>${env.NVD_API_KEY}</nvdApiKey>
+							<skipTestScope>true</skipTestScope>
+							<formats>
+								<format>HTML</format>
+								<format>SARIF</format>
+							</formats>
+							<suppressionFiles>
+								<suppressionFile>config/dependency-check-suppressions.xml</suppressionFile>
+							</suppressionFiles>
+						</configuration>
+						<executions>
+							<execution>
+								<goals><goal>check</goal></goals>
+							</execution>
+						</executions>
+					</plugin>
+				</plugins>
+			</build>
+		</profile>
+	</profiles>
 
 </project>

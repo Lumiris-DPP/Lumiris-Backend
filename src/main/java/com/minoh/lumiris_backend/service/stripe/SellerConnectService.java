@@ -35,7 +35,7 @@ public class SellerConnectService {
     @Transactional
     public String startOnboarding(String userEmail) {
         properties.requireSecretKey();
-        User user = requireArtisan(userEmail);
+        User user = requireSeller(userEmail);
         return StripeCalls.billed("Onboarding vendeur impossible", () -> {
             String acctId = ensureAccountId(user);
             String base = properties.portalReturnUrl();
@@ -72,7 +72,7 @@ public class SellerConnectService {
 
     @Transactional
     public SellerStatusResponse getStatus(String userEmail) {
-        User user = requireArtisan(userEmail);
+        User user = requireSeller(userEmail);
         SellerAccount account = sellerAccountRepository.findByUser_Id(user.getId()).orElse(null);
         if (account == null || !properties.hasSecretKey()) {
             return account == null ? SellerStatusResponse.none() : toStatus(account);
@@ -120,10 +120,12 @@ public class SellerConnectService {
         return new SellerStatusResponse(true, a.isOnboardingCompleted(), a.isChargesEnabled(), a.isPayoutsEnabled());
     }
 
-    private User requireArtisan(String email) {
+    // Artisan (vente directe) ou retoucheur (devis de réparation) : mêmes comptes Connect, même
+    // mécanique de reversement net de commission.
+    private User requireSeller(String email) {
         User user = userRepository.getByEmail(email);
-        if (user.getRole() != UserRole.ARTISAN) {
-            throw new RoleNotAllowedException("Seuls les artisans peuvent vendre en direct.");
+        if (user.getRole() != UserRole.ARTISAN && user.getRole() != UserRole.REPAIRER) {
+            throw new RoleNotAllowedException("Seuls les artisans et retoucheurs peuvent être payés via la plateforme.");
         }
         return user;
     }

@@ -48,6 +48,14 @@ app:
     # d'une URL absolue.
     frontend-url: ${FRONTEND_URL:http://localhost:3002}
 
+    # Origine publique de l'API elle-même (api.lumiris.fr en prod) — pour les liens one-click
+    # servis directement par le back, comme la désinscription de la prospection retoucheurs.
+    public-base-url: ${PUBLIC_BASE_URL:http://localhost:8080}
+
+    # Origine de l'app ATELIER (client), où artisans et retoucheurs s'inscrivent et gèrent leur
+    # compte — cible du lien « réclamer ma fiche » des e-mails de prospection.
+    repairer-app-url: ${REPAIRER_APP_URL:http://localhost:3003}
+
     # Cycle de vie des commandes marketplace. return-window-days porte le droit de rétractation
     # légal (14 jours) ; les deux échéances suivantes empêchent une commande de rester ouverte
     # indéfiniment quand ni l'acheteur ni le transporteur ne confirment quoi que ce soit.
@@ -74,6 +82,20 @@ app:
 
 cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173,http://localhost:3001,http://localhost:3002,http://localhost:3003}
+
+lumiris:
+    # Filet anti-flood applicatif (RateLimitFilter). Le WAF Cloudflare reste la bordure dure.
+    rate-limit:
+        enabled: ${RATE_LIMIT_ENABLED:true}
+        per-minute: ${RATE_LIMIT_PER_MINUTE:100}
+    rgpd:
+        # Délai entre la suppression douce (DELETE /me) et l'anonymisation définitive.
+        soft-delete-retention-days: ${RGPD_SOFT_DELETE_RETENTION_DAYS:30}
+    repairer:
+        # Validité d'un lien de réclamation de fiche annuaire.
+        claim-token-ttl-days: ${REPAIRER_CLAIM_TOKEN_TTL_DAYS:30}
+        # Purge des fiches annuaire jamais réclamées ni recontactées récemment.
+        unclaimed-retention-months: ${REPAIRER_UNCLAIMED_RETENTION_MONTHS:18}
 
 security:
     jwt:
@@ -108,6 +130,9 @@ minio:
 # (voir MailService), comme les autres intégrations optionnelles ci-dessus — jamais bloquant.
 resend:
     api-key: ${RESEND_API_KEY:}
+    # Signing secret du webhook Resend (Dashboard → Webhooks → Signing Secret, format whsec_…).
+    # Vide → la signature n'est pas vérifiée (dev). À CONFIGURER en prod.
+    webhook-secret: ${RESEND_WEBHOOK_SECRET:}
 
 # Web Push (VAPID). Vide par défaut : PushNotificationService détecte l'absence de clés et
 # n'envoie rien, sans bloquer — même logique que Resend/Sendcloud ci-dessus. Générer une paire
@@ -148,6 +173,14 @@ management:
         metrics:
             export:
                 enabled: true
+    tracing:
+        sampling:
+            # 1.0 in dev/staging catches everything; drop it in prod (env override) once volume matters.
+            probability: ${OTEL_TRACES_SAMPLING_PROBABILITY:1.0}
+    otlp:
+        tracing:
+            # otel-collector (Lumiris-Infra) forwards to Tempo — see monitoring/otel/otel-collector-config.yml.
+            endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318}/v1/traces
 
 sentry:
     dsn: ${SENTRY_DSN:}

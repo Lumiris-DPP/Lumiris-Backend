@@ -114,13 +114,30 @@ public class AuthService {
         return UserResponse.from(user);
     }
 
-    // RGPD — droit à l'effacement. On ANONYMISE le compte (les enregistrements transactionnels
-    // — commandes/factures — sont conservés pour obligation légale, mais dissociés de l'identité) :
-    // e-mail/nom neutralisés, mot de passe rendu inutilisable, sessions révoquées. La révocation
-    // des jetons empêche toute réutilisation. Idempotent (un compte déjà anonymisé le reste).
+    // RGPD — droit à l'effacement, en deux temps. Étape 1 (ici) : suppression douce. Le compte est
+    // désactivé — connexion bloquée (voir UserDetailsServiceImpl), sessions révoquées — mais les
+    // données restent en base pendant la fenêtre de rétention, le temps qu'une suppression
+    // accidentelle puisse être annulée par le support. Idempotent.
     @Transactional
     public void deleteAccount(String email) {
         User user = userRepository.getByEmail(email);
+        if (user.getDeletedAt() != null) {
+            return;
+        }
+        user.setDeletedAt(Instant.now());
+        refreshTokenRepository.deleteByUser_Id(user.getId());
+        userRepository.save(user);
+    }
+
+    // Étape 2 : anonymisation définitive, déclenchée par AccountPurgeScheduler passé la fenêtre de
+    // rétention. Les enregistrements transactionnels (commandes/factures) sont conservés pour
+    // obligation légale mais dissociés de l'identité : e-mail/nom neutralisés, mot de passe rendu
+    // inutilisable. Idempotent (un compte déjà anonymisé le reste).
+    @Transactional
+    public void anonymizeAccount(User user) {
+        if (user.getAnonymizedAt() != null) {
+            return;
+        }
         refreshTokenRepository.deleteByUser_Id(user.getId());
         user.setEmail("deleted-" + user.getId() + "@deleted.lumiris.invalid");
         user.setName(null);
@@ -128,6 +145,7 @@ public class AuthService {
         user.setVerified(false);
         // Hash aléatoire non déchiffrable : plus aucune connexion possible sur ce compte.
         user.setPasswordHash(passwordEncoder.encode(jwtService.generateRefreshToken()));
+        user.setAnonymizedAt(Instant.now());
         userRepository.save(user);
     }
 

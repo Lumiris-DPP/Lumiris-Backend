@@ -7,10 +7,8 @@ import com.minoh.lumiris_backend.entity.User;
 import com.minoh.lumiris_backend.exception.ResourceNotFoundException;
 import com.minoh.lumiris_backend.repository.StoredFileRepository;
 import com.minoh.lumiris_backend.repository.UserRepository;
-import io.minio.GetPresignedObjectUrlArgs;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
-import io.minio.http.Method;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -24,7 +22,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -33,6 +30,7 @@ import java.util.stream.Collectors;
 public class StorageService {
 
     private final MinioClient minioClient;
+    private final PresignedUrlSigner presignedUrlSigner;
     private final MinioProperties minioProperties;
     private final StoredFileRepository storedFileRepository;
     private final UserRepository userRepository;
@@ -128,18 +126,7 @@ public class StorageService {
     }
 
     private String sign(StoredFile stored) {
-        try {
-            return minioClient.getPresignedObjectUrl(
-                    GetPresignedObjectUrlArgs.builder()
-                            .method(Method.GET)
-                            .bucket(stored.getBucketName())
-                            .object(stored.getObjectKey())
-                            .expiry(1, TimeUnit.HOURS)
-                            .build()
-            );
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to generate presigned URL", e);
-        }
+        return presignedUrlSigner.sign(stored.getBucketName(), stored.getObjectKey());
     }
 
     private String extractExtension(String filename) {

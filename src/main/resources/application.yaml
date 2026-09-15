@@ -48,7 +48,7 @@ app:
     # d'une URL absolue.
     frontend-url: ${FRONTEND_URL:http://localhost:3002}
 
-    # Origine publique de l'API elle-même (api.lumiris.fr en prod) — pour les liens one-click
+    # Origine publique de l'API elle-même (api.lumiris.eu en prod) — pour les liens one-click
     # servis directement par le back, comme la désinscription de la prospection retoucheurs.
     public-base-url: ${PUBLIC_BASE_URL:http://localhost:8080}
 

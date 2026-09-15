@@ -116,7 +116,7 @@ public class AccountDataExportService {
                     subscription.json     — votre abonnement (le cas échéant)
 
                     Les commandes et factures sont conservées séparément pour obligation
-                    comptable et légale ; contactez privacy@lumiris.fr pour y accéder.
+                    comptable et légale ; contactez privacy@lumiris.eu pour y accéder.
                     """.formatted(Instant.now()));
         } catch (IOException e) {
             throw new UncheckedIOException("Failed to build the account export archive", e);

@@ -4,6 +4,7 @@ import com.minoh.lumiris_backend.entity.ArtisanProfile;
 import com.minoh.lumiris_backend.entity.ArtisanSource;
 import com.minoh.lumiris_backend.entity.ArtisanStatus;
 import com.minoh.lumiris_backend.entity.User;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -16,6 +17,9 @@ import java.util.UUID;
 
 public interface ArtisanProfileRepository extends JpaRepository<ArtisanProfile, UUID> {
     Optional<ArtisanProfile> findByUser(User user);
+
+    // File de validation admin : chaque ligne affiche l'email et le nom du candidat.
+    @EntityGraph(attributePaths = "user")
     List<ArtisanProfile> findByStatus(ArtisanStatus status);
     Optional<ArtisanProfile> findBySlug(String slug);
     List<ArtisanProfile> findByPublishedTrueAndStatus(ArtisanStatus status);

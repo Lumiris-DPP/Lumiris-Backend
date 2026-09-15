@@ -496,17 +496,24 @@ public class OrderLifecycleService {
         if (order.getStripeTransferId() != null) {
             return;
         }
+        String transferId;
         try {
-            if (payoutService.releaseFunds(order)) {
-                record(order, OrderEventType.FUNDS_RELEASED, OrderActorType.SYSTEM, null, null);
-                notificationService.notify(order.getSeller(), NotificationType.FUNDS_RELEASED,
-                        "Fonds versés",
-                        "Le paiement de " + itemLabel(order) + " a été viré sur ton compte.",
-                        sellerOrderHref(order), order);
-            }
+            transferId = payoutService.createTransfer(order).orElse(null);
         } catch (RuntimeException e) {
             log.warn("Libération des fonds impossible pour la commande {}: {}", order.getId(), e.getMessage());
+            return;
         }
+        if (transferId == null) {
+            return;
+        }
+        order.setStripeTransferId(transferId);
+        order.setReleasedAt(Instant.now());
+        orderRepository.save(order);
+        record(order, OrderEventType.FUNDS_RELEASED, OrderActorType.SYSTEM, null, null);
+        notificationService.notify(order.getSeller(), NotificationType.FUNDS_RELEASED,
+                "Fonds versés",
+                "Le paiement de " + itemLabel(order) + " a été viré sur ton compte.",
+                sellerOrderHref(order), order);
     }
 
     private void applyRefund(MarketplaceOrder order, Integer requestedCents, String reason,

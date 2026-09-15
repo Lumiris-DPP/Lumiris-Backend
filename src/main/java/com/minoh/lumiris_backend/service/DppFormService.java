@@ -603,14 +603,19 @@ public class DppFormService {
      * est un accès accordé, qu'un front la masque ensuite ou non.
      */
     private List<DppFormDocumentResponse> mapDocuments(DppForm form, Set<DppDocumentVisibility> scopes) {
-        return form.getDocuments().stream()
+        List<DppFormDocument> visible = form.getDocuments().stream()
                 .filter(d -> scopes.contains(d.getVisibility()))
+                .toList();
+        Map<UUID, String> urlsByFileId = storageService.getPresignedUrls(
+                visible.stream().map(d -> d.getFile().getId()).toList());
+
+        return visible.stream()
                 .map(d -> new DppFormDocumentResponse(
                         d.getFile().getId(),
                         d.getDocumentType().name(),
                         d.getVisibility().name(),
                         d.getFile().getOriginalFilename(),
-                        storageService.getPresignedUrl(d.getFile().getId())
+                        urlsByFileId.get(d.getFile().getId())
                 ))
                 .toList();
     }

@@ -1,5 +1,6 @@
 package com.minoh.lumiris_backend.controller;
 
+import com.minoh.lumiris_backend.dto.out.ArtisanPublicPieceResponse;
 import com.minoh.lumiris_backend.dto.out.ArtisanPublicProfileResponse;
 import com.minoh.lumiris_backend.service.ArtisanVitrineService;
 import lombok.RequiredArgsConstructor;
@@ -27,6 +28,11 @@ public class PublicArtisanController {
     @GetMapping("/{slug}")
     ResponseEntity<ArtisanPublicProfileResponse> findBySlug(@PathVariable String slug) {
         return ResponseEntity.ok(vitrineService.findPublicBySlug(slug));
+    }
+
+    @GetMapping("/{slug}/passeports")
+    ResponseEntity<List<ArtisanPublicPieceResponse>> listPieces(@PathVariable String slug) {
+        return ResponseEntity.ok(vitrineService.listPublicPieces(slug));
     }
 
     // Bandeau "pas encore dans le réseau" (fiche annuaire sans compte) — signal d'intérêt anonyme,

@@ -1,6 +1,5 @@
 package com.minoh.lumiris_backend.service;
 
-import com.minoh.lumiris_backend.domain.PlanTier;
 import com.minoh.lumiris_backend.dto.out.AtelierStatsResponse;
 import com.minoh.lumiris_backend.entity.PassportAnalyticsEvent;
 import com.minoh.lumiris_backend.entity.PassportAnalyticsEventType;
@@ -79,7 +78,7 @@ public class AtelierStatsService {
             throw new SubscriptionRequiredException(
                     "Un abonnement ATELIER actif est requis pour consulter les statistiques.");
         }
-        boolean advancedUnlocked = sub.getPlanTier() == PlanTier.ATELIER_PLUS;
+        boolean advancedUnlocked = sub.isAtelierPlus();
 
         Instant effectiveFrom = from != null ? from : Instant.now().minus(30, ChronoUnit.DAYS);
         Instant effectiveTo = to != null ? to : Instant.now();

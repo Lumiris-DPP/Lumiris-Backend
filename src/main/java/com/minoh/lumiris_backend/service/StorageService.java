@@ -18,8 +18,14 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.ByteArrayInputStream;
+import java.io.InputStream;
+import java.util.Collection;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -40,12 +46,12 @@ public class StorageService {
         String objectKey = UUID.randomUUID() + extension;
         String bucket = minioProperties.bucket();
 
-        try {
+        try (InputStream content = file.getInputStream()) {
             minioClient.putObject(
                     PutObjectArgs.builder()
                             .bucket(bucket)
                             .object(objectKey)
-                            .stream(file.getInputStream(), file.getSize(), -1)
+                            .stream(content, file.getSize(), -1)
                             .contentType(file.getContentType())
                             .build()
             );
@@ -107,6 +113,21 @@ public class StorageService {
         StoredFile stored = storedFileRepository.findById(fileId)
                 .orElseThrow(() -> new ResourceNotFoundException("File not found: " + fileId));
 
+        return sign(stored);
+    }
+
+    // Une seule lecture de `files` pour tout un écran : `getPresignedUrl` appelé dans une boucle
+    // coûte une requête par fichier, la signature MinIO elle-même étant purement locale.
+    public Map<UUID, String> getPresignedUrls(Collection<UUID> fileIds) {
+        Set<UUID> distinctIds = fileIds.stream().filter(Objects::nonNull).collect(Collectors.toSet());
+        if (distinctIds.isEmpty()) {
+            return Map.of();
+        }
+        return storedFileRepository.findAllById(distinctIds).stream()
+                .collect(Collectors.toMap(StoredFile::getId, this::sign));
+    }
+
+    private String sign(StoredFile stored) {
         try {
             return minioClient.getPresignedObjectUrl(
                     GetPresignedObjectUrlArgs.builder()

@@ -43,6 +43,7 @@ import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -405,7 +406,8 @@ class DppFormServiceTest {
         assertThat(response.dpp().documents())
                 .extracting(DppFormDocumentResponse::visibility)
                 .containsExactlyInAnyOrder("PUBLIC_USERS", "CIRCULAR_OPERATORS");
-        verify(storageService, never()).getPresignedUrl(documentFileId(form, DppDocumentVisibility.AUTHORITIES));
+        assertThat(signedFileIds())
+                .doesNotContain(documentFileId(form, DppDocumentVisibility.AUTHORITIES));
     }
 
     /**
@@ -424,9 +426,7 @@ class DppFormServiceTest {
         service.findByPublicCode("SEED0001", null);
 
         UUID publicFileId = documentFileId(form, DppDocumentVisibility.PUBLIC_USERS);
-        verify(storageService).getPresignedUrl(publicFileId);
-        verify(storageService, never()).getPresignedUrl(documentFileId(form, DppDocumentVisibility.CIRCULAR_OPERATORS));
-        verify(storageService, never()).getPresignedUrl(documentFileId(form, DppDocumentVisibility.AUTHORITIES));
+        assertThat(signedFileIds()).containsExactly(publicFileId);
     }
 
     @Test
@@ -435,7 +435,8 @@ class DppFormServiceTest {
         UUID publicFileId = documentFileId(form, DppDocumentVisibility.PUBLIC_USERS);
 
         when(dppFormRepository.findByPublicCode("SEED0001")).thenReturn(Optional.of(form));
-        when(storageService.getPresignedUrl(publicFileId)).thenReturn("https://files.test/care-guide.pdf");
+        when(storageService.getPresignedUrls(any()))
+                .thenReturn(Map.of(publicFileId, "https://files.test/care-guide.pdf"));
 
         DppPublicJsonLdResponse response = service.findPublicJsonLd(
                 "SEED0001",
@@ -458,8 +459,7 @@ class DppFormServiceTest {
 
         verify(accessTokenService, never()).resolve(any(), any());
         verify(atelierStatsService, never()).trackScan(any());
-        verify(storageService, never()).getPresignedUrl(documentFileId(form, DppDocumentVisibility.CIRCULAR_OPERATORS));
-        verify(storageService, never()).getPresignedUrl(documentFileId(form, DppDocumentVisibility.AUTHORITIES));
+        assertThat(signedFileIds()).containsExactly(publicFileId);
     }
 
     @Test
@@ -493,6 +493,15 @@ class DppFormServiceTest {
         doc.setDocumentType(type);
         doc.setVisibility(visibility);
         return doc;
+    }
+
+    // Les identifiants réellement soumis à la signature MinIO : c'est eux, et non le DTO rendu,
+    // qui disent quels documents ont été divulgués.
+    @SuppressWarnings("unchecked")
+    private List<UUID> signedFileIds() {
+        ArgumentCaptor<Collection<UUID>> captor = ArgumentCaptor.forClass(Collection.class);
+        verify(storageService).getPresignedUrls(captor.capture());
+        return List.copyOf(captor.getValue());
     }
 
     private static UUID documentFileId(DppForm form, DppDocumentVisibility visibility) {

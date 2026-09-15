@@ -3,6 +3,7 @@ package com.minoh.lumiris_backend.repository;
 import com.minoh.lumiris_backend.entity.DisputeStatus;
 import com.minoh.lumiris_backend.entity.MarketplaceOrder;
 import com.minoh.lumiris_backend.entity.OrderStatus;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -27,12 +28,18 @@ public interface MarketplaceOrderRepository extends JpaRepository<MarketplaceOrd
     // Rapprochement d'un webhook transporteur : l'agrégateur ne connaît que SON identifiant de colis.
     Optional<MarketplaceOrder> findByCarrierParcelId(String carrierParcelId);
 
+    // Les deux historiques rendent le produit et le contrepartie de chaque ligne : sans graphe de
+    // chargement, chaque commande de la page déclenche sa propre lecture de `marketplace_products`
+    // puis de `users`.
+    @EntityGraph(attributePaths = {"product", "seller", "seller.artisanProfile"})
     List<MarketplaceOrder> findByBuyer_IdOrderByCreatedAtDesc(UUID buyerId);
 
+    @EntityGraph(attributePaths = {"product", "buyer", "buyer.artisanProfile", "shippingLabelFile"})
     List<MarketplaceOrder> findBySeller_IdOrderByCreatedAtDesc(UUID sellerId);
 
     // File d'arbitrage de la plateforme : le plus ancien litige d'abord (il attend depuis le plus
     // longtemps, et c'est celui qui coûte le plus cher en réputation).
+    @EntityGraph(attributePaths = {"product", "buyer", "buyer.artisanProfile", "shippingLabelFile"})
     List<MarketplaceOrder> findByDisputeStatusOrderByDisputeOpenedAtAsc(DisputeStatus disputeStatus);
 
     // ── Statistiques vendeur (ventes réglées) ───────────────────────────────

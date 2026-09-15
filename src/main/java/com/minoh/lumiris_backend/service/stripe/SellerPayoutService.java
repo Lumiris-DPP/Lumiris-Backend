@@ -6,7 +6,6 @@ import com.minoh.lumiris_backend.entity.OrderStatus;
 import com.minoh.lumiris_backend.entity.SellerAccount;
 import com.minoh.lumiris_backend.exception.BillingException;
 import com.minoh.lumiris_backend.exception.BillingValidationException;
-import com.minoh.lumiris_backend.repository.MarketplaceOrderRepository;
 import com.minoh.lumiris_backend.repository.SellerAccountRepository;
 import com.stripe.exception.StripeException;
 import com.stripe.model.PaymentIntent;
@@ -17,9 +16,8 @@ import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Instant;
+import java.util.Optional;
 import java.util.Set;
 
 // LUMIRIS · Escrow marketplace — reversement des fonds au vendeur. Le paiement est encaissé sur le
@@ -41,19 +39,17 @@ public class SellerPayoutService {
     private static final Set<OrderStatus> RELEASABLE = Set.of(OrderStatus.DELIVERED, OrderStatus.COMPLETED);
 
     private final StripeProperties properties;
-    private final MarketplaceOrderRepository orderRepository;
     private final SellerAccountRepository sellerAccountRepository;
 
-    // Crée le Transfer vers le compte connecté du vendeur et persiste l'état. Renvoie false quand
+    // Crée le Transfer vers le compte connecté du vendeur et renvoie son identifiant, vide quand
     // il n'y a rien à reverser (déjà fait, état non éligible, montant nul) — l'appelant n'a alors
     // ni événement d'audit ni notification à produire.
-    @Transactional
-    public boolean releaseFunds(MarketplaceOrder order) {
+    public Optional<String> createTransfer(MarketplaceOrder order) {
         if (!properties.hasSecretKey() || order.getStripeTransferId() != null) {
-            return false;
+            return Optional.empty();
         }
         if (!RELEASABLE.contains(order.getStatus()) || order.getNetCents() <= 0) {
-            return false;
+            return Optional.empty();
         }
         SellerAccount account = sellerAccountRepository.findByUser_Id(order.getSeller().getId())
                 .filter(SellerAccount::isChargesEnabled)
@@ -72,12 +68,9 @@ public class SellerPayoutService {
                             .build(),
                     RequestOptions.builder().setIdempotencyKey("transfer:" + order.getId()).build());
 
-            order.setStripeTransferId(transfer.getId());
-            order.setReleasedAt(Instant.now());
-            orderRepository.save(order);
             log.info("Commande {} reversée → transfer {} ({}c) vers {}",
                     order.getId(), transfer.getId(), order.getNetCents(), account.getStripeAccountId());
-            return true;
+            return Optional.of(transfer.getId());
         } catch (StripeException e) {
             throw new BillingException("Virement au vendeur impossible: " + e.getMessage(), e);
         }

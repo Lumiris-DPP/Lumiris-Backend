@@ -11,8 +11,8 @@ import com.minoh.lumiris_backend.entity.ArtisanStatus;
 import com.minoh.lumiris_backend.entity.KybDocumentLabel;
 import com.minoh.lumiris_backend.entity.KybStatus;
 import com.minoh.lumiris_backend.entity.User;
+import com.minoh.lumiris_backend.exception.ConflictException;
 import com.minoh.lumiris_backend.exception.ResourceNotFoundException;
-import com.minoh.lumiris_backend.repository.ArtisanProfilePhotoRepository;
 import com.minoh.lumiris_backend.repository.ArtisanProfileRepository;
 import com.minoh.lumiris_backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -23,6 +23,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -30,13 +31,13 @@ import java.util.UUID;
 public class ArtisanOnboardingService {
 
     private final ArtisanProfileRepository artisanRepo;
-    private final ArtisanProfilePhotoRepository photoRepo;
     private final UserRepository userRepo;
     private final SireneService sireneService;
     private final MailService mailService;
     private final StorageService storageService;
     private final KybMapper kybMapper;
     private final OcrService ocrService;
+    private final ArtisanPhotoUrlResolver photoUrlResolver;
 
     @Transactional(readOnly = true)
     public ArtisanProfileResponse findByUserEmail(String userEmail) {
@@ -145,8 +146,11 @@ public class ArtisanOnboardingService {
     // Admin actions
 
     public List<ArtisanProfileResponse> findPending() {
-        return artisanRepo.findByStatus(ArtisanStatus.PENDING).stream()
-                .map(this::toResponse)
+        List<ArtisanProfile> pending = artisanRepo.findByStatus(ArtisanStatus.PENDING);
+        Map<UUID, List<ArtisanPhotoUrlResolver.PhotoUrl>> photos = photoUrlResolver.byProfileId(pending);
+
+        return pending.stream()
+                .map(profile -> toResponse(profile, photos.getOrDefault(profile.getId(), List.of())))
                 .toList();
     }
 
@@ -181,15 +185,17 @@ public class ArtisanOnboardingService {
     @Transactional
     public ArtisanProfileResponse markKybIncomplete(UUID profileId, String note) {
         ArtisanProfile profile = findProfile(profileId);
+        User owner = requireAccountHolder(profile);
         profile.getKyb().setKybStatus(KybStatus.INCOMPLETE);
         profile.getKyb().setKybReviewNote(note);
         ArtisanProfileResponse response = toResponse(artisanRepo.save(profile));
-        mailService.sendKybIncomplete(profile.getUser().getEmail(), profile.getUser().getName(), note);
+        mailService.sendKybIncomplete(owner.getEmail(), owner.getName(), note);
         return response;
     }
 
     private ArtisanProfileResponse updateKybStatus(UUID profileId, KybStatus status, String note) {
         ArtisanProfile profile = findProfile(profileId);
+        User owner = requireAccountHolder(profile);
         profile.getKyb().setKybStatus(status);
         profile.getKyb().setKybReviewNote(note);
         if (status == KybStatus.VALIDATED) {
@@ -201,11 +207,19 @@ public class ArtisanOnboardingService {
         }
         ArtisanProfileResponse response = toResponse(artisanRepo.save(profile));
         if (status == KybStatus.VALIDATED) {
-            mailService.sendVerified(profile.getUser().getEmail(), profile.getUser().getName());
+            mailService.sendVerified(owner.getEmail(), owner.getName());
         } else if (status == KybStatus.REJECTED) {
-            mailService.sendRejected(profile.getUser().getEmail(), profile.getUser().getName(), note);
+            mailService.sendRejected(owner.getEmail(), owner.getName(), note);
         }
         return response;
+    }
+
+    private User requireAccountHolder(ArtisanProfile profile) {
+        if (profile.getUser() == null) {
+            throw new ConflictException(
+                    "Cette fiche provient de l'annuaire et n'a pas encore été réclamée : aucune décision KYB ne s'y applique.");
+        }
+        return profile.getUser();
     }
 
     private User findUser(String email) {
@@ -226,6 +240,10 @@ public class ArtisanOnboardingService {
     }
 
     ArtisanProfileResponse toResponse(ArtisanProfile p) {
+        return toResponse(p, photoUrlResolver.of(p));
+    }
+
+    ArtisanProfileResponse toResponse(ArtisanProfile p, List<ArtisanPhotoUrlResolver.PhotoUrl> photos) {
         return new ArtisanProfileResponse(
                 p.getId(),
                 p.getUser() != null ? p.getUser().getEmail() : null,
@@ -251,11 +269,8 @@ public class ArtisanOnboardingService {
                 p.getRegion(),
                 p.getWebsiteUrl(),
                 p.getLinks(),
-                photoRepo.findByArtisanProfileOrderByPosition(p).stream()
-                        .map(photo -> new ArtisanPhotoResponse(
-                                photo.getId(),
-                                storageService.getPresignedUrl(photo.getFile().getId())
-                        ))
+                photos.stream()
+                        .map(photo -> new ArtisanPhotoResponse(photo.photoId(), photo.url()))
                         .toList(),
                 kybMapper.toResponse(p.getKyb())
         );

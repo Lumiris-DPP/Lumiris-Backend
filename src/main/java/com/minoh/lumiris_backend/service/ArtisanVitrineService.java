@@ -3,17 +3,23 @@ package com.minoh.lumiris_backend.service;
 import com.minoh.lumiris_backend.dto.in.ArtisanVitrineUpdateRequest;
 import com.minoh.lumiris_backend.dto.out.ArtisanPhotoResponse;
 import com.minoh.lumiris_backend.dto.out.ArtisanProfileResponse;
+import com.minoh.lumiris_backend.dto.out.ArtisanPublicPieceResponse;
 import com.minoh.lumiris_backend.dto.out.ArtisanPublicProfileResponse;
 import com.minoh.lumiris_backend.dto.out.FileUploadResponse;
 import com.minoh.lumiris_backend.entity.ArtisanProfile;
 import com.minoh.lumiris_backend.entity.ArtisanProfilePhoto;
 import com.minoh.lumiris_backend.entity.ArtisanStatus;
+import com.minoh.lumiris_backend.entity.DppForm;
+import com.minoh.lumiris_backend.entity.IrisScore;
+import com.minoh.lumiris_backend.entity.StoredFile;
 import com.minoh.lumiris_backend.entity.User;
 import com.minoh.lumiris_backend.exception.ArtisanNotVerifiedException;
 import com.minoh.lumiris_backend.exception.BillingValidationException;
 import com.minoh.lumiris_backend.exception.ResourceNotFoundException;
 import com.minoh.lumiris_backend.repository.ArtisanProfilePhotoRepository;
 import com.minoh.lumiris_backend.repository.ArtisanProfileRepository;
+import com.minoh.lumiris_backend.repository.DppFormRepository;
+import com.minoh.lumiris_backend.repository.IrisScoreRepository;
 import com.minoh.lumiris_backend.repository.StoredFileRepository;
 import com.minoh.lumiris_backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -25,20 +31,26 @@ import java.text.Normalizer;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class ArtisanVitrineService {
 
     private final ArtisanProfileRepository artisanRepo;
+    private final DppFormRepository dppFormRepo;
+    private final IrisScoreRepository irisScoreRepo;
     private final ArtisanProfilePhotoRepository photoRepo;
     private final StoredFileRepository storedFileRepo;
     private final UserRepository userRepo;
     private final StorageService storageService;
     private final ArtisanOnboardingService onboardingService;
     private final PreparationDelayResolver preparationDelayResolver;
+    private final ArtisanPhotoUrlResolver photoUrlResolver;
 
     private static final Pattern NON_SLUG_CHARS = Pattern.compile("[^a-z0-9]+");
 
@@ -126,34 +138,52 @@ public class ArtisanVitrineService {
         return onboardingService.toResponse(artisanRepo.save(profile));
     }
 
-    // Annuaire public du site : la même vitrine, mais listée. Sans cet endpoint l'annuaire ne
-    // pouvait qu'inventer ses ateliers, et chaque fiche renvoyait un 404.
     private static final List<ArtisanStatus> PUBLIC_STATUSES = List.of(ArtisanStatus.VERIFIED, ArtisanStatus.UNCLAIMED);
 
     @Transactional(readOnly = true)
-    public List<ArtisanPublicProfileResponse> listPublic() {
-        return artisanRepo.findByPublishedTrueAndStatusInOrderByAtelierNameAsc(PUBLIC_STATUSES).stream()
-                .map(this::toPublicProfile)
-                .toList();
+    public ArtisanPublicProfileResponse findPublicBySlug(String slug) {
+        ArtisanProfile profile = requirePublishedProfile(slug);
+        return toPublicProfile(profile, photoUrlResolver.of(profile));
     }
 
     @Transactional(readOnly = true)
-    public ArtisanPublicProfileResponse findPublicBySlug(String slug) {
-        ArtisanProfile profile = artisanRepo.findBySlug(slug)
+    public List<ArtisanPublicPieceResponse> listPublicPieces(String slug) {
+        ArtisanProfile profile = requirePublishedProfile(slug);
+        if (profile.getUser() == null) {
+            return List.of();
+        }
+
+        List<DppForm> publishedForms = dppFormRepo.findByUserId(profile.getUser().getId()).stream()
+                .filter(form -> form.getPublicCode() != null)
+                .toList();
+
+        Map<UUID, IrisScore> scoresByFormId = irisScoreRepo
+                .findByDppFormIdIn(publishedForms.stream().map(DppForm::getId).toList()).stream()
+                .collect(Collectors.toMap(score -> score.getDppForm().getId(), score -> score));
+
+        Map<UUID, String> urlsByFileId = storageService.getPresignedUrls(publishedForms.stream()
+                .map(DppForm::getMainPhotoFile)
+                .filter(Objects::nonNull)
+                .map(StoredFile::getId)
+                .toList());
+
+        return publishedForms.stream()
+                .map(form -> toPublicPiece(form, scoresByFormId.get(form.getId()), urlsByFileId))
+                .toList();
+    }
+
+    private ArtisanProfile requirePublishedProfile(String slug) {
+        return artisanRepo.findBySlug(slug)
                 .filter(ArtisanProfile::isPublished)
                 .filter(p -> PUBLIC_STATUSES.contains(p.getStatus()))
                 .orElseThrow(() -> new ResourceNotFoundException("Artisan introuvable"));
-
-        return toPublicProfile(profile);
     }
 
     // Public directory listing (no geo-search: artisans have no stored coordinates, unlike
     // repairers) — every published, verified atelier, for VISION's /local hub.
     @Transactional(readOnly = true)
     public List<ArtisanPublicProfileResponse> findAllPublished() {
-        return artisanRepo.findByPublishedTrueAndStatus(ArtisanStatus.VERIFIED).stream()
-                .map(this::toPublicProfile)
-                .toList();
+        return toPublicProfiles(artisanRepo.findByPublishedTrueAndStatus(ArtisanStatus.VERIFIED));
     }
 
     // Bandeau "pas encore dans le réseau" (fiche annuaire sans compte) — signal d'intérêt anonyme,
@@ -166,10 +196,31 @@ public class ArtisanVitrineService {
         artisanRepo.incrementInterest(profile.getId());
     }
 
-    private ArtisanPublicProfileResponse toPublicProfile(ArtisanProfile profile) {
-        List<String> photoUrls = photoRepo.findByArtisanProfileOrderByPosition(profile).stream()
-                .map(photo -> storageService.getPresignedUrl(photo.getFile().getId()))
+    private List<ArtisanPublicProfileResponse> toPublicProfiles(List<ArtisanProfile> profiles) {
+        Map<UUID, List<ArtisanPhotoUrlResolver.PhotoUrl>> photos = photoUrlResolver.byProfileId(profiles);
+
+        return profiles.stream()
+                .map(profile -> toPublicProfile(profile, photos.getOrDefault(profile.getId(), List.of())))
                 .toList();
+    }
+
+    private ArtisanPublicPieceResponse toPublicPiece(DppForm form, IrisScore score, Map<UUID, String> urlsByFileId) {
+        String photoUrl = form.getMainPhotoFile() != null
+                ? urlsByFileId.get(form.getMainPhotoFile().getId())
+                : null;
+
+        return new ArtisanPublicPieceResponse(
+                form.getPublicCode(),
+                form.getProductName(),
+                form.getProductCategory(),
+                photoUrl,
+                score != null ? score.getTotal() : null,
+                score != null ? score.getGrade() : null);
+    }
+
+    private ArtisanPublicProfileResponse toPublicProfile(ArtisanProfile profile,
+                                                         List<ArtisanPhotoUrlResolver.PhotoUrl> photos) {
+        List<String> photoUrls = photos.stream().map(ArtisanPhotoUrlResolver.PhotoUrl::url).toList();
 
         return new ArtisanPublicProfileResponse(
                 profile.getSlug(),

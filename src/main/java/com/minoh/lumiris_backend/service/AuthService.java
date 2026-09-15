@@ -28,12 +28,15 @@ import org.springframework.transaction.annotation.Transactional;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.HexFormat;
 
 @Service
 @RequiredArgsConstructor
 public class AuthService {
+
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
     private final UserRepository userRepository;
     private final ArtisanProfileRepository artisanProfileRepository;
@@ -144,9 +147,15 @@ public class AuthService {
         user.setAvatarUrl(null);
         user.setVerified(false);
         // Hash aléatoire non déchiffrable : plus aucune connexion possible sur ce compte.
-        user.setPasswordHash(passwordEncoder.encode(jwtService.generateRefreshToken()));
+        user.setPasswordHash(passwordEncoder.encode(randomErasureSecret()));
         user.setAnonymizedAt(Instant.now());
         userRepository.save(user);
+    }
+
+    private String randomErasureSecret() {
+        byte[] secret = new byte[32];
+        SECURE_RANDOM.nextBytes(secret);
+        return HexFormat.of().formatHex(secret);
     }
 
     private AuthResponse buildAuthResponse(User user) {

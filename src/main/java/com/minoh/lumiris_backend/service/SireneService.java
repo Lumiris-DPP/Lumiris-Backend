@@ -50,14 +50,32 @@ public class SireneService {
         JsonNode match = root.path("results").get(0);
         JsonNode siege = match.path("siege");
         JsonNode dirigeants = match.path("dirigeants");
+
+        String companyName = diffusible(match.path("nom_complet").asText(null));
+        if (companyName == null) {
+            // L'INSEE masque tout champ identifiant (nom, adresse, dirigeants) par "[NON-DIFFUSIBLE]"
+            // quand l'entreprise a demandé le secret de diffusion — fréquent chez les auto-entrepreneurs
+            // dont la raison sociale est leur propre nom. On ne peut pas préremplir dans ce cas : il faut
+            // laisser l'utilisateur saisir son nom d'atelier/affiché à la main.
+            throw new IllegalArgumentException(
+                    "Ce SIRET est en secret de diffusion auprès de l'INSEE : "
+                            + "renseignez votre nom manuellement, il ne peut pas être récupéré automatiquement.");
+        }
+
         return new SireneData(
-                match.path("nom_complet").asText(null),
+                companyName,
                 match.path("activite_principale").asText(null),
                 match.toString(),
                 match.path("siren").asText(null),
-                siege.path("adresse").asText(null),
+                diffusible(siege.path("adresse").asText(null)),
                 match.path("nature_juridique").asText(null),
                 dirigeants.isMissingNode() ? null : dirigeants.toString()
         );
+    }
+
+    // L'API "recherche-entreprises" ne masque pas les champs protégés : elle les remplace par le
+    // texte littéral "[NON-DIFFUSIBLE]", qui passerait sinon pour une vraie valeur.
+    private static String diffusible(String value) {
+        return value == null || "[NON-DIFFUSIBLE]".equals(value) ? null : value;
     }
 }

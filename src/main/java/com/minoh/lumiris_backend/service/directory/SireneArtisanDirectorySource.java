@@ -100,8 +100,14 @@ public class SireneArtisanDirectorySource implements ArtisanDirectorySource {
         if (siret == null || siret.isBlank()) {
             return null;
         }
-        String name = firstNonBlank(match.path("nom_complet").asText(null),
-                match.path("nom_raison_sociale").asText(null));
+        String name = diffusible(firstNonBlank(match.path("nom_complet").asText(null),
+                match.path("nom_raison_sociale").asText(null)));
+        // Entreprise en secret de diffusion INSEE : nom, adresse et coordonnées valent tous
+        // littéralement "[NON-DIFFUSIBLE]" — une fiche sans nom ni localisation n'a aucune valeur
+        // pour l'annuaire public, on la saute plutôt que de publier le texte de masquage tel quel.
+        if (name == null) {
+            return null;
+        }
 
         boolean active = !"F".equalsIgnoreCase(
                 firstNonBlank(siege.path("etat_administratif").asText(null),
@@ -110,16 +116,22 @@ public class SireneArtisanDirectorySource implements ArtisanDirectorySource {
         return new DirectoryEntry(
                 siret,
                 name,
-                match.path("nom_raison_sociale").asText(name),
+                diffusible(match.path("nom_raison_sociale").asText(name)),
                 siret,
-                siege.path("adresse").asText(null),
-                siege.path("libelle_commune").asText(null),
-                blankToNull(siege.path("region").asText(null)),
+                diffusible(siege.path("adresse").asText(null)),
+                diffusible(siege.path("libelle_commune").asText(null)),
+                blankToNull(diffusible(siege.path("region").asText(null))),
                 parseDouble(siege.path("latitude").asText(null)),
                 parseDouble(siege.path("longitude").asText(null)),
                 active,
                 match.toString()
         );
+    }
+
+    // L'API "recherche-entreprises" ne masque pas les champs protégés : elle les remplace par le
+    // texte littéral "[NON-DIFFUSIBLE]", qui passerait sinon pour une vraie valeur.
+    private static String diffusible(String value) {
+        return value == null || "[NON-DIFFUSIBLE]".equals(value) ? null : value;
     }
 
     private static Double parseDouble(String s) {

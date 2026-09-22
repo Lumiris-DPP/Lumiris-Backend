@@ -24,8 +24,10 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class DppEventService {
 
-    private static final Set<RepairRequestStatus> REPAIRER_EVENT_STATUSES =
-            Set.of(RepairRequestStatus.ACCEPTED, RepairRequestStatus.IN_PROGRESS, RepairRequestStatus.COMPLETED);
+    // COMPLETED alone isn't in this set: it's also the terminal status for a refused/declined
+    // request, which the repository query excludes explicitly (see existsServicedByDppFormAndRepairerProfileUser).
+    private static final Set<RepairRequestStatus> REPAIRER_ACTIVE_STATUSES =
+            Set.of(RepairRequestStatus.ACCEPTED, RepairRequestStatus.IN_PROGRESS);
 
     private final DppEventRepository dppEventRepository;
     private final DppFormRepository dppFormRepository;
@@ -50,8 +52,8 @@ public class DppEventService {
     // A repairer may log history (e.g. "repair completed") once they've been accepted on a
     // request for this DPP — not before (PENDING/DRAFT/REFUSED aren't a green light to touch it).
     private boolean isServicingRepairer(DppForm form, User user) {
-        return repairRequestRepository.existsByDppFormAndRepairerProfileUserAndStatusIn(
-                form, user, REPAIRER_EVENT_STATUSES);
+        return repairRequestRepository.existsServicedByDppFormAndRepairerProfileUser(
+                form, user, REPAIRER_ACTIVE_STATUSES);
     }
 
     private boolean isOwner(DppForm form, User user) {

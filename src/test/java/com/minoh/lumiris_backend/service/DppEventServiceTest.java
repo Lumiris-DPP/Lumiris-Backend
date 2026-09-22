@@ -30,6 +30,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -108,6 +109,44 @@ class DppEventServiceTest {
         assertThatThrownBy(() -> service.create(formId, request, "other@test.com"))
                 .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessage("DPP not found");
+        verify(dppEventRepository, never()).save(any());
+    }
+
+    @Test
+    void create_shouldAllowServicingRepairer_evenIfNotOwner() {
+        User repairerUser = new User();
+        repairerUser.setId(UUID.randomUUID());
+        repairerUser.setEmail("repairer@test.com");
+        when(userRepository.findByEmail("repairer@test.com")).thenReturn(Optional.of(repairerUser));
+        when(repairRequestRepository.existsServicedByDppFormAndRepairerProfileUser(eq(form), eq(repairerUser), any()))
+                .thenReturn(true);
+        when(dppEventRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        DppEventRequest request = new DppEventRequest(
+                Instant.now(), "Réparation effectuée", DppEventActorType.REPAIRER, null, null);
+
+        DppEventResponse response = service.create(formId, request, "repairer@test.com");
+
+        assertThat(response.description()).isEqualTo("Réparation effectuée");
+    }
+
+    // Le statut COMPLETED d'une demande recouvre aussi bien un devis refusé / une demande déclinée
+    // par le retoucheur qu'une intervention réellement terminée — un retoucheur qui n'a jamais
+    // honoré la demande ne doit pas pouvoir logger un événement pour autant.
+    @Test
+    void create_shouldBlockRepairer_whoNeverServicedTheRequest() {
+        User repairerUser = new User();
+        repairerUser.setId(UUID.randomUUID());
+        repairerUser.setEmail("repairer@test.com");
+        when(userRepository.findByEmail("repairer@test.com")).thenReturn(Optional.of(repairerUser));
+        when(repairRequestRepository.existsServicedByDppFormAndRepairerProfileUser(eq(form), eq(repairerUser), any()))
+                .thenReturn(false);
+
+        DppEventRequest request = new DppEventRequest(
+                Instant.now(), "Tentative après refus/déclin", DppEventActorType.REPAIRER, null, null);
+
+        assertThatThrownBy(() -> service.create(formId, request, "repairer@test.com"))
+                .isInstanceOf(ResourceNotFoundException.class);
         verify(dppEventRepository, never()).save(any());
     }
 

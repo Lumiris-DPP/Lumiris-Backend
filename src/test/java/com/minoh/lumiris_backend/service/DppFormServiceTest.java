@@ -21,8 +21,10 @@ import com.minoh.lumiris_backend.entity.DppFormDocument;
 import com.minoh.lumiris_backend.entity.DocumentType;
 import com.minoh.lumiris_backend.entity.StoredFile;
 import com.minoh.lumiris_backend.dto.out.DppFormPublicResponse;
+import com.minoh.lumiris_backend.dto.out.DppAccessTokenResponse;
 import com.minoh.lumiris_backend.dto.out.DppPublicJsonLdResponse;
 import com.minoh.lumiris_backend.repository.ArtisanProfileRepository;
+import com.minoh.lumiris_backend.repository.RepairRequestRepository;
 import com.minoh.lumiris_backend.repository.DppCareInstructionRepository;
 import com.minoh.lumiris_backend.repository.DppFormDocumentRepository;
 import com.minoh.lumiris_backend.repository.DppFormRepository;
@@ -53,6 +55,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
@@ -118,6 +121,9 @@ class DppFormServiceTest {
 
     @Mock
     private NotificationService notificationService;
+
+    @Mock
+    private RepairRequestRepository repairRequestRepository;
 
     @InjectMocks
     private DppFormService service;
@@ -469,6 +475,68 @@ class DppFormServiceTest {
         when(artisanProfileRepository.findByUser(user)).thenReturn(Optional.empty());
 
         assertThat(service.findById(form.getId(), USER_EMAIL).documents()).hasSize(3);
+    }
+
+    // Un retoucheur est un "opérateur circulaire" : il ne doit jamais recevoir les documents
+    // réservés aux autorités (douanes, DGCCRF), même s'il a le droit de voir la fiche.
+    @Test
+    void findById_shouldExposeOnlyCircularOperatorDocuments_toAServicingRepairer() {
+        DppForm form = formWithOneDocumentPerVisibility("SEED0001");
+        when(dppFormRepository.findById(form.getId())).thenReturn(Optional.of(form));
+
+        User repairerUser = new User();
+        repairerUser.setId(UUID.randomUUID());
+        repairerUser.setEmail("repairer@test.com");
+        when(userRepository.findByEmail("repairer@test.com")).thenReturn(Optional.of(repairerUser));
+        when(repairRequestRepository.existsByDppFormAndRepairerProfileUser(form, repairerUser)).thenReturn(true);
+
+        assertThat(service.findById(form.getId(), "repairer@test.com").documents())
+                .extracting(DppFormDocumentResponse::visibility)
+                .containsExactlyInAnyOrder("PUBLIC_USERS", "CIRCULAR_OPERATORS");
+    }
+
+    @Test
+    void findById_shouldThrowNotFound_whenNeitherOwnerNorServicingRepairer() {
+        DppForm form = formWithOneDocumentPerVisibility("SEED0001");
+        when(dppFormRepository.findById(form.getId())).thenReturn(Optional.of(form));
+
+        User strangerUser = new User();
+        strangerUser.setId(UUID.randomUUID());
+        strangerUser.setEmail("stranger@test.com");
+        when(userRepository.findByEmail("stranger@test.com")).thenReturn(Optional.of(strangerUser));
+        when(repairRequestRepository.existsByDppFormAndRepairerProfileUser(form, strangerUser)).thenReturn(false);
+
+        assertThatThrownBy(() -> service.findById(form.getId(), "stranger@test.com"))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    void listAccessTokens_shouldExposeAllThreeLevels_toTheOwner() {
+        DppForm form = formWithOneDocumentPerVisibility("SEED0001");
+        when(dppFormRepository.findById(form.getId())).thenReturn(Optional.of(form));
+        when(accessTokenService.tokenFor(eq("SEED0001"), any())).thenReturn("tok");
+
+        assertThat(service.listAccessTokens(form.getId(), USER_EMAIL))
+                .extracting(DppAccessTokenResponse::accessLevel)
+                .containsExactlyInAnyOrder(DppAccessLevel.PUBLIC, DppAccessLevel.CIRCULAR_OPERATORS, DppAccessLevel.AUTHORITIES);
+    }
+
+    // Pas seulement masqué côté front : le jeton Autorités n'est jamais émis pour un retoucheur.
+    @Test
+    void listAccessTokens_shouldNeverIssueTheAuthoritiesToken_toARepairer() {
+        DppForm form = formWithOneDocumentPerVisibility("SEED0001");
+        when(dppFormRepository.findById(form.getId())).thenReturn(Optional.of(form));
+        when(accessTokenService.tokenFor(eq("SEED0001"), any())).thenReturn("tok");
+
+        User repairerUser = new User();
+        repairerUser.setId(UUID.randomUUID());
+        repairerUser.setEmail("repairer@test.com");
+        when(userRepository.findByEmail("repairer@test.com")).thenReturn(Optional.of(repairerUser));
+        when(repairRequestRepository.existsByDppFormAndRepairerProfileUser(form, repairerUser)).thenReturn(true);
+
+        assertThat(service.listAccessTokens(form.getId(), "repairer@test.com"))
+                .extracting(DppAccessTokenResponse::accessLevel)
+                .containsExactlyInAnyOrder(DppAccessLevel.PUBLIC, DppAccessLevel.CIRCULAR_OPERATORS);
     }
 
     private DppForm formWithOneDocumentPerVisibility(String publicCode) {

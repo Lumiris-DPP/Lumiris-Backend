@@ -3,6 +3,7 @@ package com.minoh.lumiris_backend.service;
 import com.minoh.lumiris_backend.domain.PlanTier;
 import com.minoh.lumiris_backend.dto.in.AffiliateTrackRequest;
 import com.minoh.lumiris_backend.dto.in.RepairAppointmentRequest;
+import com.minoh.lumiris_backend.dto.in.RepairDeclineRequest;
 import com.minoh.lumiris_backend.dto.in.RepairQuoteRequest;
 import com.minoh.lumiris_backend.dto.in.RepairRequestCreateRequest;
 import com.minoh.lumiris_backend.dto.out.RepairRequestResponse;
@@ -216,6 +217,28 @@ public class RepairRequestService {
         return toResponse(saved);
     }
 
+    // Retoucheur : décline une demande avant tout devis -> PENDING -> COMPLETED direct (terminal,
+    // même mécanique que refuseQuote côté client), consommateur notifié.
+    @Transactional
+    public RepairRequestResponse decline(String repairerEmail, UUID requestId, RepairDeclineRequest body) {
+        RepairRequest request = findOwnedByRepairer(repairerEmail, requestId);
+        requireStatus(request, RepairRequestStatus.PENDING);
+
+        String reason = body != null && body.reason() != null && !body.reason().isBlank()
+                ? body.reason().trim()
+                : null;
+        request.setRepairerDeclinedAt(Instant.now());
+        request.setRepairerDeclineReason(reason);
+        request.setStatus(RepairRequestStatus.COMPLETED);
+        RepairRequest saved = requestRepo.save(request);
+
+        User consumer = saved.getConsumerUser();
+        mailService.sendRepairRequestDeclinedByRepairer(
+                consumer.getEmail(), consumer.getName(), saved.getDppForm().getProductName(), reason);
+
+        return toResponse(saved);
+    }
+
     // Retoucheur : démarre l'intervention -> ACCEPTED -> IN_PROGRESS.
     @Transactional
     public RepairRequestResponse start(String repairerEmail, UUID requestId) {
@@ -318,7 +341,10 @@ public class RepairRequestService {
                 r.getQuoteSubmittedAt(),
                 r.getAppointmentAt(),
                 r.getPaidAt(),
-                r.getCreatedAt()
+                r.getCreatedAt(),
+                r.getQuoteRefusedAt(),
+                r.getRepairerDeclinedAt(),
+                r.getRepairerDeclineReason()
         );
     }
 }

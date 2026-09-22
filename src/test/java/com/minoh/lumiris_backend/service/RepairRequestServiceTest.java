@@ -2,6 +2,7 @@ package com.minoh.lumiris_backend.service;
 
 import com.minoh.lumiris_backend.domain.PlanTier;
 import com.minoh.lumiris_backend.dto.in.RepairAppointmentRequest;
+import com.minoh.lumiris_backend.dto.in.RepairDeclineRequest;
 import com.minoh.lumiris_backend.dto.in.RepairQuoteRequest;
 import com.minoh.lumiris_backend.dto.out.RepairRequestResponse;
 import com.minoh.lumiris_backend.entity.DppForm;
@@ -152,6 +153,41 @@ class RepairRequestServiceTest {
 
         assertThat(response.status()).isEqualTo(RepairRequestStatus.COMPLETED);
         verify(mailService).sendRepairRequestRefused(repairerUser.getEmail(), repairerUser.getName(), dppForm.getProductName());
+    }
+
+    @Test
+    void decline_completesRequestAndNotifiesConsumer() {
+        RepairRequest request = newRequest(RepairRequestStatus.PENDING);
+        when(requestRepo.findById(request.getId())).thenReturn(Optional.of(request));
+
+        RepairRequestResponse response = service.decline(
+                "repairer@lumiris.com", request.getId(), new RepairDeclineRequest("Trop de retard pris"));
+
+        assertThat(response.status()).isEqualTo(RepairRequestStatus.COMPLETED);
+        assertThat(response.repairerDeclineReason()).isEqualTo("Trop de retard pris");
+        verify(mailService).sendRepairRequestDeclinedByRepairer(
+                consumer.getEmail(), consumer.getName(), dppForm.getProductName(), "Trop de retard pris");
+    }
+
+    @Test
+    void decline_toleratesNoReason() {
+        RepairRequest request = newRequest(RepairRequestStatus.PENDING);
+        when(requestRepo.findById(request.getId())).thenReturn(Optional.of(request));
+
+        RepairRequestResponse response = service.decline("repairer@lumiris.com", request.getId(), null);
+
+        assertThat(response.repairerDeclineReason()).isNull();
+        verify(mailService).sendRepairRequestDeclinedByRepairer(
+                consumer.getEmail(), consumer.getName(), dppForm.getProductName(), null);
+    }
+
+    @Test
+    void decline_rejectedWhenNotPending() {
+        RepairRequest request = newRequest(RepairRequestStatus.ACCEPTED);
+        when(requestRepo.findById(request.getId())).thenReturn(Optional.of(request));
+
+        assertThatThrownBy(() -> service.decline("repairer@lumiris.com", request.getId(), null))
+                .isInstanceOf(ConflictException.class);
     }
 
     @Test

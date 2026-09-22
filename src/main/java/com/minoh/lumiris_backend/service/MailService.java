@@ -81,6 +81,15 @@ public class MailService {
         send(to, subject, "email/repair-request-refused", context);
     }
 
+    public void sendRepairRequestDeclinedByRepairer(String to, String name, String productName, String reason) {
+        String subject = "Demande de réparation déclinée";
+        Context context = titledContext(subject);
+        context.setVariable("name", name);
+        context.setVariable("productName", productName);
+        context.setVariable("reason", reason);
+        send(to, subject, "email/repair-request-declined", context);
+    }
+
     public void sendPaymentSuccess(String to, String name, String amount, String orderRef) {
         String subject = "Paiement confirmé";
         Context context = titledContext(subject);

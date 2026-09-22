@@ -47,6 +47,12 @@ public class RepairRequest extends Auditable {
     @Column(name = "quote_refused_at")
     private Instant quoteRefusedAt;
 
+    @Column(name = "repairer_declined_at")
+    private Instant repairerDeclinedAt;
+
+    @Column(name = "repairer_decline_reason")
+    private String repairerDeclineReason;
+
     @Column(name = "appointment_at")
     private Instant appointmentAt;
 

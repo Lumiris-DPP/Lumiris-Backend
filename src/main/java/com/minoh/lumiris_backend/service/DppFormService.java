@@ -83,14 +83,12 @@ public class DppFormService {
     private final CertificateLibraryService certificateLibraryService;
     private final RepairRequestRepository repairRequestRepository;
 
-    // Même règle que DppEventService.isServicingRepairer : un retoucheur en cours d'intervention
-    // (ou l'ayant terminée) sur ce DPP peut consulter la fiche, pas seulement y écrire un événement.
-    private static final Set<RepairRequestStatus> REPAIRER_VIEW_STATUSES =
-            Set.of(RepairRequestStatus.ACCEPTED, RepairRequestStatus.IN_PROGRESS, RepairRequestStatus.COMPLETED);
-
+    // Contrairement à DppEventService.isServicingRepairer (réservé aux demandes acceptées+, pour
+    // écrire un événement public) : ici on autorise dès qu'une demande existe, quel que soit son
+    // statut — le retoucheur doit voir la fiche pour évaluer la pièce et envoyer un devis / message
+    // au client avant même d'avoir accepté quoi que ce soit.
     private boolean isServicingRepairer(DppForm form, User user) {
-        return repairRequestRepository.existsByDppFormAndRepairerProfileUserAndStatusIn(
-                form, user, REPAIRER_VIEW_STATUSES);
+        return repairRequestRepository.existsByDppFormAndRepairerProfileUser(form, user);
     }
 
     // Invariants minimaux d'un passeport PUBLIÉ (un brouillon reste volontairement tolérant). Défense
@@ -435,7 +433,8 @@ public class DppFormService {
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
         DppForm form = dppFormRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("DPP not found"));
-        if (!form.getUser().getId().equals(user.getId()) && !isServicingRepairer(form, user)) {
+        boolean isOwner = form.getUser().getId().equals(user.getId());
+        if (!isOwner && !isServicingRepairer(form, user)) {
             throw new ResourceNotFoundException("DPP not found");
         }
         Hibernate.initialize(form.getMaterials());
@@ -446,8 +445,11 @@ public class DppFormService {
                 ? storageService.getPresignedUrl(form.getMainPhotoFile().getId())
                 : null;
 
-        // Le propriétaire voit ses propres documents, toutes visibilités confondues.
-        List<DppFormDocumentResponse> documents = mapDocuments(form, EnumSet.allOf(DppDocumentVisibility.class));
+        // Le propriétaire voit ses propres documents, toutes visibilités confondues. Un retoucheur
+        // (opérateur circulaire) n'a droit qu'aux documents publics + fin de vie/réparation — jamais
+        // à ceux réservés aux autorités (douanes, DGCCRF) — même règle que pour les QR d'accès.
+        List<DppFormDocumentResponse> documents = mapDocuments(
+                form, isOwner ? EnumSet.allOf(DppDocumentVisibility.class) : DppAccessLevel.CIRCULAR_OPERATORS.visibilities());
 
         String artisanSlug = artisanProfileRepository.findByUser(form.getUser())
                 .map(ArtisanProfile::getSlug)
@@ -583,7 +585,8 @@ public class DppFormService {
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
         DppForm form = dppFormRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("DPP not found"));
-        if (!form.getUser().getId().equals(user.getId())) {
+        boolean isOwner = form.getUser().getId().equals(user.getId());
+        if (!isOwner && !isServicingRepairer(form, user)) {
             throw new ResourceNotFoundException("DPP not found");
         }
         // Un brouillon n'a pas de code public : les QR n'auraient aucune cible.
@@ -591,7 +594,13 @@ public class DppFormService {
             throw new ConflictException("Publiez le passeport pour obtenir ses QR codes.");
         }
 
-        return Arrays.stream(DppAccessLevel.values())
+        // Le propriétaire a accès aux trois niveaux ; un retoucheur (opérateur circulaire) n'obtient
+        // jamais le jeton Autorités — pas seulement masqué côté front, il n'est pas émis du tout.
+        DppAccessLevel[] levels = isOwner
+                ? DppAccessLevel.values()
+                : new DppAccessLevel[] { DppAccessLevel.PUBLIC, DppAccessLevel.CIRCULAR_OPERATORS };
+
+        return Arrays.stream(levels)
                 .map(level -> new DppAccessTokenResponse(
                         level, accessTokenService.tokenFor(form.getPublicCode(), level)))
                 .toList();

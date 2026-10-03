@@ -128,8 +128,8 @@ public class DirectSaleService {
     // la même tentative (double clic) s'y sérialisent : la seconde attend que la première ait validé.
     // Une tentative dont toutes les lignes ont été annulées (remplacée puis abandonnée dans la même
     // minute) ne rend pas son client secret mort : le même panier repart sur une intention neuve,
-    // dont la clé dérive de l'annulée pour rester idempotente. La chaîne s'arrête au premier
-    // PaymentIntent sans lignes annulées.
+    // dont la clé dérive de l'annulée à longueur fixe pour rester idempotente. Le statut Stripe
+    // est relu avant toute mutation : une intention payée ou en traitement n'est jamais resservie.
     private Attempt openAttempt(User buyer, int amount, String currency, String idempotencyKey) {
         String key = idempotencyKey;
         while (true) {
@@ -140,12 +140,29 @@ public class DirectSaleService {
             PaymentIntent intent = createIntent(buyer, amount, currency, transferGroup, key);
             orderRepository.lockPaymentIntent(intent.getId());
             List<MarketplaceOrder> orders = orderRepository.lockByStripePaymentIntentId(intent.getId());
+            // Stripe peut rejouer la réponse initiale de création : son statut doit être relu,
+            // notamment quand le paiement a abouti mais que le webhook n'est pas encore arrivé.
+            String intentId = intent.getId();
+            intent = StripeCalls.billed("Lecture du paiement impossible", () -> PaymentIntent.retrieve(intentId));
+            if ("succeeded".equals(intent.getStatus())) {
+                throw new BillingValidationException(
+                        "Ce panier vient d'être payé : retrouve ta commande dans « Mes commandes ».");
+            }
+            if (STILL_SETTLING_STATUSES.contains(intent.getStatus())) {
+                throw new BillingValidationException(
+                        "Le paiement de ce panier est en cours : retrouve son état dans « Mes commandes ».");
+            }
+            if ("canceled".equals(intent.getStatus())) {
+                // Seules les réservations PENDING sont libérées ; une commande réglée ne repart pas.
+                releaseReservations(intent.getId());
+            }
             boolean cancelled = !orders.isEmpty()
                     && orders.stream().allMatch(order -> order.getStatus() == OrderStatus.CANCELLED);
-            if (!cancelled) {
+            if (!cancelled && !(orders.isEmpty() && "canceled".equals(intent.getStatus()))) {
                 return new Attempt(intent, transferGroup, orders);
             }
-            key = key + ":after:" + intent.getId();
+            key = "checkout:after:" + UUID.nameUUIDFromBytes(
+                    (key + ":after:" + intent.getId()).getBytes(StandardCharsets.UTF_8));
         }
     }
 

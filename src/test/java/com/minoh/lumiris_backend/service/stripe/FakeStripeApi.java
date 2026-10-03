@@ -46,6 +46,7 @@ final class FakeStripeApi implements AutoCloseable {
     private volatile long processingMillis;
     private volatile boolean unavailable;
 
+    // Démarre le faux Stripe local et y dirige les appels du SDK.
     FakeStripeApi() throws IOException {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.setExecutor(Executors.newCachedThreadPool());
@@ -72,22 +73,27 @@ final class FakeStripeApi implements AutoCloseable {
         this.unavailable = unavailable;
     }
 
+    // Change l'état courant d'une intention sans réécrire sa réponse de création mémorisée.
     void setStatus(String paymentIntentId, String status) {
         statusById.put(paymentIntentId, status);
     }
 
+    // Relit l'état courant de l'intention simulée.
     String status(String paymentIntentId) {
         return statusById.get(paymentIntentId);
     }
 
+    // Rend une copie des requêtes reçues pour les assertions.
     List<Request> requests() {
         return List.copyOf(requests);
     }
 
+    // Compte les appels d'une méthode dont la route commence par le préfixe donné.
     long count(String method, String pathPrefix) {
         return requests.stream().filter(r -> r.method().equals(method) && r.path().startsWith(pathPrefix)).count();
     }
 
+    // Efface les données et les simulations du scénario précédent.
     void reset() {
         requests.clear();
         byIdempotencyKey.clear();
@@ -98,12 +104,14 @@ final class FakeStripeApi implements AutoCloseable {
         unavailable = false;
     }
 
+    // Arrête le serveur local et restaure l'adresse habituelle du SDK.
     @Override
     public void close() {
         Stripe.overrideApiBase(Stripe.LIVE_API_BASE);
         server.stop(0);
     }
 
+    // Journalise la requête et la dirige vers l'opération Stripe simulée.
     private void handle(HttpExchange exchange) throws IOException {
         String method = exchange.getRequestMethod();
         String path = exchange.getRequestURI().getPath();
@@ -127,7 +135,12 @@ final class FakeStripeApi implements AutoCloseable {
         }
     }
 
+    // Vérifie les bornes Stripe et renvoie une création idempotente ou son conflit temporaire.
     private void create(HttpExchange exchange, String key, Map<String, String> params) throws IOException {
+        if (key != null && key.length() > 255) {
+            respond(exchange, 400, error("invalid_request_error", null, "Idempotency key exceeds 255 characters."));
+            return;
+        }
         if (Long.parseLong(params.getOrDefault("amount", "0")) > MAX_AMOUNT) {
             respond(exchange, 400, error("invalid_request_error", "amount_too_large",
                     "Amount must be no more than €999,999.99"));
@@ -160,7 +173,7 @@ final class FakeStripeApi implements AutoCloseable {
         }
         sleep(processingMillis);
         synchronized (this) {
-            String id = "pi_test_" + sequence.incrementAndGet();
+            String id = "pi_test_" + String.format("%019d", sequence.incrementAndGet());
             statusById.put(id, "requires_payment_method");
             Stored created = new Stored(params, 200, paymentIntent(id, params));
             if (key != null) {
@@ -171,6 +184,7 @@ final class FakeStripeApi implements AutoCloseable {
         }
     }
 
+    // Retient brièvement une création pour simuler un traitement concurrent.
     private static void sleep(long millis) {
         if (millis <= 0) {
             return;
@@ -182,6 +196,7 @@ final class FakeStripeApi implements AutoCloseable {
         }
     }
 
+    // Rend l'état actuel de l'intention, indépendamment de la réponse de création mémorisée.
     private void retrieve(HttpExchange exchange, String id) throws IOException {
         if (!statusById.containsKey(id)) {
             respond(exchange, 404, error("invalid_request_error", "resource_missing", "No such payment_intent."));
@@ -190,6 +205,7 @@ final class FakeStripeApi implements AutoCloseable {
         respond(exchange, 200, paymentIntent(id, Map.of()));
     }
 
+    // Annule une intention encore payable et refuse une intention déjà payée ou annulée.
     private void cancel(HttpExchange exchange, String id) throws IOException {
         String status = statusById.get(id);
         if (status == null) {
@@ -205,6 +221,7 @@ final class FakeStripeApi implements AutoCloseable {
         respond(exchange, 200, paymentIntent(id, Map.of()));
     }
 
+    // Synchronise les créations avec une attente bornée à dix secondes.
     private void awaitBarrier() {
         CyclicBarrier barrier = creationBarrier;
         if (barrier == null) {
@@ -217,6 +234,7 @@ final class FakeStripeApi implements AutoCloseable {
         }
     }
 
+    // Sérialise l'intention simulée dans le format attendu par le SDK Stripe.
     private String paymentIntent(String id, Map<String, String> params) {
         return "{\"id\":\"" + id + "\",\"object\":\"payment_intent\",\"status\":\"" + statusById.get(id) + "\","
                 + "\"client_secret\":\"" + id + "_secret_test\","
@@ -225,11 +243,13 @@ final class FakeStripeApi implements AutoCloseable {
                 + "\"metadata\":{}}";
     }
 
+    // Construit le corps JSON d'une erreur Stripe simulée.
     private static String error(String type, String code, String message) {
         return "{\"error\":{\"type\":\"" + type + "\"," + (code != null ? "\"code\":\"" + code + "\"," : "")
                 + "\"message\":\"" + message + "\"}}";
     }
 
+    // Décode les paramètres du formulaire envoyé par le SDK.
     private static Map<String, String> parseForm(InputStream body) throws IOException {
         String raw = new String(body.readAllBytes(), StandardCharsets.UTF_8);
         Map<String, String> params = new TreeMap<>();
@@ -245,6 +265,7 @@ final class FakeStripeApi implements AutoCloseable {
         return params;
     }
 
+    // Envoie la réponse JSON avec son statut HTTP et ferme son flux.
     private static void respond(HttpExchange exchange, int status, String body) throws IOException {
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().add("Content-Type", "application/json");

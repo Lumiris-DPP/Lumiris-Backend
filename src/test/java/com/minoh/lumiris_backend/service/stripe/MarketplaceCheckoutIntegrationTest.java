@@ -114,16 +114,19 @@ class MarketplaceCheckoutIntegrationTest {
     @MockitoBean
     private BlockchainService blockchainService;
 
+    // Démarre le faux Stripe partagé par les scénarios de cette suite.
     @BeforeAll
     static void startStripe() throws Exception {
         stripe = new FakeStripeApi();
     }
 
+    // Ferme le faux Stripe après la suite.
     @AfterAll
     static void stopStripe() {
         stripe.close();
     }
 
+    // Réinitialise le faux Stripe avant chaque scénario.
     @BeforeEach
     void resetStripe() {
         stripe.reset();
@@ -444,6 +447,141 @@ class MarketplaceCheckoutIntegrationTest {
         assertThat(stock(variant)).isEqualTo(2);
     }
 
+    // M2 : huit annulations dans la même minute gardent une clé bornée et des retries identiques.
+    @Test
+    void repeatedlyCancelledAttempt_keepsBoundedStableKeysAndOneReservation() {
+        // Ce scénario traverse huit maillons ; il lui faut davantage que les cinq secondes habituelles.
+        int second = LocalTime.now().getSecond();
+        if (second >= 30) {
+            pause((61 - second) * 1000L);
+        }
+        Variant variant = listing("EUR", 8900, 1);
+        String buyer = buyer();
+        PaymentIntentResponse current = checkout(buyer, variant, 1);
+        String previousKey = creations().getLast().idempotencyKey();
+        List<String> cancelled = new ArrayList<>();
+        List<String> derivedKeys = new ArrayList<>();
+        List<String> expectedKeys = new ArrayList<>();
+        for (int i = 0; i < 8; i++) {
+            String previousIntent = intentId(current);
+            cancelled.add(previousIntent);
+            stripe.setStatus(previousIntent, "canceled");
+            directSaleService.settlePendingPayment(previousIntent);
+            current = checkout(buyer, variant, 1);
+            String expectedKey = "checkout:after:" + UUID.nameUUIDFromBytes(
+                    (previousKey + ":after:" + previousIntent).getBytes(StandardCharsets.UTF_8));
+            FakeStripeApi.Request last = creations().getLast();
+            derivedKeys.add(last.idempotencyKey());
+            expectedKeys.add(expectedKey);
+            assertThat(checkout(buyer, variant, 1).clientSecret()).isEqualTo(current.clientSecret());
+            assertThat(creations().getLast().idempotencyKey()).isEqualTo(last.idempotencyKey());
+            assertThat(creations().getLast().params()).isEqualTo(last.params());
+            previousKey = last.idempotencyKey();
+        }
+        assertThat(derivedKeys).containsExactlyElementsOf(expectedKeys).allSatisfy(key -> assertThat(key).hasSize(51));
+        assertThat(creations()).allSatisfy(r -> assertThat(r.idempotencyKey().length()).isLessThanOrEqualTo(255));
+        cancelled.forEach(id -> assertThat(orderStatuses(id)).containsExactly("CANCELLED"));
+        assertThat(orderStatuses(intentId(current))).containsExactly("PENDING");
+        assertThat(pendingOrders(variant)).isEqualTo(1);
+        assertThat(stock(variant)).isZero();
+    }
+
+    // M3 : Stripe a encaissé mais le webhook retardé reste seul responsable de la confirmation.
+    @Test
+    void retryBeforeThePaidWebhook_isRefusedAndPreservesTheOriginalOrder() {
+        awayFromMinuteEdge();
+        Variant variant = listing("EUR", 8900, 3);
+        String buyer = buyer();
+        String intent = intentId(checkout(buyer, variant, 1));
+        var before = jdbc.queryForList("select * from marketplace_orders where stripe_payment_intent_id = ?", intent);
+        stripe.setStatus(intent, "succeeded");
+
+        assertThatThrownBy(() -> checkout(buyer, variant, 1, address("2 rue du Retry")))
+                .isInstanceOf(BillingValidationException.class).hasMessageContaining("vient d'être payé");
+        assertThat(jdbc.queryForList("select * from marketplace_orders where stripe_payment_intent_id = ?", intent))
+                .isEqualTo(before);
+        assertThat(stock(variant)).isEqualTo(2);
+        assertThat(events(intent, "PAYMENT_CONFIRMED")).isZero();
+        assertThat(wardrobeItems(intent)).isZero();
+        assertThat(creations()).hasSize(2);
+        assertThat(stripe.count("POST", "/v1/payment_intents/" + intent + "/cancel")).isZero();
+
+        deliver(paymentSucceeded(intent));
+        assertThat(orderStatuses(intent)).containsExactly("PAID");
+        assertThat(shippingLines(intent)).containsExactly("1 rue du Test");
+        assertThat(invoiceNumbers(intent)).doesNotContainNull();
+        assertThat(events(intent, "PAYMENT_CONFIRMED")).isEqualTo(1);
+        assertThat(wardrobeItems(intent)).isEqualTo(1);
+        assertThat(stock(variant)).isEqualTo(2);
+    }
+
+    // M3 : un paiement en traitement ou autorisé garde toutes ses données sans confirmation inventée.
+    @Test
+    void retryWhilePaymentIsSettling_preservesAddressStockAndPendingOrder() {
+        awayFromMinuteEdge();
+        Variant variant = listing("EUR", 8900, 1);
+        String buyer = buyer();
+        String intent = intentId(checkout(buyer, variant, 1));
+        var before = jdbc.queryForList("select * from marketplace_orders where stripe_payment_intent_id = ?", intent);
+        for (String status : List.of("processing", "requires_capture")) {
+            stripe.setStatus(intent, status);
+            assertThatThrownBy(() -> checkout(buyer, variant, 1, address("2 rue du Retry")))
+                    .isInstanceOf(BillingValidationException.class).hasMessageContaining("en cours");
+            assertThat(jdbc.queryForList("select * from marketplace_orders where stripe_payment_intent_id = ?", intent))
+                    .isEqualTo(before);
+            assertThat(stock(variant)).isZero();
+            assertThat(events(intent, "PAYMENT_CONFIRMED")).isZero();
+            assertThat(wardrobeItems(intent)).isZero();
+        }
+        assertThat(pendingOrders(variant)).isEqualTo(1);
+        assertThat(stripe.count("POST", "/v1/payment_intents/" + intent + "/cancel")).isZero();
+    }
+
+    // M3 : une intention annulée chez Stripe avec des lignes PENDING repart sans doubler la réservation.
+    @Test
+    void retryOfStripeCancelledPendingAttempt_releasesOnlyPendingAndStartsFresh() {
+        awayFromMinuteEdge();
+        Variant variant = listing("EUR", 8900, 1);
+        String buyer = buyer();
+        String cancelled = intentId(checkout(buyer, variant, 1));
+        stripe.setStatus(cancelled, "canceled");
+
+        String fresh = intentId(checkout(buyer, variant, 1, address("2 rue du Retry")));
+
+        assertThat(fresh).isNotEqualTo(cancelled);
+        assertThat(orderStatuses(cancelled)).containsExactly("CANCELLED");
+        assertThat(shippingLines(cancelled)).containsExactly("1 rue du Test");
+        assertThat(orderStatuses(fresh)).containsExactly("PENDING");
+        assertThat(shippingLines(fresh)).containsExactly("2 rue du Retry");
+        assertThat(events(cancelled, "CANCELLED")).isEqualTo(1);
+        assertThat(stock(variant)).isZero();
+        assertThat(pendingOrders(variant)).isEqualTo(1);
+        assertThat(checkout(buyer, variant, 1).clientSecret()).startsWith(fresh + "_secret_");
+        assertThat(events(cancelled, "CANCELLED")).isEqualTo(1);
+    }
+
+    // M3 : même une intention annoncée annulée ne permet pas de rouvrir une commande réglée en base.
+    @Test
+    void retryOfStripeCancelledPaidAttempt_doesNotReopenThePaidOrder() {
+        awayFromMinuteEdge();
+        Variant variant = listing("EUR", 8900, 3);
+        String buyer = buyer();
+        String intent = intentId(checkout(buyer, variant, 1));
+        deliver(paymentSucceeded(intent));
+        var before = jdbc.queryForList("select * from marketplace_orders where stripe_payment_intent_id = ?", intent);
+        stripe.setStatus(intent, "canceled");
+
+        assertThatThrownBy(() -> checkout(buyer, variant, 1, address("2 rue du Retry")))
+                .isInstanceOf(BillingValidationException.class);
+        assertThat(jdbc.queryForList("select * from marketplace_orders where stripe_payment_intent_id = ?", intent))
+                .isEqualTo(before);
+        assertThat(stock(variant)).isEqualTo(2);
+        assertThat(events(intent, "PAYMENT_CONFIRMED")).isEqualTo(1);
+        assertThat(events(intent, "CANCELLED")).isZero();
+        assertThat(wardrobeItems(intent)).isEqualTo(1);
+        assertThat(creations()).hasSize(2);
+    }
+
     // F5 : l'annulation chez Stripe d'une tentative remplacée reste acquise même si la réservation de
     // la nouvelle tentative échoue ensuite : l'intention annulée ne garde pas sa pièce.
     @Test
@@ -565,11 +703,13 @@ class MarketplaceCheckoutIntegrationTest {
         return new Variant(variant, product, seller);
     }
 
+    // Crée un acheteur et renvoie son courriel pour le checkout.
     private String buyer() {
         UUID id = user("CONSUMER");
         return jdbc.queryForObject("select email from users where id = ?", String.class, id);
     }
 
+    // Insère un utilisateur de test avec le rôle demandé.
     private UUID user(String role) {
         UUID id = UUID.randomUUID();
         jdbc.update("insert into users (id, email, password_hash, role, name) values (?, ?, '{noop}x', ?, 'IT')",
@@ -630,24 +770,29 @@ class MarketplaceCheckoutIntegrationTest {
         throw new IllegalStateException("Aucune transaction en attente de verrou");
     }
 
+    // Lance le checkout avec l'adresse de livraison habituelle du test.
     private PaymentIntentResponse checkout(String buyerEmail, Variant variant, int quantity) {
         return checkout(buyerEmail, variant, quantity, address());
     }
 
+    // Construit une ligne de panier pour la déclinaison de test.
     private static CartIntentRequest.Line line(Variant variant, int quantity) {
         return new CartIntentRequest.Line(variant.productId(), variant.id(), quantity);
     }
 
+    // Lance le vrai service de checkout avec l'adresse donnée.
     private PaymentIntentResponse checkout(String buyerEmail, Variant variant, int quantity,
                                            CartIntentRequest.ShippingAddress shipping) {
         return directSaleService.createCartPaymentIntent(buyerEmail,
                 new CartIntentRequest(List.of(line(variant, quantity)), shipping));
     }
 
+    // Rend l'adresse de livraison habituelle des scénarios.
     private static CartIntentRequest.ShippingAddress address() {
         return address("1 rue du Test");
     }
 
+    // Construit l'adresse de livraison avec la rue demandée.
     private static CartIntentRequest.ShippingAddress address(String line1) {
         return new CartIntentRequest.ShippingAddress("Acheteur IT", line1, null, "75001", "Paris", "FR", null);
     }
@@ -661,6 +806,7 @@ class MarketplaceCheckoutIntegrationTest {
         }
     }
 
+    // Attend la durée demandée en conservant une éventuelle interruption.
     private static void pause(long millis) {
         try {
             Thread.sleep(millis);
@@ -670,15 +816,18 @@ class MarketplaceCheckoutIntegrationTest {
         }
     }
 
+    // Extrait l'identifiant de l'intention du client secret de test.
     private static String intentId(PaymentIntentResponse response) {
         return response.clientSecret().substring(0, response.clientSecret().indexOf("_secret_"));
     }
 
+    // Livre un webhook signé au vrai service de réception.
     private Object deliver(String payload) {
         webhookService.handle(payload, signature(payload, WEBHOOK_SECRET));
         return payload;
     }
 
+    // Construit l'événement de paiement réussi pour l'intention donnée.
     private static String paymentSucceeded(String intent) {
         return """
                 {"id":"evt_%s","object":"event","api_version":"2024-06-20","type":"payment_intent.succeeded",
@@ -687,6 +836,7 @@ class MarketplaceCheckoutIntegrationTest {
                 .formatted(UUID.randomUUID(), intent);
     }
 
+    // Signe le webhook avec le secret et l'horodatage attendus par Stripe.
     private static String signature(String payload, String secret) {
         try {
             long timestamp = System.currentTimeMillis() / 1000;
@@ -728,47 +878,56 @@ class MarketplaceCheckoutIntegrationTest {
         }
     }
 
+    // Relit les seules requêtes de création d'intention reçues par le faux Stripe.
     private List<FakeStripeApi.Request> creations() {
         return stripe.requests().stream()
                 .filter(r -> r.method().equals("POST") && r.path().equals("/v1/payment_intents"))
                 .toList();
     }
 
+    // Vieillit les commandes pour les rendre éligibles au balayage des paiements abandonnés.
     private void makeStale(String intent) {
         jdbc.update("update marketplace_orders set created_at = now() - interval '25 hours' "
                 + "where stripe_payment_intent_id = ?", intent);
     }
 
+    // Relit le stock effectif de la déclinaison en base.
     private int stock(Variant variant) {
         return jdbc.queryForObject("select stock from marketplace_product_variants where id = ?", Integer.class,
                 variant.id());
     }
 
+    // Compte les commandes en attente de la déclinaison.
     private int pendingOrders(Variant variant) {
         return jdbc.queryForObject("select count(*) from marketplace_orders where variant_id = ? and status = 'PENDING'",
                 Integer.class, variant.id());
     }
 
+    // Relit les statuts des commandes rattachées à l'intention.
     private List<String> orderStatuses(String intent) {
         return jdbc.queryForList("select status from marketplace_orders where stripe_payment_intent_id = ?",
                 String.class, intent);
     }
 
+    // Compte les événements du type demandé sur les commandes de l'intention.
     private int events(String intent, String type) {
         return jdbc.queryForObject("select count(*) from marketplace_order_events e join marketplace_orders o "
                 + "on o.id = e.order_id where o.stripe_payment_intent_id = ? and e.type = ?", Integer.class, intent, type);
     }
 
+    // Relit les rues de livraison enregistrées pour l'intention.
     private List<String> shippingLines(String intent) {
         return jdbc.queryForList("select ship_to_line1 from marketplace_orders where stripe_payment_intent_id = ?",
                 String.class, intent);
     }
 
+    // Relit les numéros de facture enregistrés pour l'intention.
     private List<String> invoiceNumbers(String intent) {
         return jdbc.queryForList("select invoice_number from marketplace_orders where stripe_payment_intent_id = ?",
                 String.class, intent);
     }
 
+    // Compte les pièces ajoutées à la garde-robe pour l'intention.
     private int wardrobeItems(String intent) {
         return jdbc.queryForObject("select count(*) from wardrobe_items w join marketplace_orders o "
                 + "on o.id = w.order_id where o.stripe_payment_intent_id = ?", Integer.class, intent);

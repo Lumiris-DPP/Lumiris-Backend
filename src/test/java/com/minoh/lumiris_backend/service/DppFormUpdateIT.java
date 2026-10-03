@@ -21,6 +21,7 @@ import org.springframework.web.multipart.MultipartFile;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.utility.DockerImageName;
 
 import java.util.List;
 import java.util.Map;
@@ -48,12 +49,14 @@ import static org.assertj.core.api.Assertions.assertThatCode;
         "stripe.products.atelier-plus=prod_dummy",
         "stripe.products.local=prod_dummy",
         "blockchain.wallet.private-key=0x0000000000000000000000000000000000000000000000000000000000000001",
+        "spring.cache.type=none",
 })
 class DppFormUpdateIT {
 
     @Container
     @ServiceConnection
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:17-alpine");
+    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
+            DockerImageName.parse("postgis/postgis:17-3.5").asCompatibleSubstituteFor("postgres"));
 
     @Autowired
     private DppFormService dppFormService;

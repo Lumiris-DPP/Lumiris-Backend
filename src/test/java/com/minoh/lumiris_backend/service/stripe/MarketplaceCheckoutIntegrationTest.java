@@ -13,6 +13,7 @@ import com.minoh.lumiris_backend.service.BuyerOrderService;
 import com.minoh.lumiris_backend.service.OrderScheduler;
 import com.minoh.lumiris_backend.service.SellerCatalogService;
 import io.minio.MinioClient;
+import jakarta.persistence.EntityManagerFactory;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -22,8 +23,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.orm.jpa.EntityManagerHolder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.IllegalTransactionStateException;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -40,6 +44,7 @@ import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
@@ -48,6 +53,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -72,6 +78,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
         "stripe.products.local=prod_dummy",
         "blockchain.wallet.private-key=0x0000000000000000000000000000000000000000000000000000000000000001",
         "spring.cache.type=none",
+        // Borne du harnais seulement : une régression de verrou ne doit jamais suspendre la suite.
+        "spring.datasource.hikari.connection-init-sql=SET lock_timeout = '3s'",
 })
 class MarketplaceCheckoutIntegrationTest {
 
@@ -101,6 +109,9 @@ class MarketplaceCheckoutIntegrationTest {
 
     @Autowired
     private PlatformTransactionManager transactionManager;
+
+    @Autowired
+    private EntityManagerFactory entityManagerFactory;
 
     @Autowired
     private SellerCatalogService sellerCatalogService;
@@ -445,6 +456,109 @@ class MarketplaceCheckoutIntegrationTest {
         assertThat(orderStatuses(first)).containsOnly("CANCELLED");
         assertThat(orderStatuses(back)).containsOnly("PENDING");
         assertThat(stock(variant)).isEqualTo(2);
+    }
+
+    // M1 : deux retries croisés règlent leurs anciennes tentatives sans cycle de verrous ni secret annulé.
+    @Test
+    void crossedRetries_settleBothOldAttemptsAndReturnLiveIntentsWithoutLockTimeout() throws Exception {
+        int secondOfMinute = LocalTime.now().getSecond();
+        if (secondOfMinute >= 40) {
+            pause((61 - secondOfMinute) * 1000L);
+        }
+        Variant first = listing("EUR", 8900, 2);
+        Variant second = listing("EUR", 8900, 2);
+        String buyer = buyer();
+        String x = intentId(checkout(buyer, first, 1));
+        stripe.setStatus(x, "processing");
+        String y = intentId(checkout(buyer, second, 1));
+        assertThat(orderStatuses(x)).containsExactly("PENDING");
+        assertThat(orderStatuses(y)).containsExactly("PENDING");
+        stripe.setStatus(x, "requires_payment_method");
+        stripe.setStatus(y, "requires_payment_method");
+        stripe.holdCreationsUntil(2);
+        stripe.holdCancellationsUntil(2);
+
+        long started = System.nanoTime();
+        List<Outcome> outcomes = concurrently(
+                () -> checkout(buyer, first, 1, address("2 rue du Retry X")),
+                () -> checkout(buyer, second, 1, address("3 rue du Retry Y")));
+
+        assertThat(TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - started)).isLessThan(15);
+        assertThat(outcomes).allSatisfy(o -> assertThat(o.error()).isNull());
+        String freshX = intentId((PaymentIntentResponse) outcomes.get(0).result());
+        String freshY = intentId((PaymentIntentResponse) outcomes.get(1).result());
+        assertThat(freshX).isNotIn(x, y, freshY);
+        assertThat(freshY).isNotIn(x, y);
+        for (String old : List.of(x, y)) {
+            assertThat(stripe.status(old)).isEqualTo("canceled");
+            assertThat(orderStatuses(old)).containsExactly("CANCELLED");
+            assertThat(shippingLines(old)).containsExactly("1 rue du Test");
+            assertThat(events(old, "CANCELLED")).isEqualTo(1);
+        }
+        for (String fresh : List.of(freshX, freshY)) {
+            assertThat(stripe.status(fresh)).isEqualTo("requires_payment_method");
+            assertThat(orderStatuses(fresh)).containsExactly("PENDING");
+            assertThat(events(fresh, "PAYMENT_CONFIRMED")).isZero();
+            assertThat(wardrobeItems(fresh)).isZero();
+        }
+        assertThat(shippingLines(freshX)).containsExactly("2 rue du Retry X");
+        assertThat(shippingLines(freshY)).containsExactly("3 rue du Retry Y");
+        assertThat(stock(first)).isEqualTo(1);
+        assertThat(stock(second)).isEqualTo(1);
+        assertThat(pendingOrders(first)).isEqualTo(1);
+        assertThat(pendingOrders(second)).isEqualTo(1);
+    }
+
+    // M1 : aucun appelant ne peut conserver une transaction englobante pendant les règlements indépendants.
+    @Test
+    void checkoutInsideAnExistingTransaction_isRefusedBeforeStripeOrStockChanges() {
+        Variant variant = listing("EUR", 8900, 1);
+        String buyer = buyer();
+        assertThatThrownBy(() -> new TransactionTemplate(transactionManager)
+                .execute(status -> checkout(buyer, variant, 1)))
+                .isInstanceOf(IllegalTransactionStateException.class);
+        assertThat(creations()).isEmpty();
+        assertThat(stock(variant)).isEqualTo(1);
+        assertThat(pendingOrders(variant)).isZero();
+    }
+
+    // M1 : un webhook entre ouverture et réservation est relu même si le contexte JPA de la requête reste ouvert.
+    @Test
+    void webhookBetweenCheckoutPhases_withOpenEntityManager_preservesPaidOrderAndAddress() {
+        awayFromMinuteEdge();
+        Variant first = listing("EUR", 8900, 2);
+        Variant second = listing("EUR", 8900, 2);
+        String buyer = buyer();
+        String x = intentId(checkout(buyer, first, 1));
+        stripe.setStatus(x, "processing");
+        String y = intentId(checkout(buyer, second, 1));
+        stripe.setStatus(x, "requires_payment_method");
+        AtomicReference<List<Map<String, Object>>> paidRows = new AtomicReference<>();
+        stripe.onNextCancellation(() -> {
+            deliver(paymentSucceeded(x));
+            paidRows.set(jdbc.queryForList("select * from marketplace_orders where stripe_payment_intent_id = ?", x));
+        });
+        // Comme OpenEntityManagerInView : la même identité JPA traverse les transactions du checkout.
+        var entityManager = entityManagerFactory.createEntityManager();
+        TransactionSynchronizationManager.bindResource(entityManagerFactory, new EntityManagerHolder(entityManager));
+        try {
+            assertThatThrownBy(() -> checkout(buyer, first, 1, address("2 rue du Retry")))
+                    .isInstanceOf(BillingValidationException.class);
+        } finally {
+            TransactionSynchronizationManager.unbindResource(entityManagerFactory);
+            entityManager.close();
+        }
+        assertThat(paidRows.get()).isNotNull();
+        assertThat(jdbc.queryForList("select * from marketplace_orders where stripe_payment_intent_id = ?", x))
+                .isEqualTo(paidRows.get());
+        assertThat(orderStatuses(x)).containsExactly("PAID");
+        assertThat(shippingLines(x)).containsExactly("1 rue du Test");
+        assertThat(invoiceNumbers(x)).doesNotContainNull();
+        assertThat(events(x, "PAYMENT_CONFIRMED")).isEqualTo(1);
+        assertThat(wardrobeItems(x)).isEqualTo(1);
+        assertThat(orderStatuses(y)).containsExactly("CANCELLED");
+        assertThat(stock(first)).isEqualTo(1);
+        assertThat(stock(second)).isEqualTo(2);
     }
 
     // M2 : huit annulations dans la même minute gardent une clé bornée et des retries identiques.

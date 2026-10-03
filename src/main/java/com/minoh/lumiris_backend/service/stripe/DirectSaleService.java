@@ -36,6 +36,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -86,11 +87,29 @@ public class DirectSaleService {
 
     // Crée le PaymentIntent du panier (une commande PENDING par ligne, même PaymentIntent) et renvoie
     // le client secret pour le Payment Element. Le fulfillment (Garde-Robe + facture) se fait au webhook.
-    // L'appel Stripe a lieu dans la transaction : si la suite échoue, la base est annulée mais le
-    // PaymentIntent reste créé chez Stripe, sans client secret transmis, donc jamais payé.
-    @Transactional
+    // L'ouverture et la réservation ont leurs transactions propres : aucun verrou de tentative ne
+    // reste tenu pendant le règlement des anciennes. NEVER interdit un appelant transactionnel
+    // qui conserverait ses verrous pendant ces phases. Le secret n'est rendu qu'après la réservation.
+    @Transactional(propagation = Propagation.NEVER)
     public PaymentIntentResponse createCartPaymentIntent(String buyerEmail, CartIntentRequest request) {
         properties.requireSecretKey();
+        TransactionTemplate transaction = new TransactionTemplate(transactionManager);
+        Checkout checkout = transaction.execute(status -> prepareCheckout(buyerEmail, request));
+        while (true) {
+            Attempt attempt = transaction.execute(status -> openAttempt(checkout.buyer(), checkout.totals().amount(),
+                    checkout.currency(), checkout.idempotencyKey()));
+            // La transaction d'ouverture est déjà fermée, tous ses verrous sont libérés : les
+            // règlements indépendants ne peuvent plus attendre une ligne détenue par cet appel.
+            releaseSupersededReservations(checkout.buyer(), attempt.intent().getId());
+            PaymentIntentResponse response = transaction.execute(status -> finishAttempt(checkout, attempt, request.shipping()));
+            if (response != null) {
+                return response;
+            }
+        }
+    }
+
+    // Relit et valide le panier dans une transaction avant de figer sa clé et ses montants pour cet appel.
+    private Checkout prepareCheckout(String buyerEmail, CartIntentRequest request) {
         User buyer = userRepository.getByEmail(buyerEmail);
 
         List<CartLine> lines = loadLines(request.items());
@@ -99,33 +118,50 @@ public class DirectSaleService {
         requireStockAvailable(buyer, lines);
         String currency = requireSingleCurrency(lines);
         CartTotals totals = totals(lines, bySeller);
-
-        Attempt attempt = openAttempt(buyer, totals.amount(), currency,
+        return new Checkout(buyer, lines, bySeller, totals, currency,
                 idempotencyKey(buyer, lines, totals.amount(), currency));
-        String paymentIntentId = attempt.intent().getId();
+    }
 
-        // Les tentatives précédentes de l'acheteur sont réglées avant de réserver : leur stock revient
-        // au catalogue, et leur ancien écran de paiement ne peut plus encaisser.
-        releaseSupersededReservations(buyer, paymentIntentId);
+    // Relit la tentative sous verrou après les règlements, puis réserve ou actualise atomiquement ses commandes.
+    private PaymentIntentResponse finishAttempt(Checkout checkout, Attempt attempt,
+                                                 CartIntentRequest.ShippingAddress shipping) {
+        String paymentIntentId = attempt.intent().getId();
+        orderRepository.lockPaymentIntent(paymentIntentId);
+        List<MarketplaceOrder> orders = orderRepository.lockByStripePaymentIntentId(paymentIntentId);
+        PaymentIntent intent = StripeCalls.billed("Lecture du paiement impossible", () -> PaymentIntent.retrieve(paymentIntentId));
+        requirePaymentStillPayable(intent);
+        // Une commande réglée reste refusée même face à un état Stripe incohérent : aucune reprise
+        // de chaîne ne peut rouvrir cette tentative. Le helper existant refuse sans muter ses lignes.
+        if (!orders.isEmpty() && orders.stream().noneMatch(order -> order.getStatus() == OrderStatus.PENDING)
+                && orders.stream().anyMatch(order -> order.getStatus() != OrderStatus.CANCELLED)) {
+            refreshPendingOrders(orders, shipping);
+        }
+        // Un retry croisé a pu annuler cette intention entre les phases : on referme cette transaction
+        // avant de rouvrir la chaîne, sans rendre le secret annulé ni conserver un verrou dans la boucle.
+        if ("canceled".equals(intent.getStatus()) || (!orders.isEmpty()
+                && orders.stream().allMatch(order -> order.getStatus() == OrderStatus.CANCELLED))) {
+            return null;
+        }
 
         // Retry dans la fenêtre d'idempotence : Stripe renvoie le même PaymentIntent → si les commandes
         // existent déjà, on ne re-réserve pas le stock et on ne recrée pas les lignes.
-        if (attempt.orders().isEmpty()) {
-            reserveStock(lines);
-            persistOrders(buyer, bySeller, totals.shippingBySeller(), paymentIntentId, attempt.transferGroup(),
-                    request.shipping());
+        if (orders.isEmpty()) {
+            reserveStock(checkout.lines());
+            persistOrders(checkout.buyer(), checkout.bySeller(), checkout.totals().shippingBySeller(), paymentIntentId,
+                    attempt.transferGroup(), shipping);
         } else {
-            refreshPendingOrders(attempt.orders(), request.shipping());
+            refreshPendingOrders(orders, shipping);
         }
 
+        CartTotals totals = checkout.totals();
         return new PaymentIntentResponse(
-                attempt.intent().getClientSecret(), properties.publishableKey(),
+                intent.getClientSecret(), properties.publishableKey(),
                 totals.amount(), totals.items(), totals.shipping(), totals.commission(),
-                shipments(bySeller, totals.shippingBySeller()));
+                shipments(checkout.bySeller(), totals.shippingBySeller()));
     }
 
-    // Ouvre la tentative de paiement de cette clé et relit ses commandes sous verrou. Deux requêtes de
-    // la même tentative (double clic) s'y sérialisent : la seconde attend que la première ait validé.
+    // Ouvre la tentative de paiement de cette clé et relit ses commandes sous verrou. Le même verrou
+    // est repris dans la réservation : deux requêtes de la même tentative ne peuvent pas réserver deux fois.
     // Une tentative dont toutes les lignes ont été annulées (remplacée puis abandonnée dans la même
     // minute) ne rend pas son client secret mort : le même panier repart sur une intention neuve,
     // dont la clé dérive de l'annulée à longueur fixe pour rester idempotente. Le statut Stripe
@@ -144,14 +180,7 @@ public class DirectSaleService {
             // notamment quand le paiement a abouti mais que le webhook n'est pas encore arrivé.
             String intentId = intent.getId();
             intent = StripeCalls.billed("Lecture du paiement impossible", () -> PaymentIntent.retrieve(intentId));
-            if ("succeeded".equals(intent.getStatus())) {
-                throw new BillingValidationException(
-                        "Ce panier vient d'être payé : retrouve ta commande dans « Mes commandes ».");
-            }
-            if (STILL_SETTLING_STATUSES.contains(intent.getStatus())) {
-                throw new BillingValidationException(
-                        "Le paiement de ce panier est en cours : retrouve son état dans « Mes commandes ».");
-            }
+            requirePaymentStillPayable(intent);
             if ("canceled".equals(intent.getStatus())) {
                 // Seules les réservations PENDING sont libérées ; une commande réglée ne repart pas.
                 releaseReservations(intent.getId());
@@ -159,10 +188,22 @@ public class DirectSaleService {
             boolean cancelled = !orders.isEmpty()
                     && orders.stream().allMatch(order -> order.getStatus() == OrderStatus.CANCELLED);
             if (!cancelled && !(orders.isEmpty() && "canceled".equals(intent.getStatus()))) {
-                return new Attempt(intent, transferGroup, orders);
+                return new Attempt(intent, transferGroup);
             }
             key = "checkout:after:" + UUID.nameUUIDFromBytes(
                     (key + ":after:" + intent.getId()).getBytes(StandardCharsets.UTF_8));
+        }
+    }
+
+    // Refuse une intention déjà payée ou encore en règlement avant toute mutation du checkout.
+    private void requirePaymentStillPayable(PaymentIntent intent) {
+        if ("succeeded".equals(intent.getStatus())) {
+            throw new BillingValidationException(
+                    "Ce panier vient d'être payé : retrouve ta commande dans « Mes commandes ».");
+        }
+        if (STILL_SETTLING_STATUSES.contains(intent.getStatus())) {
+            throw new BillingValidationException(
+                    "Le paiement de ce panier est en cours : retrouve son état dans « Mes commandes ».");
         }
     }
 
@@ -489,7 +530,8 @@ public class DirectSaleService {
                         .build(), requestOptions));
     }
 
-    // Règlement des tentatives précédentes de l'acheteur, chacune dans sa propre transaction : une
+    // Règlement des tentatives précédentes de l'acheteur, sans transaction appelante ni verrou de
+    // tentative conservé, chacune dans sa propre transaction : une
     // annulation faite chez Stripe reste acquise en base même si la réservation de ce panier échoue
     // ensuite, et une confirmation trouvée en route n'est pas défaite par ce rollback.
     private void releaseSupersededReservations(User buyer, String currentPaymentIntentId) {
@@ -565,9 +607,12 @@ public class DirectSaleService {
                 .toList();
     }
 
-    // Tentative de paiement ouverte : son PaymentIntent, son groupe de transferts et ses commandes
-    // déjà créées, relues sous verrou (vide pour une tentative neuve).
-    private record Attempt(PaymentIntent intent, String transferGroup, List<MarketplaceOrder> orders) {}
+    // Panier validé et montants figés pour les phases de ce seul appel, sans transporter de commandes JPA.
+    private record Checkout(User buyer, List<CartLine> lines, Map<UUID, List<CartLine>> bySeller,
+                            CartTotals totals, String currency, String idempotencyKey) {}
+
+    // Intention ouverte dans une transaction terminée ; ses commandes seront relues dans la réservation.
+    private record Attempt(PaymentIntent intent, String transferGroup) {}
 
     // Montants du panier en centimes ; le port est détaillé par atelier pour le récapitulatif.
     private record CartTotals(int items, int shipping, int amount, int commission,

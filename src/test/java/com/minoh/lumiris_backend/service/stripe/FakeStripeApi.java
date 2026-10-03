@@ -43,6 +43,8 @@ final class FakeStripeApi implements AutoCloseable {
     private final Set<String> inFlight = ConcurrentHashMap.newKeySet();
     private final AtomicInteger sequence = new AtomicInteger();
     private volatile CyclicBarrier creationBarrier;
+    private volatile CyclicBarrier cancellationBarrier;
+    private volatile Runnable cancellationAction;
     private volatile long processingMillis;
     private volatile boolean unavailable;
 
@@ -60,6 +62,16 @@ final class FakeStripeApi implements AutoCloseable {
     // réservé ni validé.
     void holdCreationsUntil(int parties) {
         creationBarrier = new CyclicBarrier(parties);
+    }
+
+    // Synchronise les annulations concurrentes avec la même borne que les créations.
+    void holdCancellationsUntil(int parties) {
+        cancellationBarrier = new CyclicBarrier(parties);
+    }
+
+    // Exécute une action sur le thread HTTP à la prochaine annulation pour croiser un webhook entre les phases.
+    void onNextCancellation(Runnable action) {
+        cancellationAction = action;
     }
 
     // Allonge le traitement d'une création : une seconde requête de même clé arrive alors pendant
@@ -100,6 +112,8 @@ final class FakeStripeApi implements AutoCloseable {
         statusById.clear();
         inFlight.clear();
         creationBarrier = null;
+        cancellationBarrier = null;
+        cancellationAction = null;
         processingMillis = 0;
         unavailable = false;
     }
@@ -218,12 +232,22 @@ final class FakeStripeApi implements AutoCloseable {
             return;
         }
         statusById.put(id, "canceled");
+        Runnable action = cancellationAction;
+        cancellationAction = null;
+        if (action != null) {
+            action.run();
+        }
+        awaitBarrier(cancellationBarrier);
         respond(exchange, 200, paymentIntent(id, Map.of()));
     }
 
     // Synchronise les créations avec une attente bornée à dix secondes.
     private void awaitBarrier() {
-        CyclicBarrier barrier = creationBarrier;
+        awaitBarrier(creationBarrier);
+    }
+
+    // Attend une barrière du faux Stripe pendant dix secondes au maximum.
+    private void awaitBarrier(CyclicBarrier barrier) {
         if (barrier == null) {
             return;
         }

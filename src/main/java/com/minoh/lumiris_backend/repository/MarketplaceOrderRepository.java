@@ -3,8 +3,10 @@ package com.minoh.lumiris_backend.repository;
 import com.minoh.lumiris_backend.entity.DisputeStatus;
 import com.minoh.lumiris_backend.entity.MarketplaceOrder;
 import com.minoh.lumiris_backend.entity.OrderStatus;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -24,6 +26,31 @@ public interface MarketplaceOrderRepository extends JpaRepository<MarketplaceOrd
 
     // Fulfillment du paiement embarqué : toutes les lignes de commande d'un même PaymentIntent.
     List<MarketplaceOrder> findByStripePaymentIntentId(String paymentIntentId);
+
+    // Même lecture, lignes verrouillées jusqu'à la fin de la transaction : deux livraisons simultanées
+    // du webhook, ou un webhook et le balayage des paiements abandonnés, ne peuvent pas lire toutes
+    // deux « en attente ». Ordre fixe pour que deux verrouillages concurrents ne s'interbloquent pas.
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select o from MarketplaceOrder o where o.stripePaymentIntentId = :paymentIntentId order by o.id")
+    List<MarketplaceOrder> lockByStripePaymentIntentId(@Param("paymentIntentId") String paymentIntentId);
+
+    // Sérialise jusqu'à la fin de la transaction celles qui préparent le même PaymentIntent (double
+    // clic) : la seconde attend que la première ait validé, puis voit ses commandes au lieu de
+    // réserver une seconde fois. Verrou consultatif : aucune ligne n'existe encore à verrouiller.
+    @Query(value = "select 1 from (select pg_advisory_xact_lock(hashtext(:paymentIntentId))) as verrou",
+            nativeQuery = true)
+    int lockPaymentIntent(@Param("paymentIntentId") String paymentIntentId);
+
+    // Quantités déjà réservées par l'acheteur (commandes en attente de paiement), par déclinaison.
+    @Query("""
+            select o.variant.id, sum(o.quantity) from MarketplaceOrder o
+            where o.status = com.minoh.lumiris_backend.entity.OrderStatus.PENDING
+              and o.buyer.id = :buyerId
+              and o.variant.id in :variantIds
+            group by o.variant.id
+            """)
+    List<Object[]> pendingQuantityByVariant(@Param("buyerId") UUID buyerId,
+                                            @Param("variantIds") Collection<UUID> variantIds);
 
     // Rapprochement d'un webhook transporteur : l'agrégateur ne connaît que SON identifiant de colis.
     Optional<MarketplaceOrder> findByCarrierParcelId(String carrierParcelId);
@@ -83,24 +110,36 @@ public interface MarketplaceOrderRepository extends JpaRepository<MarketplaceOrd
     List<MarketplaceOrder> findStaleShipped(@Param("threshold") Instant threshold);
 
     // Paniers abandonnés : le stock reste réservé tant que la commande est en attente de paiement.
+    // Seuls les identifiants des paiements sont lus : chacun est ensuite tranché ligne verrouillée,
+    // sur un état relu, et non sur une copie chargée avant qu'un webhook ne la confirme.
+    @Query("""
+            select distinct o.stripePaymentIntentId from MarketplaceOrder o
+            where o.status = com.minoh.lumiris_backend.entity.OrderStatus.PENDING
+              and o.stripePaymentIntentId is not null
+              and o.createdAt < :threshold
+            """)
+    List<String> findAbandonedPendingPaymentIntents(@Param("threshold") Instant threshold);
+
+    // Paniers abandonnés de l'ancien parcours Checkout, sans PaymentIntent à relire chez Stripe.
     @Query("""
             select o from MarketplaceOrder o
             where o.status = com.minoh.lumiris_backend.entity.OrderStatus.PENDING
+              and o.stripePaymentIntentId is null
               and o.createdAt < :threshold
             """)
-    List<MarketplaceOrder> findAbandonedPending(@Param("threshold") Instant threshold);
+    List<MarketplaceOrder> findAbandonedPendingWithoutPaymentIntent(@Param("threshold") Instant threshold);
 
-    // Réservations laissées par les tentatives de paiement précédentes du même acheteur. Sans elles,
-    // chaque carte refusée puis réessayée empile une commande PENDING de plus et retire une unité
-    // du catalogue jusqu'au balayage du lendemain.
+    // Paiements laissés par les tentatives précédentes du même acheteur. Sans leur règlement, chaque
+    // carte refusée puis réessayée empile une commande PENDING de plus et retire une unité du
+    // catalogue jusqu'au balayage du lendemain.
     @Query("""
-            select o from MarketplaceOrder o
+            select distinct o.stripePaymentIntentId from MarketplaceOrder o
             where o.status = com.minoh.lumiris_backend.entity.OrderStatus.PENDING
               and o.buyer.id = :buyerId
               and o.stripePaymentIntentId <> :currentPaymentIntentId
             """)
-    List<MarketplaceOrder> findSupersededPending(@Param("buyerId") UUID buyerId,
-                                                 @Param("currentPaymentIntentId") String currentPaymentIntentId);
+    List<String> findSupersededPendingPaymentIntents(@Param("buyerId") UUID buyerId,
+                                                     @Param("currentPaymentIntentId") String currentPaymentIntentId);
 
     // Retour refusé ou réceptionné et laissé sans suite : sans échéance, ces commandes restent
     // éternellement dans l'onglet « Retours » du vendeur et l'acheteur n'a jamais de conclusion.

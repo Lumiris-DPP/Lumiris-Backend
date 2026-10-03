@@ -4,6 +4,7 @@ import com.minoh.lumiris_backend.config.MarketplaceProperties;
 import com.minoh.lumiris_backend.entity.MarketplaceOrder;
 import com.minoh.lumiris_backend.entity.OrderActorType;
 import com.minoh.lumiris_backend.repository.MarketplaceOrderRepository;
+import com.minoh.lumiris_backend.service.stripe.DirectSaleService;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,6 +42,7 @@ public class OrderScheduler {
 
     private final MarketplaceOrderRepository orderRepository;
     private final OrderLifecycleService lifecycleService;
+    private final DirectSaleService directSaleService;
     private final MarketplaceProperties properties;
 
     @Scheduled(fixedDelay = HOURLY_MS, initialDelay = HOURLY_MS)
@@ -48,7 +50,13 @@ public class OrderScheduler {
     public void advanceStaleOrders() {
         Instant now = Instant.now();
 
-        for (MarketplaceOrder order : orderRepository.findAbandonedPending(now.minus(ABANDONED_AFTER))) {
+        // Stripe fait foi avant toute remise en rayon : un paiement réussi dont le webhook s'est perdu
+        // est confirmé, pas annulé. L'ancien parcours Checkout n'a pas de PaymentIntent à relire.
+        Instant abandonedBefore = now.minus(ABANDONED_AFTER);
+        for (String paymentIntentId : orderRepository.findAbandonedPendingPaymentIntents(abandonedBefore)) {
+            directSaleService.settlePendingPayment(paymentIntentId);
+        }
+        for (MarketplaceOrder order : orderRepository.findAbandonedPendingWithoutPaymentIntent(abandonedBefore)) {
             lifecycleService.cancelAbandoned(order);
         }
 

@@ -20,8 +20,10 @@ public class PayoutScheduleResolver {
 
     private final MarketplaceProperties properties;
 
+    /** Décrit la date et la cause d’attente du reversement. */
     public record PayoutForecast(PayoutExpectation expectation, Instant expectedAt) {}
 
+    /** Calcule l’échéance selon le suivi actuel de la commande. */
     public PayoutForecast forecast(MarketplaceOrder order) {
         if (order.getDisputeStatus() == DisputeStatus.OPEN) {
             return new PayoutForecast(PayoutExpectation.ON_HOLD, null);
@@ -34,12 +36,14 @@ public class PayoutScheduleResolver {
         };
     }
 
+    /** Construit une échéance en appliquant le délai de reversement existant. */
     private PayoutForecast scheduled(Instant origin) {
         return origin == null
                 ? new PayoutForecast(PayoutExpectation.IMMINENT, null)
                 : new PayoutForecast(PayoutExpectation.SCHEDULED, origin.plus(properties.autoDeliverDelay()));
     }
 
+    /** Retient la première date connue parmi les dates proposées. */
     private static Instant firstNonNull(Instant... candidates) {
         for (Instant candidate : candidates) {
             if (candidate != null) {

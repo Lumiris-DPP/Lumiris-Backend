@@ -18,6 +18,7 @@ public class AtelierPlusResolver {
 
     private final SubscriptionRepository subscriptionRepository;
 
+    /** Vérifie le niveau actif de l’abonnement de cet atelier. */
     @Transactional(readOnly = true)
     public boolean isAtelierPlus(UUID userId) {
         return subscriptionRepository.findByUserId(userId)

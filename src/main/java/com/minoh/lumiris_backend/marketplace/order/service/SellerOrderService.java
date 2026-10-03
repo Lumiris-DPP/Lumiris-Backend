@@ -55,6 +55,7 @@ public class SellerOrderService {
                 storageService::getPresignedUrl);
     }
 
+    /** Charge et regroupe les événements des commandes par identifiant. */
     private Map<UUID, List<OrderEvent>> loadTimelines(List<MarketplaceOrder> orders) {
         if (orders.isEmpty()) {
             return Map.of();

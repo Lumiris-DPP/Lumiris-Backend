@@ -10,6 +10,7 @@ import com.minoh.lumiris_backend.marketplace.catalog.dto.out.MarketplaceItemResp
 import com.minoh.lumiris_backend.marketplace.catalog.dto.out.ProductVariantResponse;
 import org.springframework.stereotype.Component;
 
+/** Recopie les champs du formulaire et assemble la réponse d’une annonce. */
 @Component
 public class MarketplaceProductMapper {
 
@@ -63,6 +64,7 @@ public class MarketplaceProductMapper {
         );
     }
 
+    /** Additionne le stock exposé des déclinaisons chargées. */
     private static int totalStock(ProductPresentation presentation) {
         return presentation.variants().stream().mapToInt(ProductVariantResponse::stock).sum();
     }
@@ -86,6 +88,7 @@ public class MarketplaceProductMapper {
         p.setPhotoUrl(req.photoUrl());
     }
 
+    /** Normalise la devise annoncée selon le comportement existant. */
     private static String normalizeCurrency(String currency) {
         return currency != null && !currency.isBlank() ? currency.toUpperCase() : "EUR";
     }

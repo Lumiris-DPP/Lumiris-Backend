@@ -71,6 +71,7 @@ public class SellerConnectService {
         return created.getId();
     }
 
+    /** Relit le compte Connect puis expose ses capacités actuelles. */
     @Transactional
     public SellerStatusResponse getStatus(String userEmail) {
         User user = requireSeller(userEmail);
@@ -103,6 +104,7 @@ public class SellerConnectService {
         });
     }
 
+    /** Mémorise le compte Connect associé au vendeur. */
     private void persistAccount(User user, String accountId, Account stripeAccount) {
         SellerAccount account = new SellerAccount();
         account.setUser(user);
@@ -111,12 +113,14 @@ public class SellerConnectService {
         sellerAccountRepository.save(account);
     }
 
+    /** Recopie les capacités reçues du compte Connect. */
     private void applyStripeState(SellerAccount account, Account stripeAccount) {
         account.setChargesEnabled(Boolean.TRUE.equals(stripeAccount.getChargesEnabled()));
         account.setPayoutsEnabled(Boolean.TRUE.equals(stripeAccount.getPayoutsEnabled()));
         account.setOnboardingCompleted(Boolean.TRUE.equals(stripeAccount.getDetailsSubmitted()));
     }
 
+    /** Construit l’état vendeur depuis son compte Connect persisté. */
     private SellerStatusResponse toStatus(SellerAccount a) {
         return new SellerStatusResponse(true, a.isOnboardingCompleted(), a.isChargesEnabled(), a.isPayoutsEnabled());
     }

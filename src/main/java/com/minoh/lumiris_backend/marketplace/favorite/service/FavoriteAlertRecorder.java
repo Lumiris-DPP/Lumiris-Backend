@@ -32,6 +32,7 @@ public class FavoriteAlertRecorder {
         favoriteRepository.clearLowStockFlags(threshold);
     }
 
+    /** Réserve puis envoie une alerte de stock faible une seule fois. */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public boolean sendLowStock(MarketplaceFavorite favorite) {
         if (favoriteRepository.claimLowStock(favorite.getId(), Instant.now()) == 0) {
@@ -46,6 +47,7 @@ public class FavoriteAlertRecorder {
         return true;
     }
 
+    /** Réserve puis envoie une alerte de baisse de prix une seule fois. */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public boolean sendPriceDrop(MarketplaceFavorite favorite) {
         int previousPrice = favorite.getLastPriceCents();
@@ -68,6 +70,7 @@ public class FavoriteAlertRecorder {
         return "/boutique/produit/?id=" + product.getId();
     }
 
+    /** Formate les centimes en euros pour le message affiché. */
     private static String formatCents(int cents) {
         return String.format(Locale.ROOT, "%.2f", cents / 100.0).replace('.', ',') + " €";
     }

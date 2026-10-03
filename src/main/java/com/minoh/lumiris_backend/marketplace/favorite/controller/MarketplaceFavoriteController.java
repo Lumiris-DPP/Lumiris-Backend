@@ -23,17 +23,20 @@ public class MarketplaceFavoriteController {
 
     private final MarketplaceFavoriteService favoriteService;
 
+    /** Liste les favoris conservés par l’acheteur authentifié. */
     @GetMapping
     ResponseEntity<List<MarketplaceItemResponse>> list(@CurrentUserEmail String email) {
         return ResponseEntity.ok(favoriteService.list(email));
     }
 
+    /** Ajoute une pièce publiée aux favoris sans doubler une entrée existante. */
     @PutMapping("/{productId}")
     ResponseEntity<Void> add(@PathVariable UUID productId, @CurrentUserEmail String email) {
         favoriteService.add(email, productId);
         return ResponseEntity.noContent().build();
     }
 
+    /** Retire uniquement le favori de cet acheteur. */
     @DeleteMapping("/{productId}")
     ResponseEntity<Void> remove(@PathVariable UUID productId, @CurrentUserEmail String email) {
         favoriteService.remove(email, productId);

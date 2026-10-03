@@ -24,7 +24,6 @@ import com.minoh.lumiris_backend.repository.DppFormRepository;
 import com.minoh.lumiris_backend.repository.IrisScoreRepository;
 import com.minoh.lumiris_backend.repository.SubscriptionRepository;
 import com.minoh.lumiris_backend.repository.UserRepository;
-import com.minoh.lumiris_backend.marketplace.catalog.service.ScoredProduct;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;

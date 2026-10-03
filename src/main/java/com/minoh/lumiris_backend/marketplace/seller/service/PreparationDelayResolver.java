@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 @Service
 public class PreparationDelayResolver {
 
+    /** Ajoute les jours de pause actifs au délai de préparation annoncé. */
     public int effectiveDays(MarketplaceProduct product, Instant now) {
         return product.getPreparationDays() + pauseDays(product.getArtisanProfile(), now);
     }
@@ -22,10 +23,12 @@ public class PreparationDelayResolver {
         return until != null && until.isAfter(now) ? until : null;
     }
 
+    /** Calcule la date limite d’expédition depuis le délai effectif. */
     public Instant shipDueAt(Instant from, int effectiveDays) {
         return from.plus(Duration.ofDays(Math.max(0, effectiveDays)));
     }
 
+    /** Arrondit la pause restante au nombre de jours de préparation à ajouter. */
     private int pauseDays(ArtisanProfile profile, Instant now) {
         Instant until = activePauseUntil(profile, now);
         if (until == null) {

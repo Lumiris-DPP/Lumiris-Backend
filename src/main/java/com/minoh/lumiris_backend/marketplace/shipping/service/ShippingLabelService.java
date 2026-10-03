@@ -59,6 +59,7 @@ public class ShippingLabelService {
         return new ShippingLabelResponse.Availability(true, provider.name(), addressReady);
     }
 
+    /** Crée et stocke le bordereau avant de marquer la commande expédiée. */
     @Transactional
     public ShippingLabelResponse generate(String sellerEmail, UUID orderId) {
         User seller = userRepository.getByEmail(sellerEmail);
@@ -109,6 +110,7 @@ public class ShippingLabelService {
         }
     }
 
+    /** Construit le colis depuis les adresses et le poids de la commande. */
     private ParcelRequest parcelFor(MarketplaceOrder order, ArtisanProfile profile) {
         MarketplaceProduct product = order.getProduct();
         int declaredWeight = product != null ? product.getWeightGrams() * Math.max(1, order.getQuantity()) : 0;

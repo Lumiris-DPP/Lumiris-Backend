@@ -10,6 +10,7 @@ public record ParcelRequest(
         int weightGrams,
         String reference
 ) {
+    /** Décrit les coordonnées nécessaires au transport du colis. */
     public record Address(
             String fullName,
             String line1,

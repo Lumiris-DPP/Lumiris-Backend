@@ -12,6 +12,7 @@ public record PaymentOptionsResponse(
         int installmentCount,
         int installmentMinCents
 ) {
+    /** Construit la réponse depuis les données persistées et chargées. */
     public static PaymentOptionsResponse from(MarketplaceProperties properties) {
         int count = properties.getInstallmentCount();
         return new PaymentOptionsResponse(

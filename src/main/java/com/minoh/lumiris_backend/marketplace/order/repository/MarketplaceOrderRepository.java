@@ -15,8 +15,10 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+/** Accède aux commandes et aux verrous de leurs tentatives de paiement. */
 public interface MarketplaceOrderRepository extends JpaRepository<MarketplaceOrder, UUID> {
 
+    /** Retrouve la commande liée à une session Stripe existante. */
     Optional<MarketplaceOrder> findByStripeCheckoutSessionId(String sessionId);
 
     // Une annonce a-t-elle des commandes ? (garde-fou : on archive au lieu de supprimer pour ne pas
@@ -60,6 +62,7 @@ public interface MarketplaceOrderRepository extends JpaRepository<MarketplaceOrd
     @EntityGraph(attributePaths = {"product", "seller", "seller.artisanProfile"})
     List<MarketplaceOrder> findByBuyer_IdOrderByCreatedAtDesc(UUID buyerId);
 
+    /** Liste les commandes du vendeur de la plus récente à la plus ancienne. */
     @EntityGraph(attributePaths = {"product", "buyer", "buyer.artisanProfile", "shippingLabelFile"})
     List<MarketplaceOrder> findBySeller_IdOrderByCreatedAtDesc(UUID sellerId);
 
@@ -68,13 +71,15 @@ public interface MarketplaceOrderRepository extends JpaRepository<MarketplaceOrd
     @EntityGraph(attributePaths = {"product", "buyer", "buyer.artisanProfile", "shippingLabelFile"})
     List<MarketplaceOrder> findByDisputeStatusOrderByDisputeOpenedAtAsc(DisputeStatus disputeStatus);
 
-    // ── Statistiques vendeur (ventes réglées) ───────────────────────────────
+    /** Compte les ventes du vendeur dans les statuts demandés. */
     long countBySeller_IdAndStatusIn(UUID sellerId, Collection<OrderStatus> statuses);
 
+    /** Additionne les montants réglés des ventes de cet atelier. */
     @Query("select coalesce(sum(o.amountTotalCents), 0) from MarketplaceOrder o "
             + "where o.seller.id = :sellerId and o.status in :statuses")
     long grossCentsBySeller(@Param("sellerId") UUID sellerId, @Param("statuses") Collection<OrderStatus> statuses);
 
+    /** Additionne les commissions des ventes réglées de cet atelier. */
     @Query("select coalesce(sum(o.commissionCents), 0) from MarketplaceOrder o "
             + "where o.seller.id = :sellerId and o.status in :statuses")
     long commissionCentsBySeller(@Param("sellerId") UUID sellerId, @Param("statuses") Collection<OrderStatus> statuses);
@@ -84,8 +89,6 @@ public interface MarketplaceOrderRepository extends JpaRepository<MarketplaceOrd
             + "where o.seller.id = :sellerId and o.status in :statuses group by o.product.id")
     List<Object[]> salesCountByProduct(@Param("sellerId") UUID sellerId,
                                        @Param("statuses") Collection<OrderStatus> statuses);
-
-    // ── Trésorerie escrow (montants nets, part vendeur) ──────────────────────
     // Encaissé mais retenu : la pièce n'est pas encore réputée livrée.
     @Query("select coalesce(sum(o.netCents), 0) from MarketplaceOrder o "
             + "where o.seller.id = :sellerId and o.status in :statuses and o.stripeTransferId is null")
@@ -96,8 +99,6 @@ public interface MarketplaceOrderRepository extends JpaRepository<MarketplaceOrd
     @Query("select coalesce(sum(o.netCents), 0) from MarketplaceOrder o "
             + "where o.seller.id = :sellerId and o.stripeTransferId is not null")
     long releasedNetCentsBySeller(@Param("sellerId") UUID sellerId);
-
-    // ── Échéances du cycle de vie (job horaire) ──────────────────────────────
     // Expédiée depuis assez longtemps pour être présumée livrée. Un litige ouvert gèle la commande :
     // seule une décision humaine doit alors la faire avancer.
     @Query("""

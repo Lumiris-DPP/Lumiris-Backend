@@ -14,6 +14,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+/** Synchronise les annonces avec les produits et tarifs Stripe. */
 @Service
 @RequiredArgsConstructor
 public class MarketplaceStripeService {
@@ -23,6 +24,7 @@ public class MarketplaceStripeService {
     private final StripeProperties properties;
     private final MarketplaceProductRepository productRepository;
 
+    /** Crée ou actualise le produit Stripe et mémorise ses identifiants. */
     @Transactional
     public void ensureStripeProduct(MarketplaceProduct product) {
         if (!properties.hasSecretKey()) {

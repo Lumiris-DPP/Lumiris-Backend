@@ -40,6 +40,7 @@ public class SellerController {
         return ResponseEntity.ok(new CheckoutResponse(sellerConnectService.startOnboarding(email)));
     }
 
+    /** Lit l’état du compte vendeur connecté. */
     @GetMapping("/status")
     ResponseEntity<SellerStatusResponse> status(@CurrentUserEmail String email) {
         return ResponseEntity.ok(sellerConnectService.getStatus(email));
@@ -75,6 +76,7 @@ public class SellerController {
         return ResponseEntity.ok(shipFromAddressService.get(email));
     }
 
+    /** Enregistre l’adresse d’enlèvement validée de l’atelier. */
     @PutMapping("/shipping-address")
     ResponseEntity<ShipFromAddressResponse> updateShipFromAddress(
             @Valid @RequestBody ShipFromAddressRequest request,

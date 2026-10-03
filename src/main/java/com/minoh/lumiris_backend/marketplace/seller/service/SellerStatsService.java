@@ -13,7 +13,6 @@ import com.minoh.lumiris_backend.marketplace.seller.dto.out.SellerPayoutEntryRes
 import com.minoh.lumiris_backend.marketplace.seller.dto.out.SellerPayoutScheduleResponse;
 import com.minoh.lumiris_backend.marketplace.seller.dto.out.SellerSaleResponse;
 import com.minoh.lumiris_backend.marketplace.seller.dto.out.SellerStatsResponse;
-import com.minoh.lumiris_backend.marketplace.seller.service.PayoutScheduleResolver;
 import com.minoh.lumiris_backend.repository.UserRepository;
 import com.minoh.lumiris_backend.repository.WardrobeItemRepository;
 import java.util.Comparator;
@@ -38,6 +37,7 @@ public class SellerStatsService {
     private final UserRepository userRepository;
     private final PayoutScheduleResolver payoutScheduleResolver;
 
+    /** Agrège les ventes, les vues et les pièces de la garde-robe de l’atelier. */
     @Transactional(readOnly = true)
     public SellerStatsResponse getStats(String userEmail) {
         User artisan = requireArtisan(userEmail);
@@ -104,6 +104,7 @@ public class SellerStatsService {
         );
     }
 
+    /** Décrit le net retenu et l’échéance d’une vente. */
     private SellerPayoutEntryResponse toPayoutEntry(MarketplaceOrder order) {
         PayoutScheduleResolver.PayoutForecast forecast = payoutScheduleResolver.forecast(order);
         return new SellerPayoutEntryResponse(
@@ -119,6 +120,7 @@ public class SellerStatsService {
         );
     }
 
+    /** Additionne les nets des commandes retenues par le prédicat. */
     private static long sumWhere(List<SellerPayoutEntryResponse> entries, PayoutExpectation expectation) {
         return entries.stream()
                 .filter(e -> e.expectation() == expectation)
@@ -126,6 +128,7 @@ public class SellerStatsService {
                 .sum();
     }
 
+    /** Refuse l’accès aux statistiques d’un utilisateur sans rôle artisan. */
     private User requireArtisan(String userEmail) {
         User user = userRepository.getByEmail(userEmail);
         if (user.getRole() != UserRole.ARTISAN) {

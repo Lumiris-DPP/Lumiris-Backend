@@ -10,6 +10,7 @@ public record SuggestionResponse(
         List<Suggestion> suggestions,
         DecisionLogResponse decisionLog
 ) {
+    /** Associe une alternative à sa raison de recommandation. */
     public record Suggestion(
             MarketplaceItemResponse item,
             int rank,

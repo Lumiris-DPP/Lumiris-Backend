@@ -23,11 +23,13 @@ public class ShipFromAddressService {
     private final ArtisanProfileRepository artisanProfileRepository;
     private final UserRepository userRepository;
 
+    /** Lit la ressource accessible à l’utilisateur authentifié. */
     @Transactional(readOnly = true)
     public ShipFromAddressResponse get(String userEmail) {
         return ShipFromAddressResponse.from(requireProfile(userEmail));
     }
 
+    /** Enregistre les champs validés de la ressource autorisée. */
     @Transactional
     public ShipFromAddressResponse update(String userEmail, ShipFromAddressRequest request) {
         ArtisanProfile profile = requireProfile(userEmail);
@@ -41,6 +43,7 @@ public class ShipFromAddressService {
         return ShipFromAddressResponse.from(artisanProfileRepository.save(profile));
     }
 
+    /** Exige le profil artisan associé à l’utilisateur. */
     private ArtisanProfile requireProfile(String userEmail) {
         User user = userRepository.getByEmail(userEmail);
         return artisanProfileRepository.findByUser(user)

@@ -12,7 +12,6 @@ import com.minoh.lumiris_backend.marketplace.catalog.repository.MarketplaceProdu
 import com.minoh.lumiris_backend.marketplace.catalog.repository.MarketplaceSizeMeasurementRepository;
 import com.minoh.lumiris_backend.marketplace.seller.service.AtelierPlusResolver;
 import com.minoh.lumiris_backend.marketplace.seller.service.PreparationDelayResolver;
-import com.minoh.lumiris_backend.marketplace.catalog.service.ScoredProduct;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -38,17 +37,20 @@ public class MarketplaceItemAssembler {
     private final MarketplaceProductMapper mapper;
     private final MarketplaceVariantMapper variantMapper;
 
+    /** Associe chaque annonce au score chargé avec son passeport. */
     public List<ScoredProduct> fetch(List<Object[]> rows) {
         return rows.stream()
                 .map(r -> new ScoredProduct((MarketplaceProduct) r[0], (IrisScore) r[1]))
                 .collect(Collectors.toCollection(ArrayList::new));
     }
 
+    /** Assemble les réponses des annonces depuis leurs données chargées en lot. */
     @Transactional(readOnly = true)
     public List<MarketplaceItemResponse> toResponses(List<ScoredProduct> rows) {
         return toResponses(rows, Map.of());
     }
 
+    /** Assemble les réponses des annonces depuis leurs données chargées en lot. */
     @Transactional(readOnly = true)
     public List<MarketplaceItemResponse> toResponses(List<ScoredProduct> rows, Map<UUID, Long> salesByProduct) {
         if (rows.isEmpty()) {
@@ -71,21 +73,25 @@ public class MarketplaceItemAssembler {
                 .toList();
     }
 
+    /** Construit la réponse publique à partir des données chargées. */
     @Transactional(readOnly = true)
     public MarketplaceItemResponse toResponse(ScoredProduct row) {
         return toResponses(List.of(row)).get(0);
     }
 
+    /** Collecte les identifiants des ateliers présents dans les annonces. */
     public static Set<UUID> userIdsOf(List<ScoredProduct> rows) {
         return rows.stream().map(ScoredProduct::artisanUserId).collect(Collectors.toSet());
     }
 
+    /** Regroupe les déclinaisons chargées en lot par annonce. */
     private Map<UUID, List<ProductVariantResponse>> variantsByProduct(Collection<UUID> productIds) {
         return variantRepository.findByProduct_IdInOrderByPositionAscIdAsc(productIds).stream()
                 .collect(Collectors.groupingBy(v -> v.getProduct().getId(),
                         Collectors.mapping(variantMapper::toResponse, Collectors.toList())));
     }
 
+    /** Regroupe les mesures chargées en lot par annonce. */
     private Map<UUID, List<SizeMeasurementResponse>> guidesByProduct(Collection<UUID> productIds) {
         return measurementRepository.findByProduct_IdInOrderByPositionAscLabelAsc(productIds).stream()
                 .collect(Collectors.groupingBy(m -> m.getProduct().getId(),

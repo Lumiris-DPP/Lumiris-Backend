@@ -21,6 +21,7 @@ public class PayableSellerResolver {
     private final SellerAccountRepository sellerAccountRepository;
     private final SubscriptionRepository subscriptionRepository;
 
+    /** Retient les vendeurs capables d’encaisser avec un abonnement admissible. */
     @Transactional(readOnly = true)
     public Set<UUID> payableUserIds(Collection<UUID> userIds) {
         if (userIds.isEmpty()) {

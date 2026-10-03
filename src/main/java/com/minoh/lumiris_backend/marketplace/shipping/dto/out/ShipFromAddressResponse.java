@@ -13,6 +13,7 @@ public record ShipFromAddressResponse(
         String phone,
         boolean complete
 ) {
+    /** Construit la réponse depuis les données persistées et chargées. */
     public static ShipFromAddressResponse from(ArtisanProfile profile) {
         return new ShipFromAddressResponse(
                 profile.getShipFromLine1(),

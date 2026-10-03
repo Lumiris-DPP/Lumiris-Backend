@@ -1,5 +1,7 @@
 package com.minoh.lumiris_backend.controller;
 
+import com.minoh.lumiris_backend.service.EmailOutboxDispatcher;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.minoh.lumiris_backend.service.BlockchainService;
@@ -93,6 +95,10 @@ class MarketplaceCatalogIntegrationTest {
 
     @Autowired
     private JdbcTemplate jdbc;
+
+    // Le dispatcher est neutralisé : ces tests ne doivent pas envoyer de courriel réel.
+    @MockitoBean
+    private EmailOutboxDispatcher emailOutboxDispatcher;
 
     @MockitoBean
     private MinioClient minioClient;

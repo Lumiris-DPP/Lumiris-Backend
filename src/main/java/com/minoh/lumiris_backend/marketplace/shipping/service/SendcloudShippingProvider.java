@@ -50,6 +50,7 @@ public class SendcloudShippingProvider implements ShippingProvider {
     private final ShippingProperties properties;
     private final RestClient restClient;
 
+    /** Construit le client HTTP avec les paramètres du prestataire. */
     public SendcloudShippingProvider(ShippingProperties properties, RestClient.Builder builder) {
         this.properties = properties;
         this.restClient = builder
@@ -59,16 +60,19 @@ public class SendcloudShippingProvider implements ShippingProvider {
                 .build();
     }
 
+    /** Identifie le prestataire utilisé pour les expéditions. */
     @Override
     public String name() {
         return "sendcloud";
     }
 
+    /** Indique si les clés nécessaires à l’expédition sont disponibles. */
     @Override
     public boolean configured() {
         return properties.enabled();
     }
 
+    /** Demande un bordereau pour le colis et ses adresses validées. */
     @Override
     public ShippingLabel createLabel(ParcelRequest request) {
         int shippingMethodId = cheapestMethodFor(request);
@@ -118,8 +122,7 @@ public class SendcloudShippingProvider implements ShippingProvider {
         }
     }
 
-    // ── Appels HTTP ─────────────────────────────────────────────────────────
-
+    /** Sélectionne le tarif disponible compatible avec le colis. */
     private int cheapestMethodFor(ParcelRequest request) {
         JsonNode methods = call("Interrogation des méthodes d'envoi impossible", () -> restClient.get()
                 .uri(uriBuilder -> uriBuilder.path("/shipping_methods")
@@ -139,6 +142,7 @@ public class SendcloudShippingProvider implements ShippingProvider {
                                 + " pour un colis de " + request.weightGrams() + " g."));
     }
 
+    /** Déclare le colis et demande son bordereau au prestataire. */
     private JsonNode announceParcel(ParcelRequest request, int shippingMethodId) {
         Map<String, Object> parcel = new LinkedHashMap<>();
         parcel.put("name", request.to().fullName());
@@ -178,6 +182,7 @@ public class SendcloudShippingProvider implements ShippingProvider {
         return pdf;
     }
 
+    /** Exécute une requête authentifiée et traduit les erreurs du prestataire. */
     private <T> T call(String failureMessage, Supplier<T> exchange) {
         try {
             T body = exchange.get();
@@ -193,8 +198,7 @@ public class SendcloudShippingProvider implements ShippingProvider {
         }
     }
 
-    // ── Lecture des réponses ────────────────────────────────────────────────
-
+    /** Vérifie que le poids respecte les bornes du tarif. */
     private static boolean acceptsWeight(JsonNode method, double weightKilos) {
         double min = method.path("min_weight").asDouble(0);
         double max = method.path("max_weight").asDouble(Double.MAX_VALUE);
@@ -212,11 +216,13 @@ public class SendcloudShippingProvider implements ShippingProvider {
                 .orElse(Double.MAX_VALUE);
     }
 
+    /** Lit le nom du transporteur associé au colis. */
     private static String carrierName(JsonNode parcel) {
         String code = text(parcel.path("carrier"), "code");
         return code == null ? "Sendcloud" : code.toUpperCase(Locale.ROOT);
     }
 
+    /** Extrait la première URL de bordereau fournie. */
     private static String firstLabelUrl(JsonNode parcel) {
         return streamOf(parcel.path("label").path("normal_printer"))
                 .map(JsonNode::asText)
@@ -254,13 +260,13 @@ public class SendcloudShippingProvider implements ShippingProvider {
         return TrackingStatus.IN_TRANSIT;
     }
 
+    /** Lit la date du suivi ou utilise la date de réception. */
     private static Instant eventInstant(JsonNode root) {
         long epochMillis = root.path("timestamp").asLong(0);
         return epochMillis > 0 ? Instant.ofEpochMilli(epochMillis) : Instant.now();
     }
 
-    // ── Signature ───────────────────────────────────────────────────────────
-
+    /** Refuse tout webhook dont la signature ne correspond pas au corps reçu. */
     private void requireValidSignature(String payload, String signature) {
         if (!properties.hasWebhookSecret()) {
             throw new WebhookSignatureException(
@@ -276,6 +282,7 @@ public class SendcloudShippingProvider implements ShippingProvider {
         }
     }
 
+    /** Calcule la signature du corps reçu avec le secret configuré. */
     private String expectedSignature(String payload) {
         try {
             Mac mac = Mac.getInstance(SIGNATURE_HEADER_ALGORITHM);
@@ -287,6 +294,7 @@ public class SendcloudShippingProvider implements ShippingProvider {
         }
     }
 
+    /** Encode les identifiants du prestataire pour l’authentification HTTP. */
     private static String basicAuth(ShippingProperties properties) {
         ShippingProperties.Sendcloud sendcloud = properties.sendcloud();
         String credentials = (sendcloud == null ? "" : sendcloud.publicKey() + ":" + sendcloud.secretKey());
@@ -294,19 +302,20 @@ public class SendcloudShippingProvider implements ShippingProvider {
                 .encodeToString(credentials.getBytes(StandardCharsets.UTF_8));
     }
 
-    // ── Utilitaires ─────────────────────────────────────────────────────────
-
+    /** Parcourt les éléments d’un tableau JSON disponible. */
     private static Stream<JsonNode> streamOf(JsonNode array) {
         return array.isArray()
                 ? StreamSupport.stream(array.spliterator(), false)
                 : Stream.empty();
     }
 
+    /** Lit une valeur textuelle JSON sans exposer de valeur absente. */
     private static String text(JsonNode node, String field) {
         JsonNode value = node.path(field);
         return value.isMissingNode() || value.isNull() || value.asText().isBlank() ? null : value.asText();
     }
 
+    /** Remplace une chaîne absente par une chaîne vide. */
     private static String nullToEmpty(String value) {
         return value == null ? "" : value;
     }

@@ -10,6 +10,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+/** Charge les annonces avec leurs scores et leurs filtres de publication. */
 public interface MarketplaceProductRepository extends JpaRepository<MarketplaceProduct, UUID> {
 
     // Vue de fiche produit (VISION) — incrément atomique, fire-and-forget.
@@ -56,11 +57,14 @@ public interface MarketplaceProductRepository extends JpaRepository<MarketplaceP
     @Query("select coalesce(sum(p.views), 0) from MarketplaceProduct p where p.artisanProfile.id = :artisanProfileId")
     long totalViewsByArtisanProfile(@Param("artisanProfileId") UUID artisanProfileId);
 
+    /** Compte les annonces appartenant à cet atelier. */
     long countByArtisanProfileId(UUID artisanProfileId);
 
+    /** Compte les annonces de l’atelier dans le statut demandé. */
     long countByArtisanProfileIdAndStatus(UUID artisanProfileId,
                                           com.minoh.lumiris_backend.entity.MarketplaceProductStatus status);
 
+    /** Charge les annonces de l’atelier avec le score de leur passeport. */
     @Query("""
             select p, s
             from MarketplaceProduct p
@@ -71,9 +75,12 @@ public interface MarketplaceProductRepository extends JpaRepository<MarketplaceP
             """)
     List<Object[]> findScoredByArtisanProfileId(@Param("artisanProfileId") UUID artisanProfileId);
 
+    /** Retrouve une annonce uniquement dans cet atelier. */
     Optional<MarketplaceProduct> findByIdAndArtisanProfileId(UUID id, UUID artisanProfileId);
+    /** Retrouve l’annonce liée au passeport demandé. */
     Optional<MarketplaceProduct> findByDppFormId(UUID dppFormId);
 
+    /** Recherche les annonces publiées selon les filtres fournis. */
     @Query("""
             select p, s
             from MarketplaceProduct p
@@ -110,6 +117,7 @@ public interface MarketplaceProductRepository extends JpaRepository<MarketplaceP
                                              @Param("material") String material,
                                              @Param("origin") String origin);
 
+    /** Charge les alternatives publiées admissibles au score demandé. */
     @Query("""
             select p, s
             from MarketplaceProduct p

@@ -10,7 +10,6 @@ import com.minoh.lumiris_backend.marketplace.decision.dto.out.DecisionLogRespons
 import com.minoh.lumiris_backend.marketplace.decision.service.MarketplaceDecisionLogService;
 import com.minoh.lumiris_backend.marketplace.seller.service.AtelierPlusResolver;
 import com.minoh.lumiris_backend.marketplace.seller.service.PayableSellerResolver;
-import com.minoh.lumiris_backend.marketplace.catalog.service.ScoredProduct;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;

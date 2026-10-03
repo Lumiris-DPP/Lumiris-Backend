@@ -28,6 +28,7 @@ public class MarketplaceFavoriteService {
     private final UserRepository userRepository;
     private final MarketplaceItemAssembler assembler;
 
+    /** Ajoute une pièce publiée aux favoris sans doubler une entrée existante. */
     @Transactional
     public void add(String email, UUID productId) {
         User user = userRepository.getByEmail(email);
@@ -45,6 +46,7 @@ public class MarketplaceFavoriteService {
         favoriteRepository.save(favorite);
     }
 
+    /** Retire uniquement le favori de cet acheteur. */
     @Transactional
     public void remove(String email, UUID productId) {
         User user = userRepository.getByEmail(email);

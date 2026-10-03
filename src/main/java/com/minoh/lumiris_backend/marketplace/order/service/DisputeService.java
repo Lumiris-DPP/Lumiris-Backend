@@ -25,6 +25,7 @@ public class DisputeService {
     private final OrderEventRepository eventRepository;
     private final StorageService storageService;
 
+    /** Présente les commandes dont le litige attend un arbitrage. */
     @Transactional(readOnly = true)
     public List<SellerOrderResponse> listOpen() {
         List<MarketplaceOrder> orders = orderRepository.findByDisputeStatusOrderByDisputeOpenedAtAsc(DisputeStatus.OPEN);

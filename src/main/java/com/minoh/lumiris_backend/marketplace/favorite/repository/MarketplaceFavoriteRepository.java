@@ -10,8 +10,10 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+/** Accède aux favoris et réserve atomiquement leurs alertes. */
 public interface MarketplaceFavoriteRepository extends JpaRepository<MarketplaceFavorite, UUID> {
 
+    /** Retrouve le favori précis de l’utilisateur pour cette pièce. */
     Optional<MarketplaceFavorite> findByUser_IdAndProduct_Id(UUID userId, UUID productId);
 
     // Racine sur le produit pour que le join fetch de l'atelier reste sans ambiguïté, et surtout
@@ -78,6 +80,7 @@ public interface MarketplaceFavoriteRepository extends JpaRepository<Marketplace
             + "where f.id = :id and f.lowStockNotifiedAt is null")
     int claimLowStock(@Param("id") UUID id, @Param("now") Instant now);
 
+    /** Réserve atomiquement l’alerte de baisse de prix de ce favori. */
     @Modifying
     @Query("update MarketplaceFavorite f set f.lastPriceCents = :newPrice "
             + "where f.id = :id and f.lastPriceCents = :observedPrice")

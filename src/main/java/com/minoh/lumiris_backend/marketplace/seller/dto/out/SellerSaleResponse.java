@@ -20,6 +20,7 @@ public record SellerSaleResponse(
         Instant createdAt,
         String invoiceNumber
 ) {
+    /** Construit la réponse depuis les données persistées et chargées. */
     public static SellerSaleResponse from(MarketplaceOrder o) {
         return new SellerSaleResponse(
                 o.getId(),

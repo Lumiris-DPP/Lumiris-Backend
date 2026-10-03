@@ -1,7 +1,6 @@
 package com.minoh.lumiris_backend.marketplace.catalog.dto.in;
 
 import com.minoh.lumiris_backend.dto.in.HttpUrl;
-import com.minoh.lumiris_backend.marketplace.catalog.dto.in.ProductForm;
 import com.minoh.lumiris_backend.entity.MarketplaceProductStatus;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;

@@ -14,6 +14,7 @@ public record DecisionLogResponse(
         Instant createdAt,
         List<Entry> ranked
 ) {
+    /** Décrit le rang et les critères utilisés pour une annonce dans la piste d’audit. */
     public record Entry(
             int rank,
             UUID productId,

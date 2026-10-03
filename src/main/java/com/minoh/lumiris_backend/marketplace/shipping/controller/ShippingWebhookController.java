@@ -20,6 +20,7 @@ public class ShippingWebhookController {
 
     private final CarrierTrackingService trackingService;
 
+    /** Vérifie et délègue les événements de suivi du transporteur. */
     @PostMapping("/webhook")
     ResponseEntity<String> webhook(
             @RequestBody String payload,

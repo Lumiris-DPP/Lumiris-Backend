@@ -1,5 +1,7 @@
 package com.minoh.lumiris_backend.service.stripe;
 
+import com.minoh.lumiris_backend.service.EmailOutboxDispatcher;
+
 import com.minoh.lumiris_backend.marketplace.order.dto.in.RefundRequest;
 import com.minoh.lumiris_backend.marketplace.order.dto.in.ReturnRequest;
 import com.minoh.lumiris_backend.marketplace.order.dto.in.ReturnDecisionRequest;
@@ -66,6 +68,10 @@ class OrderLifecycleIntegrationTest {
     @Autowired private OrderScheduler scheduler;
     @Autowired private MarketplaceOrderRepository orders;
     @Autowired private PlatformTransactionManager transactionManager;
+    // Le dispatcher est neutralisé : ces tests ne doivent pas envoyer de courriel réel.
+    @MockitoBean
+    private EmailOutboxDispatcher emailOutboxDispatcher;
+
     @MockitoBean private MinioClient minioClient;
     @MockitoBean private BlockchainService blockchainService;
 

@@ -1,5 +1,7 @@
 package com.minoh.lumiris_backend.service.stripe;
 
+import com.minoh.lumiris_backend.service.EmailOutboxDispatcher;
+
 import com.minoh.lumiris_backend.marketplace.checkout.service.DirectSaleService;
 
 import com.minoh.lumiris_backend.marketplace.checkout.dto.in.CartIntentRequest;
@@ -120,6 +122,10 @@ class MarketplaceCheckoutIntegrationTest {
 
     @Autowired
     private DataSource dataSource;
+
+    // Le dispatcher est neutralisé : ces tests ne doivent pas envoyer de courriel réel.
+    @MockitoBean
+    private EmailOutboxDispatcher emailOutboxDispatcher;
 
     @MockitoBean
     private MinioClient minioClient;

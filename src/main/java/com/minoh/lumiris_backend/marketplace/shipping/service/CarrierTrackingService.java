@@ -29,6 +29,7 @@ public class CarrierTrackingService {
     private final MarketplaceOrderRepository orderRepository;
     private final OrderLifecycleService lifecycleService;
 
+    /** Applique uniquement les événements concernant un colis connu. */
     @Transactional
     public void handle(String payload, String signature) {
         Optional<CarrierEvent> event = provider.readWebhook(payload, signature);

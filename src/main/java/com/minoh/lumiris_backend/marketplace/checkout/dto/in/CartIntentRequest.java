@@ -27,6 +27,7 @@ public record CartIntentRequest(
             @Min(1) int quantity
     ) {}
 
+    /** Décrit l’adresse de livraison validée au checkout. */
     public record ShippingAddress(
             @NotBlank @Size(max = 200) String fullName,
             @NotBlank @Size(max = 300) String line1,

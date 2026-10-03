@@ -12,6 +12,7 @@ public record ShippingLabelResponse(
     // l'atelier découvrirait qu'il lui manque une adresse au moment d'imprimer.
     public record Availability(boolean enabled, String provider, boolean senderAddressReady) {
 
+        /** Décrit une impression de bordereau indisponible. */
         public static Availability unavailable() {
             return new Availability(false, null, false);
         }

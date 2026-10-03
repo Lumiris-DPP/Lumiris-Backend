@@ -14,10 +14,13 @@ import java.util.Optional;
 // ou un transporteur hors agrégateur.
 public interface ShippingProvider {
 
+    /** Identifie le prestataire utilisé pour les expéditions. */
     String name();
 
+    /** Indique si les clés nécessaires à l’expédition sont disponibles. */
     boolean configured();
 
+    /** Demande un bordereau pour le colis et ses adresses validées. */
     ShippingLabel createLabel(ParcelRequest request);
 
     // Empty quand la charge utile ne concerne pas un changement d'état de colis (ping de test,

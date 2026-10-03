@@ -11,8 +11,10 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+/** Charge et verrouille les déclinaisons et met à jour leur stock. */
 public interface MarketplaceProductVariantRepository extends JpaRepository<MarketplaceProductVariant, UUID> {
 
+    /** Liste les déclinaisons d’une annonce dans l’ordre d’affichage. */
     List<MarketplaceProductVariant> findByProduct_IdOrderByPositionAscIdAsc(UUID productId);
 
     // Déclinaisons d'une annonce lues par l'atelier pour les réécrire, verrouillées jusqu'à la fin de
@@ -23,6 +25,7 @@ public interface MarketplaceProductVariantRepository extends JpaRepository<Marke
     @Query("select v from MarketplaceProductVariant v where v.product.id = :productId order by v.id")
     List<MarketplaceProductVariant> lockByProductId(@Param("productId") UUID productId);
 
+    /** Charge en lot les déclinaisons dans l’ordre d’affichage. */
     List<MarketplaceProductVariant> findByProduct_IdInOrderByPositionAscIdAsc(Collection<UUID> productIds);
 
     // Réservation de stock au checkout — décrément conditionnel atomique : ne passe que si le stock
@@ -42,6 +45,7 @@ public interface MarketplaceProductVariantRepository extends JpaRepository<Marke
             + "where v.id = :id")
     int incrementStock(@Param("id") UUID id, @Param("qty") int qty);
 
+    /** Charge les déclinaisons demandées avec leur annonce pour le checkout. */
     @Query("""
             select v from MarketplaceProductVariant v
             join fetch v.product p

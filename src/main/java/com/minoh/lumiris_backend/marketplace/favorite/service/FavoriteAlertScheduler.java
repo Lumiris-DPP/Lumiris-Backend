@@ -2,7 +2,6 @@ package com.minoh.lumiris_backend.marketplace.favorite.service;
 
 import com.minoh.lumiris_backend.entity.MarketplaceFavorite;
 import com.minoh.lumiris_backend.marketplace.favorite.repository.MarketplaceFavoriteRepository;
-import com.minoh.lumiris_backend.marketplace.favorite.service.FavoriteAlertRecorder;
 import com.minoh.lumiris_backend.marketplace.seller.service.PayableSellerResolver;
 import java.util.List;
 import java.util.Set;
@@ -45,6 +44,7 @@ public class FavoriteAlertScheduler {
     private final FavoriteAlertRecorder recorder;
     private final PayableSellerResolver payableSellerResolver;
 
+    /** Balaye les favoris admissibles en respectant le plafond d’alertes existant. */
     @Scheduled(fixedDelay = HOURLY_MS, initialDelay = HOURLY_MS / 2)
     public void sweep() {
         recorder.resetLowStockFlags(LOW_STOCK_THRESHOLD);

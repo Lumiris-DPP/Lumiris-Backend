@@ -7,6 +7,7 @@ public record SellerStatusResponse(
         boolean chargesEnabled,
         boolean payoutsEnabled
 ) {
+    /** Décrit un vendeur sans compte Connect actif. */
     public static SellerStatusResponse none() {
         return new SellerStatusResponse(false, false, false, false);
     }

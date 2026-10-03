@@ -43,6 +43,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -401,9 +402,15 @@ public class DirectSaleService {
     }
 
     // Réservation atomique du stock (anti-survente sous concurrence) : décrément conditionnel par
-    // ligne. Un échec (course perdue) annule toute la transaction.
+    // ligne. Un échec (course perdue) annule toute la transaction. Les déclinaisons sont réservées par
+    // identifiant croissant, l'ordre où l'atelier les verrouille en enregistrant son annonce : deux
+    // transactions qui se croisent s'attendent au lieu de s'interbloquer. Le texte de l'identifiant
+    // suit l'ordre des uuid de PostgreSQL, contrairement à UUID.compareTo (comparaison signée).
     private void reserveStock(List<CartLine> lines) {
-        for (CartLine line : lines) {
+        List<CartLine> byVariantId = lines.stream()
+                .sorted(Comparator.comparing(line -> line.variant().getId().toString()))
+                .toList();
+        for (CartLine line : byVariantId) {
             if (variantRepository.decrementStock(line.variant().getId(), line.quantity()) == 0) {
                 throw new BillingValidationException("Stock insuffisant pour « " + line.label() + " ».");
             }

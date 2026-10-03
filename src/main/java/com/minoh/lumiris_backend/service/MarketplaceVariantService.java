@@ -48,10 +48,10 @@ public class MarketplaceVariantService {
 
     // Une annonce convertie sans grille de déclinaisons garde le comportement d'origine : une seule
     // déclinaison sans libellé, qui porte tout le stock et n'affiche aucun sélecteur à l'acheteur.
+    // Lue sous verrou, comme dans applyVariants : une vente concurrente attend cette écriture.
     @Transactional(propagation = Propagation.MANDATORY)
     public void seedDefaultVariant(MarketplaceProduct product, int stock) {
-        List<MarketplaceProductVariant> existing =
-                variantRepository.findByProduct_IdOrderByPositionAscIdAsc(product.getId());
+        List<MarketplaceProductVariant> existing = variantRepository.lockByProductId(product.getId());
         if (existing.isEmpty()) {
             MarketplaceProductVariant variant = new MarketplaceProductVariant();
             variant.setProduct(product);
@@ -76,8 +76,10 @@ public class MarketplaceVariantService {
         }
         assertDistinctCombinations(normalized);
 
+        // Lecture sous verrou : sans lui, une vente commise entre cette lecture et l'écriture serait
+        // effacée, Hibernate réécrivant le stock et la version lus ici.
         Map<UUID, MarketplaceProductVariant> existing = variantRepository
-                .findByProduct_IdOrderByPositionAscIdAsc(product.getId()).stream()
+                .lockByProductId(product.getId()).stream()
                 .collect(Collectors.toMap(MarketplaceProductVariant::getId, v -> v));
 
         // Les déclinaisons retirées partent AVANT que les nouvelles n'arrivent : Hibernate ordonne
@@ -181,8 +183,10 @@ public class MarketplaceVariantService {
     }
 
     // La version n'est incrémentée QUE par les requêtes de stock atomiques (vente, remboursement) :
-    // elle signifie exactement « le stock a bougé sous toi ». L'incrémenter aussi à l'enregistrement
-    // artisan ferait échouer deux bascules de visibilité successives, sans qu'aucune vente n'ait eu lieu.
+    // elle signifie exactement « le stock a bougé sous toi » depuis que le formulaire a été lu.
+    // L'incrémenter aussi à l'enregistrement artisan ferait échouer deux bascules de visibilité
+    // successives, sans qu'aucune vente n'ait eu lieu. Une vente pendant l'enregistrement, elle, est
+    // tenue à l'écart par le verrou de lecture.
     private static void assertFreshVersion(ProductVariantForm form, MarketplaceProductVariant variant) {
         if (form.version() != null && form.version() != variant.getVersion()) {
             throw new ConflictException(

@@ -361,6 +361,69 @@ class MarketplaceCatalogIntegrationTest {
                 .isInstanceOf(IllegalTransactionStateException.class);
     }
 
+    // Republication d'un passeport déjà en vente : même annonce (identifiant, vues), champs réécrits ;
+    // ceux que la requête ne renvoie pas reprennent leur valeur par défaut, et les déclinaisons comme
+    // le guide sont remplacés.
+    @Test
+    void republish_keepsTheListingAndResetsWhatIsNotSent() throws Exception {
+        Atelier atelier = atelier();
+        UUID dpp = dpp(atelier, "Veste republication", 80.0);
+        JsonNode first = call(201, post("/api/marketplace/products/from-dpp/" + dpp)
+                .with(user(atelier.email()).roles("ARTISAN"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(convertBody("M", "Ecru")));
+        String id = first.get("id").asText();
+        call(202, post("/public/marketplace/products/" + id + "/view"));
+
+        JsonNode again = call(201, post("/api/marketplace/products/from-dpp/" + dpp)
+                .with(user(atelier.email()).roles("ARTISAN"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"priceCents\":9900,\"description\":\"Nouvelle description\",\"material\":\"Laine\","
+                        + "\"variants\":[{\"sizeLabel\":\"S\",\"stock\":5,\"position\":0},"
+                        + "{\"sizeLabel\":\"L\",\"stock\":2,\"position\":1}],"
+                        + "\"sizeGuide\":[{\"sizeLabel\":\"L\",\"label\":\"Poitrine\",\"valueMm\":520,\"position\":3}]}"));
+
+        assertThat(fieldNames(again)).isEqualTo(ITEM_FIELDS);
+        assertThat(again.get("id").asText()).isEqualTo(id);
+        assertThat(again.get("views").asLong()).isEqualTo(1L);
+        assertThat(again.get("priceCents").asInt()).isEqualTo(9900);
+        assertThat(again.get("material").asText()).isEqualTo("Laine");
+        assertThat(again.get("description").asText()).isEqualTo("Nouvelle description");
+        assertThat(again.get("shippingCents").asInt()).isZero();
+        assertThat(again.get("preparationDays").asInt()).isZero();
+        assertThat(again.get("weightGrams").asInt()).isZero();
+        assertThat(sizes(again)).containsExactly("S", "L");
+        assertThat(again.get("stock").asInt()).isEqualTo(7);
+        assertThat(variant(again, "S").get("id").asText()).isNotEqualTo(variant(first, "S").get("id").asText());
+        assertThat(again.get("sizeGuide")).hasSize(1);
+        assertThat(again.get("sizeGuide").get(0).get("sizeLabel").asText()).isEqualTo("L");
+    }
+
+    // Conversion sans déclinaisons : une seule déclinaison sans libellé, au stock demandé, puis à la
+    // quantité du passeport quand aucun stock n'est donné ; c'est la même déclinaison qui est réécrite.
+    @Test
+    void publishWithoutVariants_usesTheRequestedStockThenThePassportQuantity() throws Exception {
+        Atelier atelier = atelier();
+        UUID dpp = dpp(atelier, "Chemise sans declinaison", 60.0);
+
+        JsonNode withStock = call(201, post("/api/marketplace/products/from-dpp/" + dpp)
+                .with(user(atelier.email()).roles("ARTISAN"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"priceCents\":4500,\"stock\":7}"));
+        JsonNode withoutStock = call(201, post("/api/marketplace/products/from-dpp/" + dpp)
+                .with(user(atelier.email()).roles("ARTISAN"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"priceCents\":4500}"));
+
+        assertThat(withStock.get("variants")).hasSize(1);
+        assertThat(withStock.get("variants").get(0).get("sizeLabel").isNull()).isTrue();
+        assertThat(withStock.get("stock").asInt()).isEqualTo(7);
+        assertThat(withoutStock.get("variants")).hasSize(1);
+        assertThat(withoutStock.get("stock").asInt()).isEqualTo(4);
+        assertThat(withoutStock.get("variants").get(0).get("id").asText())
+                .isEqualTo(withStock.get("variants").get(0).get("id").asText());
+    }
+
     // ── Données et outils ───────────────────────────────────────────────────
 
     private record Atelier(UUID userId, String email, String category) {}

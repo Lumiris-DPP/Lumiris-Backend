@@ -37,11 +37,11 @@ public class MarketplaceDecisionLogService {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    // Best-effort : la piste d'audit est persistée dans une transaction séparée (REQUIRES_NEW, portée
-    // par DecisionLogRecorder), un échec d'écriture ne doit JAMAIS faire échouer ni rollback la lecture
-    // (search/suggest). En cas d'échec on renvoie un log transitoire non persisté (id null) plutôt
-    // qu'une 500. Volontairement sans @Transactional : l'échec est intercepté ici, avant de traverser un
-    // proxy transactionnel qui marquerait la lecture appelante pour rollback.
+    // Best-effort : un échec d'écriture de la piste d'audit ne doit JAMAIS faire échouer ni rollback la
+    // lecture (search/suggest). Deux choses le garantissent : DecisionLogRecorder écrit dans sa propre
+    // transaction (REQUIRES_NEW) — c'est aussi ce qui permet d'écrire depuis une recherche en lecture
+    // seule —, et l'exception est interceptée ici. En cas d'échec on renvoie un log transitoire non
+    // persisté (id null) plutôt qu'une 500.
     public DecisionLogResponse record(String context, String sortKey, Object requestEcho,
                                       List<DecisionLogResponse.Entry> ranked) {
         List<DecisionLogResponse.Entry> kept = capForLog(ranked);

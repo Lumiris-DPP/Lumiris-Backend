@@ -1,13 +1,17 @@
 package com.minoh.lumiris_backend.service.stripe;
 
 import com.minoh.lumiris_backend.dto.in.CartIntentRequest;
+import com.minoh.lumiris_backend.dto.in.ProductVariantForm;
+import com.minoh.lumiris_backend.dto.in.UpdateProductRequest;
 import com.minoh.lumiris_backend.dto.out.PaymentIntentResponse;
+import com.minoh.lumiris_backend.entity.MarketplaceProductStatus;
 import com.minoh.lumiris_backend.exception.BillingValidationException;
 import com.minoh.lumiris_backend.exception.ResourceNotFoundException;
 import com.minoh.lumiris_backend.exception.WebhookSignatureException;
 import com.minoh.lumiris_backend.service.BlockchainService;
 import com.minoh.lumiris_backend.service.BuyerOrderService;
 import com.minoh.lumiris_backend.service.OrderScheduler;
+import com.minoh.lumiris_backend.service.SellerCatalogService;
 import io.minio.MinioClient;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -28,7 +32,10 @@ import org.testcontainers.utility.DockerImageName;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
+import javax.sql.DataSource;
 import java.nio.charset.StandardCharsets;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.HexFormat;
@@ -94,6 +101,12 @@ class MarketplaceCheckoutIntegrationTest {
 
     @Autowired
     private PlatformTransactionManager transactionManager;
+
+    @Autowired
+    private SellerCatalogService sellerCatalogService;
+
+    @Autowired
+    private DataSource dataSource;
 
     @MockitoBean
     private MinioClient minioClient;
@@ -482,6 +495,47 @@ class MarketplaceCheckoutIntegrationTest {
         assertThat(pendingOrders(variant)).isZero();
     }
 
+    // S1 : une vente commise pendant que l'atelier enregistre son annonce n'est pas effacée par cet
+    // enregistrement : la pièce vendue ne redevient pas achetable.
+    @Test
+    void saleDuringAnArtisanSave_isNotOverwrittenByTheSave() throws Exception {
+        Variant variant = listing("EUR", 8900, 1);
+        // L'atelier ne change que le SKU, avec la version qu'il vient de lire : aucune vente n'a encore eu lieu.
+        UpdateProductRequest edit = edit(variant, List.of(
+                new ProductVariantForm(variant.id(), "M", null, null, "SKU-NEW", 1, 0, 0L)));
+
+        List<Outcome> outcomes = duringArtisanSave(variant, edit, () -> checkout(buyer(), variant, 1));
+
+        assertThat(outcomes).allSatisfy(o -> assertThat(o.error()).isNull());
+        assertThat(stock(variant)).isZero();
+        assertThat(pendingOrders(variant)).isEqualTo(1);
+    }
+
+    // S1 : un panier qui réserve deux déclinaisons de la même annonce pendant son enregistrement par
+    // l'atelier aboutit, sans interblocage, et chaque déclinaison garde sa vente.
+    @Test
+    void cartWithTwoVariantsDuringAnArtisanSave_reservesBothWithoutDeadlock() throws Exception {
+        Variant medium = listing("EUR", 8900, 2);
+        UUID largeId = UUID.randomUUID();
+        jdbc.update("insert into marketplace_product_variants (id, product_id, size_label, stock, position) "
+                + "values (?, ?, 'L', 2, 1)", largeId, medium.productId());
+        Variant large = new Variant(largeId, medium.productId(), medium.sellerId());
+        UpdateProductRequest edit = edit(medium, List.of(
+                new ProductVariantForm(medium.id(), "M", null, null, "SKU-M", 2, 0, 0L),
+                new ProductVariantForm(large.id(), "L", null, null, "SKU-L", 2, 1, 0L)));
+        // Le panier énumère les déclinaisons dans l'ordre inverse de leurs identifiants.
+        List<CartIntentRequest.Line> lines = new ArrayList<>(List.of(line(medium, 1), line(large, 1)));
+        lines.sort((a, b) -> b.variantId().toString().compareTo(a.variantId().toString()));
+        String buyer = buyer();
+
+        List<Outcome> outcomes = duringArtisanSave(medium, edit,
+                () -> directSaleService.createCartPaymentIntent(buyer, new CartIntentRequest(lines, address())));
+
+        assertThat(outcomes).allSatisfy(o -> assertThat(o.error()).isNull());
+        assertThat(stock(medium)).isEqualTo(1);
+        assertThat(stock(large)).isEqualTo(1);
+    }
+
     // ── Données et outils ───────────────────────────────────────────────────
 
     private record Variant(UUID id, UUID productId, UUID sellerId) {}
@@ -521,6 +575,59 @@ class MarketplaceCheckoutIntegrationTest {
         jdbc.update("insert into users (id, email, password_hash, role, name) values (?, ?, '{noop}x', ?, 'IT')",
                 id, role.toLowerCase() + "-" + id + "@lumiris.test", role);
         return id;
+    }
+
+    // Enregistrement complet de l'annonce par son atelier, avec les déclinaisons données.
+    private UpdateProductRequest edit(Variant variant, List<ProductVariantForm> variants) {
+        UUID dpp = jdbc.queryForObject("select dpp_form_id from marketplace_products where id = ?", UUID.class,
+                variant.productId());
+        return new UpdateProductRequest("Veste IT", null, null, "Lin", null, 8900, "EUR", 690, null, 0, 0,
+                variants, List.of(), null, null, dpp, MarketplaceProductStatus.PUBLISHED);
+    }
+
+    // Lance l'enregistrement de l'atelier, le retient au moment d'écrire l'annonce (verrou sur sa ligne,
+    // posé par une autre connexion), lance l'opération concurrente pendant ce temps, puis libère.
+    private List<Outcome> duringArtisanSave(Variant variant, UpdateProductRequest edit, Callable<?> concurrent)
+            throws Exception {
+        String artisan = jdbc.queryForObject("select email from users where id = ?", String.class, variant.sellerId());
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try (Connection blocker = dataSource.getConnection()) {
+            blocker.setAutoCommit(false);
+            try (PreparedStatement lock = blocker.prepareStatement(
+                    "select 1 from marketplace_products where id = ? for no key update")) {
+                lock.setObject(1, variant.productId());
+                lock.executeQuery();
+            }
+            Future<?> save = pool.submit(() -> sellerCatalogService.update(artisan, variant.productId(), edit));
+            awaitLockWaiters(1);
+            Future<?> other = pool.submit(concurrent);
+            pause(1500);
+            blocker.commit();
+            List<Outcome> outcomes = new ArrayList<>();
+            for (Future<?> future : List.of(save, other)) {
+                try {
+                    outcomes.add(new Outcome(future.get(30, TimeUnit.SECONDS), null));
+                } catch (ExecutionException e) {
+                    outcomes.add(new Outcome(null, e.getCause()));
+                }
+            }
+            return outcomes;
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    // Attend qu'au moins `count` transactions de la base attendent un verrou.
+    private void awaitLockWaiters(int count) {
+        for (int i = 0; i < 200; i++) {
+            Integer waiting = jdbc.queryForObject("select count(*) from pg_stat_activity "
+                    + "where wait_event_type = 'Lock' and datname = current_database()", Integer.class);
+            if (waiting != null && waiting >= count) {
+                return;
+            }
+            pause(50);
+        }
+        throw new IllegalStateException("Aucune transaction en attente de verrou");
     }
 
     private PaymentIntentResponse checkout(String buyerEmail, Variant variant, int quantity) {

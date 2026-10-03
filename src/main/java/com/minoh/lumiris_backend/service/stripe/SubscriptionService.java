@@ -1,5 +1,7 @@
 package com.minoh.lumiris_backend.service.stripe;
 
+import com.minoh.lumiris_backend.integration.stripe.StripeCalls;
+
 import com.minoh.lumiris_backend.config.stripe.StripeProperties;
 import com.minoh.lumiris_backend.domain.BillingCycle;
 import com.minoh.lumiris_backend.domain.PlanTier;

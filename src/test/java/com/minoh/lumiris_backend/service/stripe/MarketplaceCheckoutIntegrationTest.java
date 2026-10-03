@@ -1,17 +1,19 @@
 package com.minoh.lumiris_backend.service.stripe;
 
-import com.minoh.lumiris_backend.dto.in.CartIntentRequest;
-import com.minoh.lumiris_backend.dto.in.ProductVariantForm;
-import com.minoh.lumiris_backend.dto.in.UpdateProductRequest;
-import com.minoh.lumiris_backend.dto.out.PaymentIntentResponse;
+import com.minoh.lumiris_backend.marketplace.checkout.service.DirectSaleService;
+
+import com.minoh.lumiris_backend.marketplace.checkout.dto.in.CartIntentRequest;
+import com.minoh.lumiris_backend.marketplace.catalog.dto.in.ProductVariantForm;
+import com.minoh.lumiris_backend.marketplace.catalog.dto.in.UpdateProductRequest;
+import com.minoh.lumiris_backend.marketplace.checkout.dto.out.PaymentIntentResponse;
 import com.minoh.lumiris_backend.entity.MarketplaceProductStatus;
 import com.minoh.lumiris_backend.exception.BillingValidationException;
 import com.minoh.lumiris_backend.exception.ResourceNotFoundException;
 import com.minoh.lumiris_backend.exception.WebhookSignatureException;
 import com.minoh.lumiris_backend.service.BlockchainService;
-import com.minoh.lumiris_backend.service.BuyerOrderService;
-import com.minoh.lumiris_backend.service.OrderScheduler;
-import com.minoh.lumiris_backend.service.SellerCatalogService;
+import com.minoh.lumiris_backend.marketplace.order.service.BuyerOrderService;
+import com.minoh.lumiris_backend.marketplace.order.scheduling.OrderScheduler;
+import com.minoh.lumiris_backend.marketplace.catalog.service.SellerCatalogService;
 import io.minio.MinioClient;
 import jakarta.persistence.EntityManagerFactory;
 import org.junit.jupiter.api.AfterAll;

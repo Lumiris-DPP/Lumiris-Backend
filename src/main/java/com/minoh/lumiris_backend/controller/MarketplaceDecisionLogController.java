@@ -2,7 +2,7 @@ package com.minoh.lumiris_backend.controller;
 
 import com.minoh.lumiris_backend.config.security.CurrentUserEmail;
 import com.minoh.lumiris_backend.dto.out.DecisionLogResponse;
-import com.minoh.lumiris_backend.service.MarketplaceService;
+import com.minoh.lumiris_backend.service.MarketplaceDecisionLogService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -19,10 +19,11 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class MarketplaceDecisionLogController {
 
-    private final MarketplaceService marketplaceService;
+    private final MarketplaceDecisionLogService decisionLogService;
 
+    // Un log de décision, pour l'audit interne (ADMIN).
     @GetMapping("/{id}")
     ResponseEntity<DecisionLogResponse> get(@PathVariable UUID id, @CurrentUserEmail String email) {
-        return ResponseEntity.ok(marketplaceService.getDecisionLog(email, id));
+        return ResponseEntity.ok(decisionLogService.getDecisionLog(email, id));
     }
 }

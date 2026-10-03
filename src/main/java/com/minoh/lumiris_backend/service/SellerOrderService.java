@@ -11,7 +11,6 @@ import com.minoh.lumiris_backend.exception.RoleNotAllowedException;
 import com.minoh.lumiris_backend.repository.MarketplaceOrderRepository;
 import com.minoh.lumiris_backend.repository.OrderEventRepository;
 import com.minoh.lumiris_backend.repository.UserRepository;
-import com.minoh.lumiris_backend.service.StorageService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,9 +20,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-// Tableau de bord des commandes vendeur (ATELIER). Une seule requête sert les quatre onglets :
-// le regroupement se fait sur le DTO (cf. SellerOrderResponse#tab), l'écran n'ayant jamais besoin
-// d'un seul onglet isolé — il affiche les compteurs de tous en permanence.
+/** Expose les commandes appartenant à l’atelier. */
 @Service
 @RequiredArgsConstructor
 public class SellerOrderService {
@@ -33,6 +30,7 @@ public class SellerOrderService {
     private final StorageService storageService;
     private final UserRepository userRepository;
 
+    /** Liste les commandes visibles par l’atelier connecté. */
     @Transactional(readOnly = true)
     public List<SellerOrderResponse> list(String sellerEmail) {
         User seller = requireArtisan(sellerEmail);
@@ -46,6 +44,7 @@ public class SellerOrderService {
                 .toList();
     }
 
+    /** Charge une commande appartenant à l’atelier. */
     @Transactional(readOnly = true)
     public SellerOrderResponse get(String sellerEmail, UUID orderId) {
         User seller = requireArtisan(sellerEmail);
@@ -56,7 +55,6 @@ public class SellerOrderService {
                 storageService::getPresignedUrl);
     }
 
-    // Une seule requête pour toutes les timelines de la page (au lieu d'une par commande).
     private Map<UUID, List<OrderEvent>> loadTimelines(List<MarketplaceOrder> orders) {
         if (orders.isEmpty()) {
             return Map.of();
@@ -66,6 +64,7 @@ public class SellerOrderService {
                 .collect(Collectors.groupingBy(e -> e.getOrder().getId()));
     }
 
+    /** Vérifie le rôle artisan du vendeur. */
     private User requireArtisan(String email) {
         User user = userRepository.getByEmail(email);
         if (user.getRole() != UserRole.ARTISAN) {

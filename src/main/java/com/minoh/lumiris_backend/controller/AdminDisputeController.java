@@ -19,8 +19,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 import java.util.UUID;
 
-// LUMIRIS-24 · Arbitrage des litiges par la plateforme. Le vendeur ne peut pas clôturer un litige
-// qui le vise — seul un ADMIN tranche (rôle imposé par SecurityConfig sur /api/admin/**).
+/** Délègue les décisions de la plateforme sur les litiges. */
 @RestController
 @RequestMapping("/api/admin/disputes")
 @RequiredArgsConstructor
@@ -29,13 +28,13 @@ public class AdminDisputeController {
     private final DisputeService disputeService;
     private final OrderLifecycleService lifecycleService;
 
+    /** Délègue l’action listOpen au service de commandes. */
     @GetMapping
     ResponseEntity<List<SellerOrderResponse>> listOpen() {
         return ResponseEntity.ok(disputeService.listOpen());
     }
 
-    // L'arbitre écrit dans le fil de la commande — les deux parties le lisent au même endroit que
-    // le reste de la conversation.
+    /** Ajoute un message au fil accessible aux parties et à la plateforme. */
     @PostMapping("/{orderId}/messages")
     ResponseEntity<Void> postMessage(@PathVariable UUID orderId,
                                      @Valid @RequestBody OrderMessageRequest request,
@@ -44,7 +43,7 @@ public class AdminDisputeController {
         return ResponseEntity.noContent().build();
     }
 
-    // `refundCents` renseigné ⇒ tranché en faveur de l'acheteur ; absent ⇒ clos sans remboursement.
+    /** Délègue l’action resolve au service de commandes. */
     @PostMapping("/{orderId}/resolve")
     ResponseEntity<Void> resolve(@PathVariable UUID orderId,
                                  @Valid @RequestBody DisputeResolutionRequest request,

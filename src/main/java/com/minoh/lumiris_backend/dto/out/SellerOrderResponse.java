@@ -9,9 +9,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.function.Function;
 
-// Vue vendeur d'une commande (tableau de bord ATELIER) : ce qu'il doit expédier, à qui, et où en
-// est l'argent. `released` = fonds déjà reversés ; sinon retenus par la plateforme (escrow).
-// Les drapeaux `can*` traduisent la machine à états : l'UI n'affiche que des actions acceptées.
+/** Décrit les données de SellerOrderResponse pour les commandes. */
 public record SellerOrderResponse(
         UUID id,
         String productName,
@@ -34,8 +32,6 @@ public record SellerOrderResponse(
         String trackingStatus,
         String trackingStatusLabel,
         Instant trackingUpdatedAt,
-        // URL présignée du bordereau déjà fabriqué : l'atelier le réimprime autant de fois qu'il
-        // le faut sans repasser commande d'une étiquette.
         String labelUrl,
         ShippingAddressResponse shipTo,
         String returnReason,
@@ -54,6 +50,8 @@ public record SellerOrderResponse(
         boolean canCancel,
         List<OrderEventResponse> timeline
 ) {
+
+    /** Construit la réponse à partir des données persistantes de la commande. */
     public static SellerOrderResponse from(MarketplaceOrder o, List<OrderEvent> events,
                                           Function<UUID, String> presign) {
         OrderStatus status = o.getStatus();

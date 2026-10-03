@@ -16,34 +16,26 @@ import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Optional;
 import java.util.Set;
 
-// LUMIRIS · Escrow marketplace — reversement des fonds au vendeur. Le paiement est encaissé sur le
-// compte PLATEFORME (separate charges & transfers, cf. DirectSaleService) ; la plateforme conserve
-// la commission et reverse le NET au compte connecté du vendeur via un Transfer (source_transaction
-// = charge, pour tirer sur cette vente précise).
-//
-// Les fonds sont retenus jusqu'à la LIVRAISON, pas jusqu'à l'encaissement : c'est ce qui rend un
-// remboursement possible sans que la plateforme avance l'argent tant que l'acheteur n'a rien reçu.
-// La transition est pilotée par OrderLifecycleService, seul à décider quand libérer.
-// Idempotent : jamais deux transferts par commande.
+/** Reverse les fonds au vendeur après livraison sans écrire le statut. */
 @Service
 @RequiredArgsConstructor
 public class SellerPayoutService {
 
     private static final Logger log = LoggerFactory.getLogger(SellerPayoutService.class);
-
-    // États où la pièce est réputée chez l'acheteur : le vendeur a rempli sa part.
     private static final Set<OrderStatus> RELEASABLE = Set.of(OrderStatus.DELIVERED, OrderStatus.COMPLETED);
 
     private final StripeProperties properties;
     private final SellerAccountRepository sellerAccountRepository;
 
-    // Crée le Transfer vers le compte connecté du vendeur et renvoie son identifiant, vide quand
-    // il n'y a rien à reverser (déjà fait, état non éligible, montant nul) — l'appelant n'a alors
-    // ni événement d'audit ni notification à produire.
+    /** Tente le reversement sans annuler la livraison en cas de refus métier ou de panne Stripe. */
+    @Transactional(propagation = Propagation.MANDATORY,
+            noRollbackFor = {BillingException.class, BillingValidationException.class})
     public Optional<String> createTransfer(MarketplaceOrder order) {
         if (!properties.hasSecretKey() || order.getStripeTransferId() != null) {
             return Optional.empty();
@@ -76,7 +68,7 @@ public class SellerPayoutService {
         }
     }
 
-    // Récupère la charge sous-jacente du PaymentIntent, cible du transfert (source_transaction).
+    /** Retrouve la charge capturée associée au paiement de la commande. */
     private String resolveChargeId(String paymentIntentId) throws StripeException {
         if (paymentIntentId == null) {
             throw new BillingValidationException("Aucun paiement rattaché à cette vente.");

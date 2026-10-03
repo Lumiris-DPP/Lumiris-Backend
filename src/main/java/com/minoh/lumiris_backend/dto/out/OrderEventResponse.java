@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.function.Function;
 
-// Une étape de la timeline de suivi (et de la piste d'audit) d'une commande.
+/** Décrit les données de OrderEventResponse pour les commandes. */
 public record OrderEventResponse(
         UUID id,
         String type,
@@ -16,8 +16,8 @@ public record OrderEventResponse(
         List<OrderAttachmentResponse> attachments,
         Instant createdAt
 ) {
-    // `presign` est fourni par l'appelant : la génération d'URL vit dans StorageService, le DTO
-    // n'a pas à connaître le stockage.
+
+    /** Construit la réponse à partir des données persistantes de la commande. */
     public static OrderEventResponse from(OrderEvent e, Function<UUID, String> presign) {
         return new OrderEventResponse(
                 e.getId(),

@@ -23,8 +23,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 import java.util.UUID;
 
-// LUMIRIS-24 · Tableau de bord des commandes vendeur (ATELIER) : à expédier, expédiées, retours,
-// litiges. Chaque action est une transition contrôlée par OrderLifecycleService.
+/** Délègue les lectures et actions du vendeur aux services de commandes. */
 @RestController
 @RequestMapping("/api/seller/orders")
 @RequiredArgsConstructor
@@ -34,25 +33,25 @@ public class SellerOrderController {
     private final OrderLifecycleService lifecycleService;
     private final ShippingLabelService shippingLabelService;
 
+    /** Délègue l’action orders au service de commandes. */
     @GetMapping
     ResponseEntity<List<SellerOrderResponse>> orders(@CurrentUserEmail String email) {
         return ResponseEntity.ok(sellerOrderService.list(email));
     }
 
-    // État de l'intégration transporteur, lu AVANT d'afficher le bouton d'impression : sans lui,
-    // l'atelier découvrirait qu'il lui manque une adresse d'enlèvement au moment d'imprimer.
+    /** Délègue l’action shipping au service de commandes. */
     @GetMapping("/shipping")
     ResponseEntity<ShippingLabelResponse.Availability> shipping(@CurrentUserEmail String email) {
         return ResponseEntity.ok(shippingLabelService.availability(email));
     }
 
+    /** Délègue l’action order au service de commandes. */
     @GetMapping("/{id}")
     ResponseEntity<SellerOrderResponse> order(@PathVariable UUID id, @CurrentUserEmail String email) {
         return ResponseEntity.ok(sellerOrderService.get(email, id));
     }
 
-    // Saisie du suivi + marquage de l'expédition (une seule action : un colis sans suivi n'est pas
-    // suivable par l'acheteur, ce que le ticket exige).
+    /** Expédie une commande payée appartenant au vendeur. */
     @PostMapping("/{id}/ship")
     ResponseEntity<Void> ship(@PathVariable UUID id, @Valid @RequestBody ShipOrderRequest request,
                               @CurrentUserEmail String email) {
@@ -60,16 +59,14 @@ public class SellerOrderController {
         return ResponseEntity.noContent().build();
     }
 
-    // Étiquette en un clic : bordereau fabriqué depuis l'adresse déjà stockée sur la commande,
-    // suivi rempli automatiquement, commande passée en expédiée sans aucune saisie. La saisie
-    // manuelle ci-dessus reste le chemin d'une remise en main propre ou d'un transporteur hors
-    // agrégateur.
+    /** Délègue l’action generateLabel au service de commandes. */
     @PostMapping("/{id}/label")
     ResponseEntity<ShippingLabelResponse> generateLabel(@PathVariable UUID id,
                                                         @CurrentUserEmail String email) {
         return ResponseEntity.ok(shippingLabelService.generate(email, id));
     }
 
+    /** Accepte ou refuse la demande de retour de l’acheteur. */
     @PostMapping("/{id}/return/decision")
     ResponseEntity<Void> decideReturn(@PathVariable UUID id, @Valid @RequestBody ReturnDecisionRequest request,
                                       @CurrentUserEmail String email) {
@@ -77,13 +74,14 @@ public class SellerOrderController {
         return ResponseEntity.noContent().build();
     }
 
+    /** Enregistre la réception du retour accepté par l’atelier. */
     @PostMapping("/{id}/return/received")
     ResponseEntity<Void> markReturnReceived(@PathVariable UUID id, @CurrentUserEmail String email) {
         lifecycleService.markReturnReceived(email, id);
         return ResponseEntity.noContent().build();
     }
 
-    // Fil de conversation avec l'acheteur (mêmes messages que côté VISION).
+    /** Ajoute un message au fil accessible aux parties et à la plateforme. */
     @PostMapping("/{id}/messages")
     ResponseEntity<Void> postMessage(@PathVariable UUID id, @Valid @RequestBody OrderMessageRequest request,
                                      @CurrentUserEmail String email) {
@@ -91,7 +89,7 @@ public class SellerOrderController {
         return ResponseEntity.noContent().build();
     }
 
-    // Annulation avant expédition (rupture, pièce abîmée) : remboursement intégral de l'acheteur.
+    /** Annule avant expédition avec remboursement intégral et remise en stock. */
     @PostMapping("/{id}/cancel")
     ResponseEntity<Void> cancel(@PathVariable UUID id, @RequestBody(required = false) OrderMessageRequest request,
                                 @CurrentUserEmail String email) {
@@ -99,7 +97,7 @@ public class SellerOrderController {
         return ResponseEntity.noContent().build();
     }
 
-    // Remboursement partiel ou total (montant absent ⇒ solde intégral).
+    /** Exécute une opération de remboursement avec une clé stable pour ses reprises. */
     @PostMapping("/{id}/refund")
     ResponseEntity<Void> refund(@PathVariable UUID id, @Valid @RequestBody RefundRequest request,
                                 @CurrentUserEmail String email) {

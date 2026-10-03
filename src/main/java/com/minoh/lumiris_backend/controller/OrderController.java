@@ -21,8 +21,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 import java.util.UUID;
 
-// LUMIRIS-24 · Commandes côté acheteur (VISION) : suivi, confirmation de réception, demande de
-// retour, ouverture et suivi de litige.
+/** Délègue les lectures et actions de l’acheteur aux services de commandes. */
 @RestController
 @RequestMapping("/api/orders")
 @RequiredArgsConstructor
@@ -31,32 +30,33 @@ public class OrderController {
     private final BuyerOrderService buyerOrderService;
     private final OrderLifecycleService lifecycleService;
 
+    /** Délègue l’action orders au service de commandes. */
     @GetMapping
     ResponseEntity<List<OrderResponse>> orders(@CurrentUserEmail String email) {
         return ResponseEntity.ok(buyerOrderService.getMyOrders(email));
     }
 
-    // Suivi d'une commande : état courant, adresse, suivi transporteur et timeline des transitions.
+    /** Délègue l’action order au service de commandes. */
     @GetMapping("/{id}")
     ResponseEntity<OrderDetailResponse> order(@PathVariable UUID id, @CurrentUserEmail String email) {
         return ResponseEntity.ok(buyerOrderService.getMyOrder(email, id));
     }
 
-    // Groupe de commande par PaymentIntent (confirmation) — toutes les lignes + montant exact débité.
+    /** Délègue l’action orderGroup au service de commandes. */
     @GetMapping("/group/{paymentIntentId}")
     ResponseEntity<OrderGroupResponse> orderGroup(@PathVariable String paymentIntentId,
                                                   @CurrentUserEmail String email) {
         return ResponseEntity.ok(buyerOrderService.getMyOrderGroup(email, paymentIntentId));
     }
 
-    // « J'ai bien reçu ma commande » : clôt l'attente et libère les fonds au vendeur sans attendre
-    // l'échéance automatique.
+    /** Confirme la réception d’une commande appartenant à l’acheteur. */
     @PostMapping("/{id}/received")
     ResponseEntity<Void> confirmDelivery(@PathVariable UUID id, @CurrentUserEmail String email) {
         lifecycleService.confirmDelivery(email, id);
         return ResponseEntity.noContent().build();
     }
 
+    /** Ouvre un retour dans la fenêtre prévue pour cette commande. */
     @PostMapping("/{id}/return")
     ResponseEntity<Void> requestReturn(@PathVariable UUID id, @Valid @RequestBody ReturnRequest request,
                                        @CurrentUserEmail String email) {
@@ -64,6 +64,7 @@ public class OrderController {
         return ResponseEntity.noContent().build();
     }
 
+    /** Ouvre un litige sur une commande payée de l’acheteur. */
     @PostMapping("/{id}/dispute")
     ResponseEntity<Void> openDispute(@PathVariable UUID id, @Valid @RequestBody OrderMessageRequest request,
                                      @CurrentUserEmail String email) {
@@ -71,8 +72,7 @@ public class OrderController {
         return ResponseEntity.noContent().build();
     }
 
-    // Fil de conversation avec l'atelier, ouvert à tout moment : poser une question ne doit pas
-    // obliger à ouvrir un litige.
+    /** Ajoute un message au fil accessible aux parties et à la plateforme. */
     @PostMapping("/{id}/messages")
     ResponseEntity<Void> postMessage(@PathVariable UUID id, @Valid @RequestBody OrderMessageRequest request,
                                      @CurrentUserEmail String email) {
@@ -80,7 +80,7 @@ public class OrderController {
         return ResponseEntity.noContent().build();
     }
 
-    // Annulation avant expédition : remboursement intégral, la pièce retourne au catalogue.
+    /** Annule avant expédition avec remboursement intégral et remise en stock. */
     @PostMapping("/{id}/cancel")
     ResponseEntity<Void> cancel(@PathVariable UUID id, @RequestBody(required = false) OrderMessageRequest request,
                                 @CurrentUserEmail String email) {

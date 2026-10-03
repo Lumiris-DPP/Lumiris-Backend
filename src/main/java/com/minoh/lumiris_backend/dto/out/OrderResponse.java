@@ -7,9 +7,7 @@ import com.minoh.lumiris_backend.entity.OrderStatus;
 import java.time.Instant;
 import java.util.UUID;
 
-// Vue acheteur d'une ligne de commande. commissionCents = part plateforme.
-// Les drapeaux `can*` sont calculés côté serveur : l'UI n'a pas à réimplémenter la machine à états
-// pour savoir quels boutons afficher, et un bouton affiché correspond toujours à une action acceptée.
+/** Décrit les données de OrderResponse pour les commandes. */
 public record OrderResponse(
         UUID id,
         String productName,
@@ -29,9 +27,6 @@ public record OrderResponse(
         String carrier,
         String trackingNumber,
         String trackingUrl,
-        // Dernier état CONSTATÉ par le transporteur, distinct de `status` qui est l'état de la
-        // commande. Le libellé brut vient de l'agrégateur : lui seul sait dire « disponible au
-        // point relais » là où l'enum ne connaît que OUT_FOR_DELIVERY.
         String trackingStatus,
         String trackingStatusLabel,
         Instant trackingUpdatedAt,
@@ -45,6 +40,8 @@ public record OrderResponse(
         boolean canOpenDispute,
         boolean canCancel
 ) {
+
+    /** Construit la réponse à partir des données persistantes de la commande. */
     public static OrderResponse from(MarketplaceOrder o) {
         OrderStatus status = o.getStatus();
         boolean returnWindowOpen = o.getReturnDeadline() == null || Instant.now().isBefore(o.getReturnDeadline());

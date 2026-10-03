@@ -7,8 +7,19 @@ import com.minoh.lumiris_backend.dto.in.RefundRequest;
 import com.minoh.lumiris_backend.dto.in.ReturnDecisionRequest;
 import com.minoh.lumiris_backend.dto.in.ReturnRequest;
 import com.minoh.lumiris_backend.dto.in.ShipOrderRequest;
-import com.minoh.lumiris_backend.entity.*;
+import com.minoh.lumiris_backend.entity.DisputeStatus;
+import com.minoh.lumiris_backend.entity.MarketplaceOrder;
+import com.minoh.lumiris_backend.entity.NotificationType;
+import com.minoh.lumiris_backend.entity.OrderActorType;
+import com.minoh.lumiris_backend.entity.OrderEvent;
+import com.minoh.lumiris_backend.entity.OrderEventType;
+import com.minoh.lumiris_backend.entity.OrderStatus;
+import com.minoh.lumiris_backend.entity.StoredFile;
+import com.minoh.lumiris_backend.entity.TrackingStatus;
+import com.minoh.lumiris_backend.entity.User;
+import com.minoh.lumiris_backend.entity.UserRole;
 import com.minoh.lumiris_backend.exception.BillingValidationException;
+import com.minoh.lumiris_backend.exception.InvalidOrderTransitionException;
 import com.minoh.lumiris_backend.exception.ResourceNotFoundException;
 import com.minoh.lumiris_backend.exception.RoleNotAllowedException;
 import com.minoh.lumiris_backend.repository.MarketplaceOrderRepository;
@@ -19,29 +30,32 @@ import com.minoh.lumiris_backend.repository.UserRepository;
 import com.minoh.lumiris_backend.repository.WardrobeItemRepository;
 import com.minoh.lumiris_backend.service.stripe.OrderRefundService;
 import com.minoh.lumiris_backend.service.stripe.SellerPayoutService;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Propagation;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
-// LUMIRIS-24 · Machine à états d'une commande marketplace : payée → expédiée → livrée → clôturée,
-// avec branche retour et branche litige. Point d'entrée unique de TOUTE transition : chacune
-// vérifie l'état de départ, journalise un OrderEvent (append-only) et notifie la contrepartie.
-// Aucun appelant ne doit écrire `status` directement.
-//
-// Escrow : les fonds sont retenus par la plateforme jusqu'à la livraison, puis reversés au
-// vendeur. Un remboursement postérieur reprend la part du vendeur (TransferReversal).
+/** Contrôle les transitions, leurs permissions et leurs effets sous verrou. */
 @Service
 @RequiredArgsConstructor
 public class OrderLifecycleService {
 
     private static final Logger log = LoggerFactory.getLogger(OrderLifecycleService.class);
 
+    private final EntityManager entityManager;
+    private final JdbcTemplate jdbc;
     private final MarketplaceOrderRepository orderRepository;
     private final MarketplaceProductVariantRepository variantRepository;
     private final OrderEventRepository eventRepository;
@@ -54,8 +68,7 @@ public class OrderLifecycleService {
     private final PreparationDelayResolver preparationDelayResolver;
     private final MarketplaceProperties properties;
 
-    // ── Vendeur ─────────────────────────────────────────────────────────────
-
+    /** Expédie une commande payée appartenant au vendeur. */
     @Transactional
     public void ship(String sellerEmail, UUID orderId, ShipOrderRequest request) {
         User seller = userRepository.getByEmail(sellerEmail);
@@ -67,18 +80,15 @@ public class OrderLifecycleService {
         markShipped(order, seller);
     }
 
-    // Refus commun aux deux chemins d'expédition (saisie manuelle et bordereau généré) : rien ne
-    // part deux fois, et rien ne part avant d'être payé.
+    /** Refuse toute expédition avant paiement ou après une première expédition. */
     public void requireShippable(MarketplaceOrder order) {
         if (order.getStatus() != OrderStatus.PAID) {
-            throw new BillingValidationException(
+            throw new InvalidOrderTransitionException(
                     "Seule une commande payée et non encore expédiée peut être marquée expédiée.");
         }
     }
 
-    // Bascule effective en expédiée, une fois le transporteur et le suivi renseignés — que
-    // l'atelier les ait tapés ou que l'agrégateur les ait remplis. Un seul chemin d'écriture pour
-    // que la notification acheteur et l'entrée de timeline soient identiques dans les deux cas.
+    /** Enregistre l’expédition et informe l’acheteur. */
     @Transactional
     public void markShipped(MarketplaceOrder order, User seller) {
         requireShippable(order);
@@ -94,14 +104,13 @@ public class OrderLifecycleService {
                 buyerOrderHref(order), order);
     }
 
-    // Le vendeur constate la réception d'un retour accepté ; le remboursement reste une action
-    // explicite pour qu'il puisse retenir des frais après contrôle de l'état de la pièce.
+    /** Enregistre la réception du retour accepté par l’atelier. */
     @Transactional
     public void markReturnReceived(String sellerEmail, UUID orderId) {
         User seller = userRepository.getByEmail(sellerEmail);
         MarketplaceOrder order = requireSellerOrder(seller, orderId);
         if (order.getStatus() != OrderStatus.RETURN_APPROVED) {
-            throw new BillingValidationException("Aucun retour accepté en attente sur cette commande.");
+            throw new InvalidOrderTransitionException("Aucun retour accepté en attente sur cette commande.");
         }
         order.setReturnReceivedAt(Instant.now());
         order.setStatus(OrderStatus.RETURN_RECEIVED);
@@ -114,12 +123,13 @@ public class OrderLifecycleService {
                 buyerOrderHref(order), order);
     }
 
+    /** Accepte ou refuse la demande de retour de l’acheteur. */
     @Transactional
     public void decideReturn(String sellerEmail, UUID orderId, ReturnDecisionRequest request) {
         User seller = userRepository.getByEmail(sellerEmail);
         MarketplaceOrder order = requireSellerOrder(seller, orderId);
         if (order.getStatus() != OrderStatus.RETURN_REQUESTED) {
-            throw new BillingValidationException("Aucune demande de retour en attente sur cette commande.");
+            throw new InvalidOrderTransitionException("Aucune demande de retour en attente sur cette commande.");
         }
         order.setReturnDecidedAt(Instant.now());
         order.setReturnDecisionNote(request.note());
@@ -149,29 +159,38 @@ public class OrderLifecycleService {
                 buyerOrderHref(order), order);
     }
 
-    // Remboursement à l'initiative du vendeur (geste commercial, retour reçu, article manquant).
+    /** Exécute une opération de remboursement avec une clé stable pour ses reprises. */
     @Transactional
     public void refund(String sellerEmail, UUID orderId, RefundRequest request) {
         User seller = userRepository.getByEmail(sellerEmail);
         MarketplaceOrder order = requireSellerOrder(seller, orderId);
-        applyRefund(order, request.amountCents(), request.reason(), OrderActorType.SELLER, seller);
+        if (isRefundReplay(order, request)) {
+            return;
+        }
+        String operationKey = request.operationId() == null
+                ? order.getRefundedCents() + ":" + request.amountCents()
+                : request.operationId().toString();
+        applyRefund(order, request.amountCents(), request.reason(), OrderActorType.SELLER, seller,
+                OrderStatus.REFUNDED, operationKey);
+        if (request.operationId() != null) {
+            jdbc.update("insert into marketplace_order_refund_operations "
+                    + "(order_id, operation_id, requested_cents, reason) values (?, ?, ?, ?)",
+                    orderId, request.operationId(), request.amountCents(), request.reason());
+        }
     }
 
-    // ── Acheteur ────────────────────────────────────────────────────────────
-
-    // Confirmation de réception : clôt l'attente et libère les fonds au vendeur sans attendre
-    // l'échéance automatique. La fenêtre de retour reste ouverte (un remboursement ultérieur
-    // reprend la part reversée).
+    /** Confirme la réception d’une commande appartenant à l’acheteur. */
     @Transactional
     public void confirmDelivery(String buyerEmail, UUID orderId) {
         User buyer = userRepository.getByEmail(buyerEmail);
         MarketplaceOrder order = requireBuyerOrder(buyer, orderId);
         if (order.getStatus() != OrderStatus.SHIPPED) {
-            throw new BillingValidationException("Cette commande n'est pas en cours de livraison.");
+            throw new InvalidOrderTransitionException("Cette commande n'est pas en cours de livraison.");
         }
         transitionToDelivered(order, OrderActorType.BUYER, buyer);
     }
 
+    /** Ouvre un retour dans la fenêtre prévue pour cette commande. */
     @Transactional
     public void requestReturn(String buyerEmail, UUID orderId, ReturnRequest request) {
         User buyer = userRepository.getByEmail(buyerEmail);
@@ -196,6 +215,7 @@ public class OrderLifecycleService {
                 sellerOrderHref(order), order);
     }
 
+    /** Ouvre un litige sur une commande payée de l’acheteur. */
     @Transactional
     public void openDispute(String buyerEmail, UUID orderId, OrderMessageRequest request) {
         User buyer = userRepository.getByEmail(buyerEmail);
@@ -221,19 +241,13 @@ public class OrderLifecycleService {
                 sellerOrderHref(order), order);
     }
 
-    // Fil de conversation de la commande, ouvert aux DEUX parties à tout moment — pas seulement
-    // en litige. Sans lui, la seule façon de poser une question à l'atelier serait d'ouvrir un
-    // litige, ce qui transformerait chaque hésitation en incident. Le même fil sert de dossier
-    // quand un litige finit par être ouvert.
+    /** Ajoute un message au fil accessible aux parties et à la plateforme. */
     @Transactional
     public void postMessage(String userEmail, UUID orderId, OrderMessageRequest request) {
         User user = userRepository.getByEmail(userEmail);
-        MarketplaceOrder order = orderRepository.findById(orderId)
-                .orElseThrow(() -> new ResourceNotFoundException("Commande introuvable"));
+        MarketplaceOrder order = lockOrder(orderId);
         boolean isBuyer = order.getBuyer() != null && order.getBuyer().getId().equals(user.getId());
         boolean isSeller = order.getSeller() != null && order.getSeller().getId().equals(user.getId());
-        // L'arbitre écrit dans le même fil : demander une photo ou une preuve d'expédition avant
-        // de trancher évite de décider sur un dossier incomplet.
         boolean isPlatform = !isBuyer && !isSeller && user.getRole() == UserRole.ADMIN;
         if (!isBuyer && !isSeller && !isPlatform) {
             throw new RoleNotAllowedException("Cette commande ne vous concerne pas.");
@@ -255,15 +269,11 @@ public class OrderLifecycleService {
                 isBuyer ? sellerOrderHref(order) : buyerOrderHref(order), order);
     }
 
-    // Annulation avant expédition, par l'acheteur (erreur de commande, changement d'avis) comme
-    // par le vendeur (rupture, pièce abîmée). Tant que rien n'est parti, faire patienter jusqu'à
-    // la livraison pour ensuite organiser un retour n'a aucun sens : on rembourse intégralement
-    // et la pièce retourne au catalogue.
+    /** Annule avant expédition avec remboursement intégral et remise en stock. */
     @Transactional
     public void cancel(String userEmail, UUID orderId, String reason) {
         User user = userRepository.getByEmail(userEmail);
-        MarketplaceOrder order = orderRepository.findById(orderId)
-                .orElseThrow(() -> new ResourceNotFoundException("Commande introuvable"));
+        MarketplaceOrder order = lockOrder(orderId);
         boolean isBuyer = order.getBuyer() != null && order.getBuyer().getId().equals(user.getId());
         boolean isSeller = order.getSeller() != null && order.getSeller().getId().equals(user.getId());
         if (!isBuyer && !isSeller) {
@@ -285,16 +295,14 @@ public class OrderLifecycleService {
                 isBuyer ? sellerOrderHref(order) : buyerOrderHref(order), order);
     }
 
-    // Clôture du litige. Réservée à la plateforme (arbitre) : laisser le vendeur trancher un
-    // litige qui le vise reviendrait à le laisser juge et partie.
+    /** Réserve la résolution et le remboursement éventuel du litige à la plateforme. */
     @Transactional
     public void resolveDispute(String adminEmail, UUID orderId, DisputeResolutionRequest request) {
         User admin = userRepository.getByEmail(adminEmail);
         if (admin.getRole() != UserRole.ADMIN) {
             throw new RoleNotAllowedException("Seule la plateforme peut clôturer un litige.");
         }
-        MarketplaceOrder order = orderRepository.findById(orderId)
-                .orElseThrow(() -> new ResourceNotFoundException("Commande introuvable"));
+        MarketplaceOrder order = lockOrder(orderId);
         if (order.getDisputeStatus() != DisputeStatus.OPEN) {
             throw new BillingValidationException("Aucun litige ouvert sur cette commande.");
         }
@@ -318,9 +326,7 @@ public class OrderLifecycleService {
                 "Le litige sur " + itemLabel(order) + " est clos — " + request.resolution());
     }
 
-    // ── Transitions internes (webhook, échéances, résolutions) ──────────────
-
-    // Encaissement confirmé : la commande entre dans le cycle et le vendeur a une pièce à expédier.
+    /** Journalise le paiement déjà confirmé par le service de paiement. */
     @Transactional
     public void markPaid(MarketplaceOrder order) {
         int days = applyShipDueDate(order);
@@ -337,9 +343,7 @@ public class OrderLifecycleService {
                 buyerOrderHref(order), order);
     }
 
-    // La date d'expédition promise est figée ici, une fois pour toutes : le produit est mutable et
-    // sa suppression détache la commande, donc relire le délai plus tard laisserait un atelier
-    // repousser après coup une promesse déjà faite à un acheteur qui a payé.
+    /** Fige la date d’expédition promise au moment du paiement. */
     private int applyShipDueDate(MarketplaceOrder order) {
         Instant now = Instant.now();
         int days = order.getProduct() != null
@@ -350,37 +354,34 @@ public class OrderLifecycleService {
         return days;
     }
 
+    /** Relit la commande avant de confirmer une livraison interne encore admissible. */
     @Transactional
     public void markDelivered(MarketplaceOrder order, OrderActorType actorType) {
+        order = lockOrder(order.getId());
+        if (order.getStatus() != OrderStatus.SHIPPED || order.getDisputeStatus() == DisputeStatus.OPEN) {
+            return;
+        }
         transitionToDelivered(order, actorType, null);
     }
 
-    // Bordereau fabriqué : l'atelier n'a plus qu'à imprimer. Journalisé à part de l'expédition —
-    // il arrive qu'une étiquette soit générée puis le colis remis le lendemain, et un litige sur
-    // un délai se joue sur cet écart.
+    /** Journalise le bordereau généré par l’atelier. */
     @Transactional
     public void recordLabelGenerated(MarketplaceOrder order, User seller) {
         record(order, OrderEventType.LABEL_GENERATED, OrderActorType.SELLER, seller,
                 trackingSummary(order));
     }
 
-    // Événement poussé par le TRANSPORTEUR. C'est le seul chemin par lequel une commande devient
-    // livrée sur un fait constaté plutôt que sur l'échéance présumée du balayage : la fenêtre de
-    // rétractation court alors depuis la bonne date, et les fonds partent sur une vraie livraison.
-    //
-    // Une commande gelée par un litige n'avance pas pour autant : l'événement est consigné, la
-    // décision reste humaine.
+    /** Applique le suivi transporteur et la livraison éventuelle sous verrou. */
     @Transactional
     public void applyTrackingUpdate(MarketplaceOrder order, TrackingStatus status, String label,
                                     String trackingNumber, String trackingUrl) {
+        order = lockOrder(order.getId());
         if (order.getTrackingStatus() == status) {
             return;
         }
         order.setTrackingStatus(status);
         order.setTrackingStatusLabel(label);
         order.setTrackingUpdatedAt(Instant.now());
-        // Le numéro n'est parfois attribué qu'à la prise en charge : on le complète sans jamais
-        // écraser un suivi déjà connu de l'acheteur.
         if (order.getTrackingNumber() == null && trackingNumber != null) {
             order.setTrackingNumber(trackingNumber);
         }
@@ -399,9 +400,7 @@ public class OrderLifecycleService {
         notifyCarrierMilestone(order, status, label);
     }
 
-    // Un colis change d'état une dizaine de fois entre l'atelier et la boîte aux lettres. Deux
-    // seulement méritent d'interrompre l'acheteur : il doit être là pour recevoir, ou quelque
-    // chose a mal tourné. Le reste vit dans la timeline, qu'il consulte quand il le veut.
+    /** Informe les parties des étapes de transport utiles. */
     private void notifyCarrierMilestone(MarketplaceOrder order, TrackingStatus status, String label) {
         if (status == TrackingStatus.OUT_FOR_DELIVERY) {
             notificationService.notify(order.getBuyer(), NotificationType.ORDER_SHIPPED,
@@ -418,10 +417,13 @@ public class OrderLifecycleService {
         }
     }
 
-    // Relance du vendeur sur une commande payée jamais expédiée. Notification seule : ni l'état ni
-    // l'argent ne bougent, on rappelle simplement qu'un acheteur attend.
+    /** Relance une seule fois le vendeur pour une commande encore à expédier. */
     @Transactional
     public void remindSellerToShip(MarketplaceOrder order) {
+        order = lockOrder(order.getId());
+        if (order.getStatus() != OrderStatus.PAID || order.getShipReminderSentAt() != null) {
+            return;
+        }
         order.setShipReminderSentAt(Instant.now());
         orderRepository.save(order);
         notificationService.notify(order.getSeller(), NotificationType.ORDER_TO_SHIP,
@@ -431,25 +433,27 @@ public class OrderLifecycleService {
                 sellerOrderHref(order), order);
     }
 
-    // Reprise d'un versement qui n'a jamais abouti (compte vendeur non activé au moment de la
-    // livraison, incident Stripe). Sans elle, l'argent resterait chez la plateforme sans signal.
+    /** Reprend sous verrou un reversement encore admissible. */
     @Transactional
     public void retryRelease(MarketplaceOrder order) {
+        order = lockOrder(order.getId());
         releaseFunds(order);
     }
 
-    // Panier abandonné avant paiement : le stock réservé doit revenir au catalogue, sinon une
-    // pièce unique reste invendable après un simple checkout laissé en plan.
+    /** Annule une réservation encore en attente et remet son stock une seule fois. */
     @Transactional
     public void cancelAbandoned(MarketplaceOrder order) {
+        order = lockOrder(order.getId());
+        if (order.getStatus() != OrderStatus.PENDING) {
+            return;
+        }
         order.setStatus(OrderStatus.CANCELLED);
         orderRepository.save(order);
         restock(order);
         record(order, OrderEventType.CANCELLED, OrderActorType.SYSTEM, null, "Paiement non finalisé");
     }
 
-    // Le stock ne vit que sur la déclinaison. Si l'atelier a retiré la taille entre-temps, il n'y a
-    // rien à remettre en rayon : on le trace plutôt que d'inventer un stock produit qui n'existe plus.
+    /** Remet la quantité vendue en stock si sa déclinaison existe encore. */
     private void restock(MarketplaceOrder order) {
         if (order.getVariant() == null) {
             log.warn("Remise en stock impossible pour la commande {} : déclinaison supprimée", order.getId());
@@ -458,7 +462,7 @@ public class OrderLifecycleService {
         variantRepository.incrementStock(order.getVariant().getId(), Math.max(1, order.getQuantity()));
     }
 
-    // Livraison : ouvre la fenêtre de retour et libère les fonds retenus au vendeur.
+    /** Ouvre la fenêtre de retour et tente le reversement à la livraison. */
     private void transitionToDelivered(MarketplaceOrder order, OrderActorType actorType, User actor) {
         Instant now = Instant.now();
         order.setDeliveredAt(now);
@@ -475,9 +479,14 @@ public class OrderLifecycleService {
         releaseFunds(order);
     }
 
-    // Clôture : la fenêtre de retour est écoulée, la commande devient définitive.
+    /** Clôture sous verrou une commande admissible sans litige ouvert. */
     @Transactional
     public void complete(MarketplaceOrder order) {
+        order = lockOrder(order.getId());
+        if (!Set.of(OrderStatus.DELIVERED, OrderStatus.RETURN_REFUSED, OrderStatus.RETURN_RECEIVED)
+                .contains(order.getStatus()) || order.getDisputeStatus() == DisputeStatus.OPEN) {
+            return;
+        }
         order.setCompletedAt(Instant.now());
         order.setStatus(OrderStatus.COMPLETED);
         orderRepository.save(order);
@@ -490,8 +499,7 @@ public class OrderLifecycleService {
         releaseFunds(order);
     }
 
-    // Libération best-effort : un échec Stripe laisse les fonds retenus (retry par le job de
-    // clôture ou reprise manuelle) sans invalider la transition métier qui vient d'aboutir.
+    /** Tente un reversement et journalise son succès une seule fois. */
     private void releaseFunds(MarketplaceOrder order) {
         if (order.getStripeTransferId() != null) {
             return;
@@ -516,22 +524,32 @@ public class OrderLifecycleService {
                 sellerOrderHref(order), order);
     }
 
+    /** Applique le remboursement sans répéter la remise en stock. */
     private void applyRefund(MarketplaceOrder order, Integer requestedCents, String reason,
                              OrderActorType actorType, User actor) {
         applyRefund(order, requestedCents, reason, actorType, actor, OrderStatus.REFUNDED);
     }
 
-    // `finalStatus` distingue un remboursement d'une annulation : l'argent suit le même chemin,
-    // mais « annulée avant expédition » et « remboursée après retour » ne racontent pas la même
-    // histoire dans l'historique de l'acheteur ni dans les statistiques du vendeur.
+    /** Applique le remboursement sans répéter la remise en stock. */
     private void applyRefund(MarketplaceOrder order, Integer requestedCents, String reason,
                              OrderActorType actorType, User actor, OrderStatus finalStatus) {
+        applyRefund(order, requestedCents, reason, actorType, actor, finalStatus,
+                order.getRefundedCents() + ":" + requestedCents);
+    }
+
+    /** Applique le remboursement sans répéter la remise en stock. */
+    private void applyRefund(MarketplaceOrder order, Integer requestedCents, String reason,
+                             OrderActorType actorType, User actor, OrderStatus finalStatus, String operationKey) {
+        if (order.getStatus() == OrderStatus.PENDING || order.getStatus() == OrderStatus.CANCELLED) {
+            throw new BillingValidationException("Cette commande ne peut pas être remboursée.");
+        }
+        int previouslyRefunded = order.getRefundedCents();
         int refundable = refundService.refundableCents(order);
         int amount = requestedCents == null || requestedCents <= 0 ? refundable : requestedCents;
         if (refundable <= 0) {
             throw new BillingValidationException("Cette commande est déjà intégralement remboursée.");
         }
-        OrderRefundService.RefundOutcome outcome = refundService.refund(order, amount, reason);
+        OrderRefundService.RefundOutcome outcome = refundService.refund(order, amount, reason, operationKey);
 
         order.setStripeRefundId(outcome.refundId());
         order.setStripeTransferReversalId(outcome.transferReversalId());
@@ -540,13 +558,9 @@ public class OrderLifecycleService {
         order.setRefundReason(reason);
         order.setStatus(finalStatus);
         orderRepository.save(order);
-
-        // La pièce retourne au catalogue : elle n'a jamais changé de propriétaire durablement.
-        restock(order);
-
-        // Remboursement INTÉGRAL (ou annulation) : la pièce quitte la Garde-Robe de l'acheteur —
-        // il ne la possède plus, garder son passeport et sa facture serait faux. Un remboursement
-        // partiel (geste commercial, retard) laisse au contraire la pièce chez lui.
+        if (previouslyRefunded == 0) {
+            restock(order);
+        }
         if (refundService.refundableCents(order) <= 0) {
             wardrobeItemRepository.deleteByOrder_Id(order.getId());
         }
@@ -560,45 +574,74 @@ public class OrderLifecycleService {
                 buyerOrderHref(order), order);
     }
 
+    /** Informe les deux parties sur leur suivi de commande. */
     private void notifyBoth(MarketplaceOrder order, NotificationType type, String title, String body) {
         notificationService.notify(order.getBuyer(), type, title, body, buyerOrderHref(order), order);
         notificationService.notify(order.getSeller(), type, title, body, sellerOrderHref(order), order);
     }
 
+    /** Ajoute un événement et ses pièces jointes au journal de commande. */
     private void record(MarketplaceOrder order, OrderEventType type, OrderActorType actorType,
                         User actor, String message) {
         record(order, type, actorType, actor, message, List.of());
     }
 
-    // Les identifiants proviennent d'un téléversement préalable (POST /api/files) : on ne retient
-    // que ceux qui existent réellement, un identifiant fantaisiste ne doit pas faire échouer une
-    // transition métier par ailleurs valide.
+    /** Ajoute un événement et ses pièces jointes au journal de commande. */
     private void record(MarketplaceOrder order, OrderEventType type, OrderActorType actorType,
                         User actor, String message, List<UUID> fileIds) {
         List<StoredFile> attachments = fileIds.isEmpty() ? List.of() : storedFileRepository.findAllById(fileIds);
         eventRepository.save(new OrderEvent(order, type, actorType, actor, message, attachments));
     }
 
+    /** Verrouille une commande et vérifie qu’elle appartient au vendeur. */
+    @Transactional(propagation = Propagation.MANDATORY)
     public MarketplaceOrder requireSellerOrder(User seller, UUID orderId) {
-        MarketplaceOrder order = orderRepository.findById(orderId)
-                .orElseThrow(() -> new ResourceNotFoundException("Commande introuvable"));
+        MarketplaceOrder order = lockOrder(orderId);
         if (order.getSeller() == null || !order.getSeller().getId().equals(seller.getId())) {
             throw new RoleNotAllowedException("Cette commande n'appartient pas à votre atelier.");
         }
         return order;
     }
 
+    /** Verrouille une commande et vérifie qu’elle appartient à l’acheteur. */
     private MarketplaceOrder requireBuyerOrder(User buyer, UUID orderId) {
-        MarketplaceOrder order = orderRepository.findById(orderId)
-                .orElseThrow(() -> new ResourceNotFoundException("Commande introuvable"));
+        MarketplaceOrder order = lockOrder(orderId);
         if (order.getBuyer() == null || !order.getBuyer().getId().equals(buyer.getId())) {
             throw new ResourceNotFoundException("Commande introuvable");
         }
         return order;
     }
 
-    // La déclinaison fait partie de l'identité de la pièce vendue : c'est elle que l'atelier prend
-    // sur l'étagère, et c'est sur elle qu'un litige « mauvaise taille » se joue.
+    /** Refuse les paramètres modifiés et reconnaît une opération déjà validée. */
+    private boolean isRefundReplay(MarketplaceOrder order, RefundRequest request) {
+        if (request.operationId() == null) {
+            return false;
+        }
+        List<Map<String, Object>> rows = jdbc.queryForList(
+                "select requested_cents, reason from marketplace_order_refund_operations "
+                        + "where order_id = ? and operation_id = ?", order.getId(), request.operationId());
+        if (rows.isEmpty()) {
+            return false;
+        }
+        Map<String, Object> previous = rows.getFirst();
+        if (!Objects.equals(previous.get("requested_cents"), request.amountCents())
+                || !Objects.equals(previous.get("reason"), request.reason())) {
+            throw new BillingValidationException("Cet identifiant de remboursement désigne une autre opération.");
+        }
+        return true;
+    }
+
+    /** Relit la commande sous verrou avant de décider une transition. */
+    private MarketplaceOrder lockOrder(UUID id) {
+        MarketplaceOrder order = entityManager.find(MarketplaceOrder.class, id, LockModeType.PESSIMISTIC_WRITE);
+        if (order == null) {
+            throw new ResourceNotFoundException("Commande introuvable");
+        }
+        entityManager.refresh(order, LockModeType.PESSIMISTIC_WRITE);
+        return order;
+    }
+
+    /** Présente le nom de la pièce et sa déclinaison figée. */
     private String itemLabel(MarketplaceOrder order) {
         if (order.getProduct() == null) {
             return "ta commande";
@@ -607,6 +650,7 @@ public class OrderLifecycleService {
         return order.getVariantLabel() != null ? label + " (" + order.getVariantLabel() + ")" : label;
     }
 
+    /** Présente le transporteur et le numéro de suivi disponibles. */
     private String trackingSummary(MarketplaceOrder order) {
         if (order.getTrackingNumber() == null || order.getTrackingNumber().isBlank()) {
             return order.getCarrier() != null ? "Transporteur : " + order.getCarrier() + "." : "";
@@ -615,14 +659,17 @@ public class OrderLifecycleService {
                 + "Suivi " + order.getTrackingNumber();
     }
 
+    /** Construit le lien vers le suivi acheteur. */
     private String buyerOrderHref(MarketplaceOrder order) {
         return "/commande/suivi/?id=" + order.getId();
     }
 
+    /** Construit le lien vers le suivi vendeur. */
     private String sellerOrderHref(MarketplaceOrder order) {
         return "/commandes?order=" + order.getId();
     }
 
+    /** Formate les centimes en euros pour les messages. */
     private String formatCents(int cents) {
         return String.format("%.2f €", cents / 100.0).replace('.', ',');
     }

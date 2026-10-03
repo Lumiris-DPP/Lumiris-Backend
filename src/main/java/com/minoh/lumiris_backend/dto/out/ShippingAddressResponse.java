@@ -2,6 +2,7 @@ package com.minoh.lumiris_backend.dto.out;
 
 import com.minoh.lumiris_backend.entity.MarketplaceOrder;
 
+/** Décrit les données de ShippingAddressResponse pour les commandes. */
 public record ShippingAddressResponse(
         String fullName,
         String line1,
@@ -11,6 +12,8 @@ public record ShippingAddressResponse(
         String country,
         String phone
 ) {
+
+    /** Construit la réponse à partir des données persistantes de la commande. */
     public static ShippingAddressResponse from(MarketplaceOrder o) {
         if (o.getShipToLine1() == null) {
             return null;

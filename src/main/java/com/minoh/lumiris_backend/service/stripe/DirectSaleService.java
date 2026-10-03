@@ -12,6 +12,7 @@ import com.minoh.lumiris_backend.entity.MarketplaceProductVariant;
 import com.minoh.lumiris_backend.entity.OrderStatus;
 import com.minoh.lumiris_backend.entity.User;
 import com.minoh.lumiris_backend.entity.WardrobeItem;
+import com.minoh.lumiris_backend.exception.BillingException;
 import com.minoh.lumiris_backend.exception.BillingValidationException;
 import com.minoh.lumiris_backend.exception.ResourceNotFoundException;
 import com.minoh.lumiris_backend.mapper.MarketplaceVariantMapper;
@@ -33,7 +34,10 @@ import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -77,6 +81,7 @@ public class DirectSaleService {
     private final PayableSellerResolver payableSellerResolver;
     private final PreparationDelayResolver preparationDelayResolver;
     private final MarketplaceVariantMapper variantMapper;
+    private final PlatformTransactionManager transactionManager;
 
     // Crée le PaymentIntent du panier (une commande PENDING par ligne, même PaymentIntent) et renvoie
     // le client secret pour le Payment Element. Le fulfillment (Garde-Robe + facture) se fait au webhook.
@@ -94,37 +99,70 @@ public class DirectSaleService {
         String currency = requireSingleCurrency(lines);
         CartTotals totals = totals(lines, bySeller);
 
-        String idempotencyKey = idempotencyKey(buyer, lines, totals.amount(), currency);
-        // Relie la charge (encaissée par la plateforme) aux transferts vendeur créés plus tard. Dérivé
-        // de la clé d'idempotence : un retry renvoie à Stripe exactement les mêmes paramètres, faute de
-        // quoi Stripe refuse la clé au lieu de rendre le même PaymentIntent.
-        String transferGroup = "og_" + UUID.nameUUIDFromBytes(idempotencyKey.getBytes(StandardCharsets.UTF_8));
-
-        PaymentIntent intent = createIntent(buyer, totals.amount(), currency, transferGroup, idempotencyKey);
-        orderRepository.lockPaymentIntent(intent.getId());
+        Attempt attempt = openAttempt(buyer, totals.amount(), currency,
+                idempotencyKey(buyer, lines, totals.amount(), currency));
+        String paymentIntentId = attempt.intent().getId();
 
         // Les tentatives précédentes de l'acheteur sont réglées avant de réserver : leur stock revient
         // au catalogue, et leur ancien écran de paiement ne peut plus encaisser.
-        releaseSupersededReservations(buyer, intent.getId());
+        releaseSupersededReservations(buyer, paymentIntentId);
 
         // Retry dans la fenêtre d'idempotence : Stripe renvoie le même PaymentIntent → si les commandes
-        // existent déjà, on ne re-réserve pas le stock et on ne recrée pas les lignes. On rafraîchit en
-        // revanche l'adresse : l'acheteur a pu revenir corriger sa livraison avant de payer.
-        List<MarketplaceOrder> existing = orderRepository.findByStripePaymentIntentId(intent.getId());
-        if (existing.isEmpty()) {
+        // existent déjà, on ne re-réserve pas le stock et on ne recrée pas les lignes.
+        if (attempt.orders().isEmpty()) {
             reserveStock(lines);
-            persistOrders(buyer, bySeller, totals.shippingBySeller(), intent.getId(), transferGroup, request.shipping());
+            persistOrders(buyer, bySeller, totals.shippingBySeller(), paymentIntentId, attempt.transferGroup(),
+                    request.shipping());
         } else {
-            existing.forEach(order -> {
-                applyShippingAddress(order, request.shipping());
-                orderRepository.save(order);
-            });
+            refreshPendingOrders(attempt.orders(), request.shipping());
         }
 
         return new PaymentIntentResponse(
-                intent.getClientSecret(), properties.publishableKey(),
+                attempt.intent().getClientSecret(), properties.publishableKey(),
                 totals.amount(), totals.items(), totals.shipping(), totals.commission(),
                 shipments(bySeller, totals.shippingBySeller()));
+    }
+
+    // Ouvre la tentative de paiement de cette clé et relit ses commandes sous verrou. Deux requêtes de
+    // la même tentative (double clic) s'y sérialisent : la seconde attend que la première ait validé.
+    // Une tentative dont toutes les lignes ont été annulées (remplacée puis abandonnée dans la même
+    // minute) ne rend pas son client secret mort : le même panier repart sur une intention neuve,
+    // dont la clé dérive de l'annulée pour rester idempotente. La chaîne s'arrête au premier
+    // PaymentIntent sans lignes annulées.
+    private Attempt openAttempt(User buyer, int amount, String currency, String idempotencyKey) {
+        String key = idempotencyKey;
+        while (true) {
+            // Relie la charge (encaissée par la plateforme) aux transferts vendeur créés plus tard.
+            // Dérivé de la clé : un retry renvoie à Stripe exactement les mêmes paramètres, faute de
+            // quoi Stripe refuse la clé au lieu de rendre le même PaymentIntent.
+            String transferGroup = "og_" + UUID.nameUUIDFromBytes(key.getBytes(StandardCharsets.UTF_8));
+            PaymentIntent intent = createIntent(buyer, amount, currency, transferGroup, key);
+            orderRepository.lockPaymentIntent(intent.getId());
+            List<MarketplaceOrder> orders = orderRepository.lockByStripePaymentIntentId(intent.getId());
+            boolean cancelled = !orders.isEmpty()
+                    && orders.stream().allMatch(order -> order.getStatus() == OrderStatus.CANCELLED);
+            if (!cancelled) {
+                return new Attempt(intent, transferGroup, orders);
+            }
+            key = key + ":after:" + intent.getId();
+        }
+    }
+
+    // Retry de la même tentative : l'adresse corrigée s'applique aux seules lignes encore en attente,
+    // relues sous verrou, sans écraser une confirmation du webhook. Une tentative déjà réglée n'est
+    // pas rouverte : son client secret ne doit plus servir.
+    private void refreshPendingOrders(List<MarketplaceOrder> orders, CartIntentRequest.ShippingAddress shipping) {
+        List<MarketplaceOrder> pending = orders.stream()
+                .filter(order -> order.getStatus() == OrderStatus.PENDING)
+                .toList();
+        if (pending.isEmpty()) {
+            throw new BillingValidationException(
+                    "Ce panier vient d'être payé : retrouve ta commande dans « Mes commandes ».");
+        }
+        pending.forEach(order -> {
+            applyShippingAddress(order, shipping);
+            orderRepository.save(order);
+        });
     }
 
     // Webhook payment_intent.succeeded (order_type=marketplace) : marque les commandes payées et ajoute
@@ -388,9 +426,23 @@ public class DirectSaleService {
     }
 
     // Escrow : charge sur le compte PLATEFORME (ni on_behalf_of, ni transfer_data, ni application_fee).
-    // Les fonds sont retenus jusqu'au reversement (Transfer) déclenché à la livraison.
+    // Les fonds sont retenus jusqu'au reversement (Transfer) déclenché à la livraison. Un montant que
+    // Stripe refuse comme trop élevé est un refus de ce panier (422), pas une panne du paiement (502).
     private PaymentIntent createIntent(User buyer, int amount, String currency,
                                        String transferGroup, String idempotencyKey) {
+        try {
+            return requestIntent(buyer, amount, currency, transferGroup, idempotencyKey);
+        } catch (BillingException e) {
+            if (e.getCause() instanceof InvalidRequestException invalid && "amount_too_large".equals(invalid.getCode())) {
+                throw new BillingValidationException("Le montant de ce panier dépasse le maximum accepté au paiement.");
+            }
+            throw e;
+        }
+    }
+
+    // Appel Stripe de création du PaymentIntent, échecs traduits en BillingException.
+    private PaymentIntent requestIntent(User buyer, int amount, String currency,
+                                        String transferGroup, String idempotencyKey) {
         RequestOptions requestOptions = RequestOptions.builder().setIdempotencyKey(idempotencyKey).build();
         return StripeCalls.billed("Préparation du paiement impossible", () ->
                 PaymentIntent.create(PaymentIntentCreateParams.builder()
@@ -413,10 +465,16 @@ public class DirectSaleService {
                         .build(), requestOptions));
     }
 
-    // Règlement des tentatives précédentes de l'acheteur (autres PaymentIntents encore en attente).
+    // Règlement des tentatives précédentes de l'acheteur, chacune dans sa propre transaction : une
+    // annulation faite chez Stripe reste acquise en base même si la réservation de ce panier échoue
+    // ensuite, et une confirmation trouvée en route n'est pas défaite par ce rollback.
     private void releaseSupersededReservations(User buyer, String currentPaymentIntentId) {
-        orderRepository.findSupersededPendingPaymentIntents(buyer.getId(), currentPaymentIntentId)
-                .forEach(this::settlePendingPayment);
+        TransactionTemplate ownTransaction = new TransactionTemplate(transactionManager);
+        ownTransaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        for (String paymentIntentId
+                : orderRepository.findSupersededPendingPaymentIntents(buyer.getId(), currentPaymentIntentId)) {
+            ownTransaction.executeWithoutResult(status -> settlePendingPayment(paymentIntentId));
+        }
     }
 
     // Une commande PENDING par ligne, rattachée au même PaymentIntent. Le port d'un atelier (unique
@@ -482,6 +540,10 @@ public class DirectSaleService {
                                 .max().orElse(0)))
                 .toList();
     }
+
+    // Tentative de paiement ouverte : son PaymentIntent, son groupe de transferts et ses commandes
+    // déjà créées, relues sous verrou (vide pour une tentative neuve).
+    private record Attempt(PaymentIntent intent, String transferGroup, List<MarketplaceOrder> orders) {}
 
     // Montants du panier en centimes ; le port est détaillé par atelier pour le récapitulatif.
     private record CartTotals(int items, int shipping, int amount, int commission,

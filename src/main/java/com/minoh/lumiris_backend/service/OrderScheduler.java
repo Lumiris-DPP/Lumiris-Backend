@@ -11,6 +11,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -44,19 +45,35 @@ public class OrderScheduler {
     private final OrderLifecycleService lifecycleService;
     private final DirectSaleService directSaleService;
     private final MarketplaceProperties properties;
+    private final TransactionTemplate transactionTemplate;
 
+    // Balayage horaire : d'abord les paiements abandonnés, un par un, puis les échéances du cycle de vie.
     @Scheduled(fixedDelay = HOURLY_MS, initialDelay = HOURLY_MS)
-    @Transactional
     public void advanceStaleOrders() {
         Instant now = Instant.now();
+        settleAbandonedPayments(now.minus(ABANDONED_AFTER));
+        transactionTemplate.executeWithoutResult(status -> advanceLifecycle(now));
+    }
 
-        // Stripe fait foi avant toute remise en rayon : un paiement réussi dont le webhook s'est perdu
-        // est confirmé, pas annulé. L'ancien parcours Checkout n'a pas de PaymentIntent à relire.
-        Instant abandonedBefore = now.minus(ABANDONED_AFTER);
+    // Stripe fait foi avant toute remise en rayon : un paiement réussi dont le webhook s'est perdu est
+    // confirmé, pas annulé. Une transaction par paiement, appels Stripe compris : l'échec de l'un
+    // n'annule ni les autres ni le reste du balayage, et il est retenté au balayage suivant.
+    private void settleAbandonedPayments(Instant abandonedBefore) {
         for (String paymentIntentId : orderRepository.findAbandonedPendingPaymentIntents(abandonedBefore)) {
-            directSaleService.settlePendingPayment(paymentIntentId);
+            try {
+                directSaleService.settlePendingPayment(paymentIntentId);
+            } catch (RuntimeException e) {
+                log.error("Paiement abandonné {} non réglé ({}), nouvel essai au prochain balayage",
+                        paymentIntentId, e.getClass().getSimpleName());
+            }
         }
-        for (MarketplaceOrder order : orderRepository.findAbandonedPendingWithoutPaymentIntent(abandonedBefore)) {
+    }
+
+    // Échéances du cycle de vie, dans une seule transaction : paniers de l'ancien parcours Checkout
+    // (sans PaymentIntent à relire), livraisons présumées, clôtures et retours soldés.
+    private void advanceLifecycle(Instant now) {
+        for (MarketplaceOrder order : orderRepository.findAbandonedPendingWithoutPaymentIntent(
+                now.minus(ABANDONED_AFTER))) {
             lifecycleService.cancelAbandoned(order);
         }
 

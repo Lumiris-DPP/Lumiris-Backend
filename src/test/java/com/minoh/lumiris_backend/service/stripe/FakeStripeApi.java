@@ -12,6 +12,7 @@ import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -24,8 +25,12 @@ import java.util.concurrent.atomic.AtomicInteger;
 // Stripe.overrideApiBase, ce qui fonctionne sur tous les threads (Mockito ne peut pas simuler les
 // méthodes statiques avec le mock-maker « subclass » du projet). Elle reproduit la règle documentée
 // des clés d'idempotence : même clé et mêmes paramètres → même réponse ; même clé et paramètres
-// différents → erreur 400 idempotency_error.
+// différents → erreur 400 idempotency_error ; même clé pendant le traitement de la première →
+// conflit 409 idempotency_key_in_use, que le SDK rejoue.
 final class FakeStripeApi implements AutoCloseable {
+
+    // Montant maximal d'un PaymentIntent en euros chez Stripe (999 999,99 €).
+    private static final long MAX_AMOUNT = 99_999_999L;
 
     record Request(String method, String path, String idempotencyKey, Map<String, String> params) {}
 
@@ -35,8 +40,10 @@ final class FakeStripeApi implements AutoCloseable {
     private final List<Request> requests = new CopyOnWriteArrayList<>();
     private final Map<String, Stored> byIdempotencyKey = new ConcurrentHashMap<>();
     private final Map<String, String> statusById = new ConcurrentHashMap<>();
+    private final Set<String> inFlight = ConcurrentHashMap.newKeySet();
     private final AtomicInteger sequence = new AtomicInteger();
     private volatile CyclicBarrier creationBarrier;
+    private volatile long processingMillis;
     private volatile boolean unavailable;
 
     FakeStripeApi() throws IOException {
@@ -52,6 +59,12 @@ final class FakeStripeApi implements AutoCloseable {
     // réservé ni validé.
     void holdCreationsUntil(int parties) {
         creationBarrier = new CyclicBarrier(parties);
+    }
+
+    // Allonge le traitement d'une création : une seconde requête de même clé arrive alors pendant
+    // que la première est en cours, et reçoit le conflit 409 que Stripe renvoie dans ce cas.
+    void slowCreations(long millis) {
+        processingMillis = millis;
     }
 
     // Simule un Stripe injoignable : toute requête répond 500 sans nouvelle tentative du SDK.
@@ -79,7 +92,9 @@ final class FakeStripeApi implements AutoCloseable {
         requests.clear();
         byIdempotencyKey.clear();
         statusById.clear();
+        inFlight.clear();
         creationBarrier = null;
+        processingMillis = 0;
         unavailable = false;
     }
 
@@ -113,26 +128,58 @@ final class FakeStripeApi implements AutoCloseable {
     }
 
     private void create(HttpExchange exchange, String key, Map<String, String> params) throws IOException {
+        if (Long.parseLong(params.getOrDefault("amount", "0")) > MAX_AMOUNT) {
+            respond(exchange, 400, error("invalid_request_error", "amount_too_large",
+                    "Amount must be no more than €999,999.99"));
+            return;
+        }
         Stored response = decide(key, params);
+        if (response == null) {
+            exchange.getResponseHeaders().add("Stripe-Should-Retry", "true");
+            respond(exchange, 409, error("idempotency_error", "idempotency_key_in_use",
+                    "There is currently another in-progress request using this Stripe-Idempotency-Key."));
+            return;
+        }
         awaitBarrier();
         respond(exchange, response.status(), response.body());
     }
 
-    // Décision atomique, comme chez Stripe : la première requête d'une clé crée le PaymentIntent, les
-    // suivantes reçoivent la même réponse, ou une erreur si leurs paramètres diffèrent.
-    private synchronized Stored decide(String key, Map<String, String> params) {
-        Stored previous = key != null ? byIdempotencyKey.get(key) : null;
-        if (previous != null) {
-            return previous.params().equals(params) ? previous : new Stored(params, 400, error("idempotency_error", null,
-                    "Keys for idempotent requests can only be used with the same parameters they were first used with."));
+    // Comme chez Stripe : la première requête d'une clé crée le PaymentIntent ; une requête de même
+    // clé arrivée pendant ce traitement reçoit un conflit (null ici) ; les suivantes reçoivent la même
+    // réponse, ou une erreur si leurs paramètres diffèrent.
+    private Stored decide(String key, Map<String, String> params) {
+        synchronized (this) {
+            Stored previous = key != null ? byIdempotencyKey.get(key) : null;
+            if (previous != null) {
+                return previous.params().equals(params) ? previous : new Stored(params, 400, error("idempotency_error",
+                        null, "Keys for idempotent requests can only be used with the same parameters they were first used with."));
+            }
+            if (key != null && !inFlight.add(key)) {
+                return null;
+            }
         }
-        String id = "pi_test_" + sequence.incrementAndGet();
-        statusById.put(id, "requires_payment_method");
-        Stored created = new Stored(params, 200, paymentIntent(id, params));
-        if (key != null) {
-            byIdempotencyKey.put(key, created);
+        sleep(processingMillis);
+        synchronized (this) {
+            String id = "pi_test_" + sequence.incrementAndGet();
+            statusById.put(id, "requires_payment_method");
+            Stored created = new Stored(params, 200, paymentIntent(id, params));
+            if (key != null) {
+                byIdempotencyKey.put(key, created);
+                inFlight.remove(key);
+            }
+            return created;
         }
-        return created;
+    }
+
+    private static void sleep(long millis) {
+        if (millis <= 0) {
+            return;
+        }
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     private void retrieve(HttpExchange exchange, String id) throws IOException {

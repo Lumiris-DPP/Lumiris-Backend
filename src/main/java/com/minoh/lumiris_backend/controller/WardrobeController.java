@@ -3,7 +3,7 @@ package com.minoh.lumiris_backend.controller;
 import com.minoh.lumiris_backend.config.security.CurrentUserEmail;
 import com.minoh.lumiris_backend.dto.in.WardrobeSyncRequest;
 import com.minoh.lumiris_backend.dto.out.WardrobeItemResponse;
-import com.minoh.lumiris_backend.marketplace.order.service.BuyerOrderService;
+import com.minoh.lumiris_backend.service.BuyerOrderService;
 import com.minoh.lumiris_backend.service.WardrobeSyncService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;

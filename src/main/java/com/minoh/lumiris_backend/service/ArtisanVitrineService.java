@@ -1,6 +1,6 @@
 package com.minoh.lumiris_backend.service;
 
-import com.minoh.lumiris_backend.marketplace.seller.service.PreparationDelayResolver;
+import com.minoh.lumiris_backend.service.PreparationDelayResolver;
 
 import com.minoh.lumiris_backend.dto.in.ArtisanVitrineUpdateRequest;
 import com.minoh.lumiris_backend.dto.out.ArtisanPhotoResponse;

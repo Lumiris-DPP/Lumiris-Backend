@@ -21,7 +21,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-// Bibliothèque de certificats réutilisables sur plusieurs DppForm — voir DppFormService pour le
+// Bibliothèque de certificats réutilisables sur plusieurs DppForm — voir DppDocumentService pour le
 // point d'attachement (resolveCertificateLibraryRefs).
 @Service
 @RequiredArgsConstructor
@@ -67,11 +67,11 @@ public class CertificateLibraryService {
                 .orElseThrow(() -> new ResourceNotFoundException("Certificat introuvable : " + id));
         // Retire uniquement l'entrée de bibliothèque : le StoredFile et les DppFormDocument déjà
         // créés ne sont pas touchés (mêmes garanties que le nettoyage des vieux fichiers sur
-        // DppFormService.update — le blob reste, seule la possibilité de réutilisation future part).
+        // DppPublicationService.update — le blob reste, seule la possibilité de réutilisation future part).
         certificateLibraryRepository.delete(item);
     }
 
-    // Résolution ownership-checked pour l'attachement à un DPP (voir DppFormService). Le type
+    // Résolution ownership-checked pour l'attachement à un DPP (voir DppDocumentService). Le type
     // doit correspondre au champ ciblé (origine/transaction) — sinon 400, pas un simple mismatch
     // silencieux.
     @Transactional(readOnly = true)

@@ -4,7 +4,7 @@ import com.minoh.lumiris_backend.dto.out.DppPublicJsonLdResponse;
 import com.minoh.lumiris_backend.entity.DppForm;
 import com.minoh.lumiris_backend.mapper.DppFormMapper;
 import com.minoh.lumiris_backend.service.DppEventService;
-import com.minoh.lumiris_backend.service.DppFormService;
+import com.minoh.lumiris_backend.service.DppQueryService;
 import com.minoh.lumiris_backend.service.GeocodingService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -22,15 +22,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 class PublicDppControllerTest {
 
-    private DppFormService dppFormService;
+    private DppQueryService dppQueryService;
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        dppFormService = mock(DppFormService.class);
+        dppQueryService = mock(DppQueryService.class);
         DppEventService dppEventService = mock(DppEventService.class);
         mockMvc = MockMvcBuilders
-                .standaloneSetup(new PublicDppController(dppFormService, dppEventService))
+                .standaloneSetup(new PublicDppController(dppQueryService, dppEventService))
                 .build();
     }
 
@@ -53,7 +53,7 @@ class PublicDppControllerTest {
                 null,
                 canonicalId
         );
-        when(dppFormService.findPublicJsonLd("SEED0001", canonicalId)).thenReturn(response);
+        when(dppQueryService.findPublicJsonLd("SEED0001", canonicalId)).thenReturn(response);
 
         mockMvc.perform(get("/public/dpp_forms/SEED0001/jsonld"))
                 .andExpect(status().isOk())

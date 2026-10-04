@@ -161,6 +161,11 @@ server:
         include-binding-errors: always
         include-stacktrace: on_param
         include-exception: false
+    tomcat:
+        # Doit rester supérieur à l'idleConnTimeout de Traefik (90 s par défaut). Sinon Traefik
+        # réutilise une connexion que Tomcat vient de fermer : un PUT/POST (non rejoué par le proxy)
+        # échoue alors en 502 sans jamais atteindre l'application.
+        keep-alive-timeout: 120s
 
 management:
     endpoints:

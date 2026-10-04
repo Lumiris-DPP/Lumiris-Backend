@@ -1,6 +1,6 @@
 package com.minoh.lumiris_backend.service.scoring;
 
-import com.minoh.lumiris_backend.service.DppFormService;
+import com.minoh.lumiris_backend.service.DppPublicationService;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,11 +14,11 @@ public class IrisScoreBackfillRunner {
 
     private static final Logger log = LoggerFactory.getLogger(IrisScoreBackfillRunner.class);
 
-    private final DppFormService dppFormService;
+    private final DppPublicationService dppPublicationService;
 
     @EventListener(ApplicationReadyEvent.class)
     public void backfill() {
-        int restored = dppFormService.backfillMissingIrisScores();
+        int restored = dppPublicationService.backfillMissingIrisScores();
         if (restored > 0) {
             log.info("Score Iris calculé et persisté pour {} passeport(s) publié(s) qui n'en avaient pas", restored);
         }

@@ -469,6 +469,189 @@ class OrderLifecycleIntegrationTest {
     // Regroupe les références d'une commande créée pour le test.
     private record Fixture(UUID order, UUID variant, String buyer, String seller, String intent) {}
 
+    // Vérifie deux remboursements égaux et leur rejeu sans dépasser le versement.
+    @Test
+    void roundedHalves_refund100AndReverse95() {
+        Fixture f = roundedFixture();
+        RefundRequest first = new RefundRequest(50, "Geste", UUID.randomUUID());
+        RefundRequest second = new RefundRequest(50, "Geste", UUID.randomUUID());
+        lifecycle.refund(f.seller(), f.order(), first);
+        assertThat(stripe.reversedCents()).isEqualTo(48);
+        lifecycle.refund(f.seller(), f.order(), first);
+        lifecycle.refund(f.seller(), f.order(), second);
+        lifecycle.refund(f.seller(), f.order(), second);
+        assertThat(refunded(f)).isEqualTo(100);
+        assertThat(stripe.reversedCents()).isEqualTo(95);
+        assertThat(stripe.refunds()).isEqualTo(2);
+        assertThat(stock(f)).isEqualTo(1);
+        assertThat(wardrobe(f)).isZero();
+    }
+
+    // Vérifie le cumul arrondi pour plusieurs découpages et ordres.
+    @Test
+    void roundedFractions_preserveCumulativeAmounts() {
+        for (List<Integer> amounts : List.of(List.of(1, 49, 1, 49), List.of(49, 1, 49, 1),
+                List.of(33, 33, 34), List.of(34, 33, 33), java.util.Collections.nCopies(100, 1))) {
+            stripe.reset();
+            Fixture f = roundedFixture();
+            int total = 0;
+            for (int amount : amounts) {
+                lifecycle.refund(f.seller(), f.order(), new RefundRequest(amount, "Fraction", UUID.randomUUID()));
+                total += amount;
+                assertThat(refunded(f)).isEqualTo(total);
+                assertThat(stripe.reversedCents()).isEqualTo(Math.round(95.0 * total / 100));
+            }
+            assertThat(stripe.reversedCents()).isEqualTo(95);
+        }
+    }
+
+    // Vérifie le retry après reprise réussie et remboursement refusé.
+    @Test
+    void roundedReversalThenFailure_retryKeepsHistoricalAmount() {
+        Fixture f = roundedFixture();
+        RefundRequest first = new RefundRequest(50, "Geste", UUID.randomUUID());
+        stripe.failRefund(true);
+        assertThatThrownBy(() -> lifecycle.refund(f.seller(), f.order(), first)).isInstanceOf(BillingException.class);
+        assertThat(refunded(f)).isZero();
+        assertThat(stripe.reversedCents()).isEqualTo(48);
+        stripe.failRefund(false);
+        stripe.expireReversalKeys();
+        assertThatThrownBy(() -> lifecycle.refund(f.seller(), f.order(), new RefundRequest(50, "Geste", UUID.randomUUID())))
+                .isInstanceOf(BillingValidationException.class);
+        assertThatThrownBy(() -> lifecycle.refund(f.seller(), f.order(), new RefundRequest(49, "Geste", first.operationId())))
+                .isInstanceOf(BillingValidationException.class);
+        assertThatThrownBy(() -> lifecycle.refund(f.seller(), f.order(), new RefundRequest(50, "Autre motif", first.operationId())))
+                .isInstanceOf(BillingValidationException.class);
+        lifecycle.refund(f.seller(), f.order(), first);
+        lifecycle.refund(f.seller(), f.order(), new RefundRequest(50, "Solde", UUID.randomUUID()));
+        assertThat(refunded(f)).isEqualTo(100);
+        assertThat(stripe.reversedCents()).isEqualTo(95);
+        assertThat(stripe.reversals()).isEqualTo(2);
+    }
+
+    // Vérifie le retry du reliquat après un rollback SQL complet.
+    @Test
+    void roundedFinalRefundRollback_retryDoesNotChangeReversal() {
+        Fixture f = roundedFixture();
+        lifecycle.refund(f.seller(), f.order(), new RefundRequest(50, "Premier", UUID.randomUUID()));
+        RefundRequest second = new RefundRequest(50, "Solde", UUID.randomUUID());
+        assertThatThrownBy(() -> new TransactionTemplate(transactionManager).executeWithoutResult(tx -> {
+            lifecycle.refund(f.seller(), f.order(), second);
+            throw new IllegalStateException("Rollback après Stripe");
+        })).isInstanceOf(IllegalStateException.class);
+        assertThat(refunded(f)).isEqualTo(50);
+        assertThat(stripe.reversedCents()).isEqualTo(95);
+        lifecycle.refund(f.seller(), f.order(), second);
+        assertThat(refunded(f)).isEqualTo(100);
+        assertThat(stripe.reversedCents()).isEqualTo(95);
+        assertThat(stripe.reversals()).isEqualTo(2);
+        assertThat(stripe.refunds()).isEqualTo(2);
+    }
+
+    // Vérifie le reliquat réel d'une ancienne reprise déjà enregistrée.
+    @Test
+    void historicalPartialReversal_usesActualRemainder() {
+        for (int alreadyReversed : List.of(47, 48, 49)) {
+            stripe.reset();
+            Fixture f = roundedFixture();
+            stripe.historicalReversal("trr_old", alreadyReversed);
+            jdbc.update("update marketplace_orders set refunded_cents=50, stripe_transfer_reversal_id='trr_old' where id=?", f.order());
+            lifecycle.refund(f.seller(), f.order(), new RefundRequest(50, "Solde", UUID.randomUUID()));
+            assertThat(refunded(f)).isEqualTo(100);
+            assertThat(stripe.reversedCents()).isEqualTo(95);
+        }
+    }
+
+    // Vérifie les frais de port et les fractions sans reprise supplémentaire.
+    @Test
+    void fractionalRefunds_includeShippingAndZeroReversals() {
+        for (int net : List.of(1, 2, 95, 99)) {
+            stripe.reset();
+            Fixture f = roundedFixture();
+            jdbc.update("update marketplace_orders set net_cents=?, commission_cents=?, shipping_cents=7 where id=?", net, 100 - net, f.order());
+            stripe.limitReversals(net);
+            int total = 0;
+            for (int amount : List.of(1, 10, 23, 73)) {
+                lifecycle.refund(f.seller(), f.order(), new RefundRequest(amount, "Fraction", UUID.randomUUID()));
+                total += amount;
+                assertThat(refunded(f)).isEqualTo(total);
+                assertThat(stripe.reversedCents()).isEqualTo(Math.round((double) net * total / 107));
+            }
+            assertThat(refunded(f)).isEqualTo(107);
+            assertThat(stripe.reversedCents()).isEqualTo(net);
+        }
+    }
+
+    // Vérifie la conservation du repère historique lors d'une reprise nulle.
+    @Test
+    void historicalReversal_zeroRemainderKeepsCommittedReference() {
+        Fixture f = roundedFixture();
+        jdbc.update("update marketplace_orders set net_cents=1, commission_cents=99, refunded_cents=50, stripe_transfer_reversal_id='trr_old' where id=?", f.order());
+        stripe.limitReversals(1);
+        stripe.historicalReversal("trr_old", 1);
+        lifecycle.refund(f.seller(), f.order(), new RefundRequest(1, "Fraction", UUID.randomUUID()));
+        lifecycle.refund(f.seller(), f.order(), new RefundRequest(49, "Solde", UUID.randomUUID()));
+        assertThat(refunded(f)).isEqualTo(100);
+        assertThat(stripe.reversedCents()).isEqualTo(1);
+        assertThat(stripe.reversals()).isZero();
+    }
+
+    // Vérifie le refus d'une ancienne reprise inconnue plus récente que la base.
+    @Test
+    void historicalUncommittedReversal_doesNotUseCommittedRemainder() {
+        Fixture f = roundedFixture();
+        stripe.historicalReversal("trr_old", 48);
+        stripe.historicalReversal("trr_pending", 47);
+        jdbc.update("update marketplace_orders set refunded_cents=50, stripe_transfer_reversal_id='trr_old' where id=?", f.order());
+        assertThatThrownBy(() -> lifecycle.refund(f.seller(), f.order(), new RefundRequest(50, "Solde", UUID.randomUUID())))
+                .isInstanceOf(BillingValidationException.class).hasMessageContaining("rapprochement");
+        assertThat(refunded(f)).isEqualTo(50);
+        assertThat(stripe.refunds()).isZero();
+    }
+
+    // Refuse une ancienne reprise sans preuve de rattachement.
+    @Test
+    void historicalOlderUnidentifiedReversal_requiresReconciliation() {
+        Fixture f = roundedFixture();
+        stripe.historicalReversal("trr_unknown", 10);
+        stripe.historicalReversal("trr_old", 38);
+        jdbc.update("update marketplace_orders set refunded_cents=50, stripe_transfer_reversal_id='trr_old' where id=?", f.order());
+        assertThatThrownBy(() -> lifecycle.refund(f.seller(), f.order(), new RefundRequest(50, "Solde", UUID.randomUUID())))
+                .isInstanceOf(BillingValidationException.class).hasMessageContaining("rapprochement");
+        assertThat(refunded(f)).isEqualTo(50);
+        assertThat(stripe.refunds()).isZero();
+    }
+
+    // Vérifie le refus explicite d'une ancienne reprise impossible à rattacher.
+    @Test
+    void unidentifiedHistoricalReversal_requiresReconciliation() {
+        Fixture f = roundedFixture();
+        stripe.historicalReversal("trr_unknown", 48);
+        assertThatThrownBy(() -> lifecycle.refund(f.seller(), f.order(), new RefundRequest(50, "Geste", UUID.randomUUID())))
+                .isInstanceOf(BillingValidationException.class);
+        assertThat(refunded(f)).isZero();
+        assertThat(stripe.refunds()).isZero();
+        assertThat(stripe.reversedCents()).isEqualTo(48);
+    }
+
+    // Vérifie les remboursements concurrents avec un versement borné.
+    @Test
+    void roundedConcurrentRefunds_keepBothOperations() throws Exception {
+        Fixture f = roundedFixture();
+        raceRefunds(f, new RefundRequest(50, "Geste", UUID.randomUUID()), new RefundRequest(50, "Geste", UUID.randomUUID()));
+        assertThat(refunded(f)).isEqualTo(100);
+        assertThat(stripe.reversedCents()).isEqualTo(95);
+        assertThat(stripe.refunds()).isEqualTo(2);
+    }
+
+    // Prépare une commande de 100 centimes avec un versement de 95.
+    private Fixture roundedFixture() {
+        Fixture f = fixture("DELIVERED");
+        jdbc.update("update marketplace_orders set amount_total_cents=100, shipping_cents=0, net_cents=95, commission_cents=5, stripe_transfer_id='tr_order' where id=?", f.order());
+        stripe.limitReversals(95);
+        return f;
+    }
+
     // Crée une commande et ses pièces dans la base isolée.
     private Fixture fixture(String status) {
         UUID buyer = user("CONSUMER");

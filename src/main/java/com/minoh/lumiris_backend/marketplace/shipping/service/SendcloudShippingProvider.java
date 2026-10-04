@@ -220,7 +220,7 @@ public class SendcloudShippingProvider implements ShippingProvider {
                 .orElse(null);
     }
 
-    // Associe le code transporteur à une étape de suivi.
+    // Associe le libellé du transporteur à une étape de suivi.
     private static TrackingStatus toTrackingStatus(String message) {
         if (message == null || message.isBlank()) {
             return TrackingStatus.IN_TRANSIT;

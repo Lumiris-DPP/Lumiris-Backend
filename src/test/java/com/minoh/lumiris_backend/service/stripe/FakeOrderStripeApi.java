@@ -1,11 +1,16 @@
 package com.minoh.lumiris_backend.service.stripe;
 
 import com.stripe.Stripe;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.net.URLDecoder;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
@@ -24,6 +29,9 @@ final class FakeOrderStripeApi implements AutoCloseable {
     private final AtomicInteger reversals = new AtomicInteger();
     private final AtomicInteger transfers = new AtomicInteger();
     private volatile boolean failRefund;
+    private final List<Map<String, Object>> reversalHistory = new ArrayList<>();
+    private int reversalLimit = 900;
+    private int reversedCents;
     private volatile boolean failTransfer;
     private volatile CountDownLatch entered;
     private volatile CountDownLatch release;
@@ -69,12 +77,33 @@ final class FakeOrderStripeApi implements AutoCloseable {
     // Compte les reprises de versement enregistrées par le test.
     int reversals() { return reversals.get(); }
 
+    // Fixe le montant réellement versé au vendeur.
+    void limitReversals(int cents) { reversalLimit = cents; }
+
+    // Lit le cumul réellement repris au vendeur.
+    int reversedCents() { return reversedCents; }
+
+    // Oublie les clés des reprises tout en conservant leurs réponses historiques.
+    void expireReversalKeys() {
+        responses.keySet().removeIf(key -> key.startsWith("reversal:"));
+        parameters.keySet().removeIf(key -> key.startsWith("reversal:"));
+    }
+
+    // Ajoute une reprise historique sans référence d'opération.
+    void historicalReversal(String id, int cents) {
+        reversalHistory.addFirst(Map.of("id", id, "object", "transfer_reversal", "amount", cents, "metadata", Map.of()));
+        reversedCents += cents;
+    }
+
     // Compte les versements enregistrés par le serveur simulé.
     int transfers() { return transfers.get(); }
 
     // Réinitialise les compteurs et les erreurs du serveur simulé.
     void reset() {
         responses.clear();
+        reversalHistory.clear();
+        reversalLimit = 900;
+        reversedCents = 0;
         parameters.clear();
         refunds.set(0);
         reversals.set(0);
@@ -113,9 +142,20 @@ final class FakeOrderStripeApi implements AutoCloseable {
             return;
         }
         if (exchange.getRequestMethod().equals("GET")) {
+            Map<String, String> query = decode(exchange.getRequestURI().getRawQuery());
+            int start = 0;
+            if (query.containsKey("starting_after")) {
+                while (start < reversalHistory.size() && !reversalHistory.get(start).get("id").equals(query.get("starting_after"))) start++;
+                start++;
+            }
+            int end = Math.min(start + 10, reversalHistory.size());
+            Map<String, Object> page = Map.of("object", "list", "url", "/v1/transfers/tr_order/reversals",
+                    "data", reversalHistory.subList(start, end), "has_more", end < reversalHistory.size());
             String body = path.contains("payment_intents")
                     ? "{\"id\":\"pi_order\",\"object\":\"payment_intent\",\"latest_charge\":\"ch_order\"}"
-                    : "{\"id\":\"tr_order\",\"object\":\"transfer\",\"reversals\":{\"object\":\"list\",\"url\":\"/v1/transfers/tr_order/reversals\",\"data\":[]}}";
+                    : new ObjectMapper().writeValueAsString(path.endsWith("/reversals") ? page
+                    : Map.of("id", "tr_order", "object", "transfer", "amount", reversalLimit,
+                            "amount_reversed", reversedCents, "reversals", page));
             respond(exchange, 200, body);
             return;
         }
@@ -125,12 +165,45 @@ final class FakeOrderStripeApi implements AutoCloseable {
             respond(exchange, 400, "{\"error\":{\"type\":\"idempotency_error\",\"message\":\"Paramètres différents\"}}");
             return;
         }
+        Map<String, String> values = decode(params);
+        int amount = Integer.parseInt(values.getOrDefault("amount", "0"));
+        if (path.endsWith("/reversals") && !responses.containsKey(key) && reversedCents + amount > reversalLimit) {
+            respond(exchange, 400, "{\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Reprise supérieure au reliquat\"}}");
+            return;
+        }
         String body = responses.computeIfAbsent(key, ignored -> {
             String object = path.equals("/v1/refunds") ? "refund" : path.endsWith("reversals") ? "transfer_reversal" : "transfer";
             AtomicInteger count = object.equals("refund") ? refunds : object.equals("transfer_reversal") ? reversals : transfers;
-            return "{\"id\":\"" + object + "_" + count.incrementAndGet() + "\",\"object\":\"" + object + "\"}";
+            String id = object + "_" + count.incrementAndGet();
+            if (object.equals("transfer_reversal")) {
+                Map<String, String> metadata = new LinkedHashMap<>();
+                values.forEach((name, value) -> {
+                    if (name.startsWith("metadata[")) metadata.put(name.substring(9, name.length() - 1), value);
+                });
+                reversalHistory.addFirst(Map.of("id", id, "object", object, "amount", amount, "metadata", metadata));
+                reversedCents += amount;
+                try {
+                    return new ObjectMapper().writeValueAsString(reversalHistory.getFirst());
+                } catch (IOException e) {
+                    throw new IllegalStateException(e);
+                }
+            }
+            return "{\"id\":\"" + id + "\",\"object\":\"" + object + "\",\"amount\":" + amount + "}";
         });
         respond(exchange, 200, body);
+    }
+
+    // Décode les paramètres envoyés par le SDK Stripe.
+    private Map<String, String> decode(String encoded) {
+        Map<String, String> values = new LinkedHashMap<>();
+        if (encoded != null && !encoded.isEmpty()) {
+            for (String pair : encoded.split("&")) {
+                String[] parts = pair.split("=", 2);
+                values.put(URLDecoder.decode(parts[0], StandardCharsets.UTF_8),
+                        URLDecoder.decode(parts[1], StandardCharsets.UTF_8));
+            }
+        }
+        return values;
     }
 
     // Envoie la réponse HTTP préparée par le test.

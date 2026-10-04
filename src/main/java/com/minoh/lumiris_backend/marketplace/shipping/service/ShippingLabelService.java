@@ -90,7 +90,7 @@ public class ShippingLabelService {
                 label.trackingUrl());
     }
 
-    // Vérifie les coordonnées et le poids nécessaires à l'envoi.
+    // Vérifie la présence de l'adresse, du code postal et de la ville.
     private void requireDeliverable(MarketplaceOrder order) {
         if (order.getShipToLine1() == null || order.getShipToPostalCode() == null
                 || order.getShipToCity() == null) {

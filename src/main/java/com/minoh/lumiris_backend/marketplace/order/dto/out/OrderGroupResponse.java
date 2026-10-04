@@ -7,7 +7,6 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 
-/** Décrit les données de OrderGroupResponse pour les commandes. */
 public record OrderGroupResponse(
         String paymentIntentId,
         List<OrderResponse> lines,
@@ -20,7 +19,6 @@ public record OrderGroupResponse(
         Instant createdAt
 ) {
 
-    /** Construit la réponse à partir des données persistantes de la commande. */
     public static OrderGroupResponse from(String paymentIntentId, List<MarketplaceOrder> orders) {
         List<OrderResponse> lines = orders.stream().map(OrderResponse::from).toList();
         int items = orders.stream().mapToInt(MarketplaceOrder::getAmountTotalCents).sum();
@@ -35,7 +33,6 @@ public record OrderGroupResponse(
                 items + shipping, currency, aggregateStatus(orders), invoice, createdAt);
     }
 
-    /** Retient l’état le moins avancé des lignes du paiement. */
     private static String aggregateStatus(List<MarketplaceOrder> orders) {
         return orders.stream()
                 .map(MarketplaceOrder::getStatus)

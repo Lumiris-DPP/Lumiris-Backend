@@ -14,9 +14,8 @@ import java.util.Map;
 import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** Vérifie les opérations distinctes de remboursement avec le SDK Stripe réel. */
 class OrderRefundServiceTest {
-    /** Reproduit R08 avec deux remboursements partiels distincts de même montant. */
+
     @Test
     void equalPartialAmounts_createTwoDistinctRefunds() throws Exception {
         Map<String, String> refunds = new HashMap<>();

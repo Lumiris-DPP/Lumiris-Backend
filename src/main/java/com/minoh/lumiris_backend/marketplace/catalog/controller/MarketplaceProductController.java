@@ -20,7 +20,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-// CRUD du catalogue produit — réservé à l'artisan authentifié (rôle ARTISAN).
 @RestController
 @RequestMapping("/api/marketplace/products")
 @RequiredArgsConstructor
@@ -28,19 +27,16 @@ public class MarketplaceProductController {
 
     private final SellerCatalogService sellerCatalogService;
 
-    // Annonces de l'atelier connecté, avec leurs ventes réglées.
     @GetMapping
     ResponseEntity<List<MarketplaceItemResponse>> listMine(@CurrentUserEmail String email) {
         return ResponseEntity.ok(sellerCatalogService.listMine(email));
     }
 
-    // Une annonce de l'atelier connecté, quel que soit son statut.
     @GetMapping("/{id}")
     ResponseEntity<MarketplaceItemResponse> getMine(@PathVariable UUID id, @CurrentUserEmail String email) {
         return ResponseEntity.ok(sellerCatalogService.getMine(email, id));
     }
 
-    // Mise en vente d'une pièce à passeport valide (201 avec l'annonce créée ou réécrite).
     @PostMapping("/from-dpp/{dppFormId}")
     ResponseEntity<MarketplaceItemResponse> convertFromDpp(@PathVariable UUID dppFormId,
                                                            @Valid @RequestBody ConvertDppRequest request,
@@ -49,7 +45,6 @@ public class MarketplaceProductController {
                 .body(sellerCatalogService.convertFromDpp(email, dppFormId, request));
     }
 
-    // Remplacement complet d'une annonce : champs, déclinaisons et guide des mesures.
     @PutMapping("/{id}")
     ResponseEntity<MarketplaceItemResponse> update(@PathVariable UUID id,
                                                    @Valid @RequestBody UpdateProductRequest request,
@@ -57,7 +52,6 @@ public class MarketplaceProductController {
         return ResponseEntity.ok(sellerCatalogService.update(email, id, request));
     }
 
-    // Suppression d'une annonce jamais vendue (409 sinon : l'archiver).
     @DeleteMapping("/{id}")
     ResponseEntity<Void> delete(@PathVariable UUID id, @CurrentUserEmail String email) {
         sellerCatalogService.delete(email, id);

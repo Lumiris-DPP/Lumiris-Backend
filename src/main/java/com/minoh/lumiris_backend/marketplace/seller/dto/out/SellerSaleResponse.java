@@ -4,8 +4,6 @@ import com.minoh.lumiris_backend.entity.MarketplaceOrder;
 import java.time.Instant;
 import java.util.UUID;
 
-// LUMIRIS · Ligne de l'historique des ventes (côté vendeur). Montants en centimes.
-// released = fonds déjà reversés au vendeur (Transfer créé) ; sinon retenus par la plateforme (escrow).
 public record SellerSaleResponse(
         UUID id,
         String productName,
@@ -20,7 +18,7 @@ public record SellerSaleResponse(
         Instant createdAt,
         String invoiceNumber
 ) {
-    /** Construit la réponse depuis les données persistées et chargées. */
+
     public static SellerSaleResponse from(MarketplaceOrder o) {
         return new SellerSaleResponse(
                 o.getId(),

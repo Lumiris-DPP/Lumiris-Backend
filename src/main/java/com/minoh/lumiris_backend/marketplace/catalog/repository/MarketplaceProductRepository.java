@@ -10,15 +10,12 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
-/** Charge les annonces avec leurs scores et leurs filtres de publication. */
 public interface MarketplaceProductRepository extends JpaRepository<MarketplaceProduct, UUID> {
 
-    // Vue de fiche produit (VISION) — incrément atomique, fire-and-forget.
     @Modifying
     @Query("update MarketplaceProduct p set p.views = p.views + 1 where p.id = :id")
     int incrementViews(@Param("id") UUID id);
 
-    // Fiche produit publiée unitaire (VISION) — évite de scanner tout le catalogue pour un deep-link.
     @Query("""
             select p, s
             from MarketplaceProduct p
@@ -29,9 +26,6 @@ public interface MarketplaceProductRepository extends JpaRepository<MarketplaceP
             """)
     List<Object[]> findScoredPublishedById(@Param("id") UUID id);
 
-    // Hydratation du panier : les seules fiches dont l'acheteur a besoin, plutôt que tout le
-    // catalogue. Un produit dépublié entre-temps sort du résultat — c'est ce qui permet au panier
-    // de dire lequel est devenu indisponible.
     @Query("""
             select p, s
             from MarketplaceProduct p
@@ -42,7 +36,6 @@ public interface MarketplaceProductRepository extends JpaRepository<MarketplaceP
             """)
     List<Object[]> findScoredPublishedByIds(@Param("ids") Collection<UUID> ids);
 
-    // Pont scan → achat : le produit publié lié à un passeport scanné (unifie les 2 modèles d'achat).
     @Query("""
             select p, s
             from MarketplaceProduct p
@@ -53,18 +46,14 @@ public interface MarketplaceProductRepository extends JpaRepository<MarketplaceP
             """)
     List<Object[]> findScoredPublishedByDpp(@Param("dppFormId") UUID dppFormId);
 
-    // Total des vues de toutes les fiches d'un atelier — KPI tableau de bord.
     @Query("select coalesce(sum(p.views), 0) from MarketplaceProduct p where p.artisanProfile.id = :artisanProfileId")
     long totalViewsByArtisanProfile(@Param("artisanProfileId") UUID artisanProfileId);
 
-    /** Compte les annonces appartenant à cet atelier. */
     long countByArtisanProfileId(UUID artisanProfileId);
 
-    /** Compte les annonces de l’atelier dans le statut demandé. */
     long countByArtisanProfileIdAndStatus(UUID artisanProfileId,
                                           com.minoh.lumiris_backend.entity.MarketplaceProductStatus status);
 
-    /** Charge les annonces de l’atelier avec le score de leur passeport. */
     @Query("""
             select p, s
             from MarketplaceProduct p
@@ -75,12 +64,10 @@ public interface MarketplaceProductRepository extends JpaRepository<MarketplaceP
             """)
     List<Object[]> findScoredByArtisanProfileId(@Param("artisanProfileId") UUID artisanProfileId);
 
-    /** Retrouve une annonce uniquement dans cet atelier. */
     Optional<MarketplaceProduct> findByIdAndArtisanProfileId(UUID id, UUID artisanProfileId);
-    /** Retrouve l’annonce liée au passeport demandé. */
+
     Optional<MarketplaceProduct> findByDppFormId(UUID dppFormId);
 
-    /** Recherche les annonces publiées selon les filtres fournis. */
     @Query("""
             select p, s
             from MarketplaceProduct p
@@ -95,13 +82,6 @@ public interface MarketplaceProductRepository extends JpaRepository<MarketplaceP
                                    @Param("material") String material,
                                    @Param("origin") String origin);
 
-    // Recherche plein texte : le vecteur pondéré est maintenu par Postgres (colonne générée), l'index
-    // GIN porte le prédicat. On ne renvoie que (id, rang) — l'hydratation réutilise
-    // findScoredPublishedByIds, qui porte déjà le join fetch de l'atelier et la jointure au score.
-    // websearch_to_tsquery et JAMAIS to_tsquery : cet endpoint est public et non authentifié, et
-    // to_tsquery lève sur une entrée malformée (« veste & » deviendrait une 500 à la demande).
-    // Les casts explicites sont indispensables en SQL natif, sans quoi Postgres ne peut pas
-    // déterminer le type des paramètres nuls.
     @Query(value = """
             select p.id as id,
                    ts_rank(p.search_vector, websearch_to_tsquery('french', lumiris_unaccent(:q))) as rank
@@ -117,7 +97,6 @@ public interface MarketplaceProductRepository extends JpaRepository<MarketplaceP
                                              @Param("material") String material,
                                              @Param("origin") String origin);
 
-    /** Charge les alternatives publiées admissibles au score demandé. */
     @Query("""
             select p, s
             from MarketplaceProduct p

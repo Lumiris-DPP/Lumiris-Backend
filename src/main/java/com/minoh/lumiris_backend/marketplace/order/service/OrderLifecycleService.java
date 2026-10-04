@@ -46,7 +46,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
-/** Contrôle les transitions, leurs permissions et leurs effets sous verrou. */
 @Service
 @RequiredArgsConstructor
 public class OrderLifecycleService {
@@ -67,7 +66,6 @@ public class OrderLifecycleService {
     private final PreparationDelayResolver preparationDelayResolver;
     private final MarketplaceProperties properties;
 
-    /** Expédie une commande payée appartenant au vendeur. */
     @Transactional
     public void ship(String sellerEmail, UUID orderId, ShipOrderRequest request) {
         User seller = userRepository.getByEmail(sellerEmail);
@@ -79,7 +77,6 @@ public class OrderLifecycleService {
         markShipped(order, seller);
     }
 
-    /** Refuse toute expédition avant paiement ou après une première expédition. */
     public void requireShippable(MarketplaceOrder order) {
         if (order.getStatus() != OrderStatus.PAID) {
             throw new InvalidOrderTransitionException(
@@ -87,7 +84,6 @@ public class OrderLifecycleService {
         }
     }
 
-    /** Enregistre l’expédition et informe l’acheteur. */
     @Transactional
     public void markShipped(MarketplaceOrder order, User seller) {
         requireShippable(order);
@@ -103,7 +99,6 @@ public class OrderLifecycleService {
                 buyerOrderHref(order), order);
     }
 
-    /** Enregistre la réception du retour accepté par l’atelier. */
     @Transactional
     public void markReturnReceived(String sellerEmail, UUID orderId) {
         User seller = userRepository.getByEmail(sellerEmail);
@@ -122,7 +117,6 @@ public class OrderLifecycleService {
                 buyerOrderHref(order), order);
     }
 
-    /** Accepte ou refuse la demande de retour de l’acheteur. */
     @Transactional
     public void decideReturn(String sellerEmail, UUID orderId, ReturnDecisionRequest request) {
         User seller = userRepository.getByEmail(sellerEmail);
@@ -158,7 +152,6 @@ public class OrderLifecycleService {
                 buyerOrderHref(order), order);
     }
 
-    /** Exécute une opération de remboursement avec une clé stable pour ses reprises. */
     @Transactional
     public void refund(String sellerEmail, UUID orderId, RefundRequest request) {
         User seller = userRepository.getByEmail(sellerEmail);
@@ -178,7 +171,6 @@ public class OrderLifecycleService {
         }
     }
 
-    /** Confirme la réception d’une commande appartenant à l’acheteur. */
     @Transactional
     public void confirmDelivery(String buyerEmail, UUID orderId) {
         User buyer = userRepository.getByEmail(buyerEmail);
@@ -189,7 +181,6 @@ public class OrderLifecycleService {
         transitionToDelivered(order, OrderActorType.BUYER, buyer);
     }
 
-    /** Ouvre un retour dans la fenêtre prévue pour cette commande. */
     @Transactional
     public void requestReturn(String buyerEmail, UUID orderId, ReturnRequest request) {
         User buyer = userRepository.getByEmail(buyerEmail);
@@ -214,7 +205,6 @@ public class OrderLifecycleService {
                 sellerOrderHref(order), order);
     }
 
-    /** Ouvre un litige sur une commande payée de l’acheteur. */
     @Transactional
     public void openDispute(String buyerEmail, UUID orderId, OrderMessageRequest request) {
         User buyer = userRepository.getByEmail(buyerEmail);
@@ -240,7 +230,6 @@ public class OrderLifecycleService {
                 sellerOrderHref(order), order);
     }
 
-    /** Ajoute un message au fil accessible aux parties et à la plateforme. */
     @Transactional
     public void postMessage(String userEmail, UUID orderId, OrderMessageRequest request) {
         User user = userRepository.getByEmail(userEmail);
@@ -268,7 +257,6 @@ public class OrderLifecycleService {
                 isBuyer ? sellerOrderHref(order) : buyerOrderHref(order), order);
     }
 
-    /** Annule avant expédition avec remboursement intégral et remise en stock. */
     @Transactional
     public void cancel(String userEmail, UUID orderId, String reason) {
         User user = userRepository.getByEmail(userEmail);
@@ -294,7 +282,6 @@ public class OrderLifecycleService {
                 isBuyer ? sellerOrderHref(order) : buyerOrderHref(order), order);
     }
 
-    /** Réserve la résolution et le remboursement éventuel du litige à la plateforme. */
     @Transactional
     public void resolveDispute(String adminEmail, UUID orderId, DisputeResolutionRequest request) {
         User admin = userRepository.getByEmail(adminEmail);
@@ -325,7 +312,6 @@ public class OrderLifecycleService {
                 "Le litige sur " + itemLabel(order) + " est clos — " + request.resolution());
     }
 
-    /** Journalise le paiement déjà confirmé par le service de paiement. */
     @Transactional
     public void markPaid(MarketplaceOrder order) {
         int days = applyShipDueDate(order);
@@ -342,7 +328,6 @@ public class OrderLifecycleService {
                 buyerOrderHref(order), order);
     }
 
-    /** Fige la date d’expédition promise au moment du paiement. */
     private int applyShipDueDate(MarketplaceOrder order) {
         Instant now = Instant.now();
         int days = order.getProduct() != null
@@ -353,7 +338,6 @@ public class OrderLifecycleService {
         return days;
     }
 
-    /** Relit la commande avant de confirmer une livraison interne encore admissible. */
     @Transactional
     public void markDelivered(MarketplaceOrder order, OrderActorType actorType) {
         order = lockOrder(order.getId());
@@ -363,14 +347,12 @@ public class OrderLifecycleService {
         transitionToDelivered(order, actorType, null);
     }
 
-    /** Journalise le bordereau généré par l’atelier. */
     @Transactional
     public void recordLabelGenerated(MarketplaceOrder order, User seller) {
         record(order, OrderEventType.LABEL_GENERATED, OrderActorType.SELLER, seller,
                 trackingSummary(order));
     }
 
-    /** Applique le suivi transporteur et la livraison éventuelle sous verrou. */
     @Transactional
     public void applyTrackingUpdate(MarketplaceOrder order, TrackingStatus status, String label,
                                     String trackingNumber, String trackingUrl) {
@@ -399,7 +381,6 @@ public class OrderLifecycleService {
         notifyCarrierMilestone(order, status, label);
     }
 
-    /** Informe les parties des étapes de transport utiles. */
     private void notifyCarrierMilestone(MarketplaceOrder order, TrackingStatus status, String label) {
         if (status == TrackingStatus.OUT_FOR_DELIVERY) {
             notificationService.notify(order.getBuyer(), NotificationType.ORDER_SHIPPED,
@@ -416,7 +397,6 @@ public class OrderLifecycleService {
         }
     }
 
-    /** Relance une seule fois le vendeur pour une commande encore à expédier. */
     @Transactional
     public void remindSellerToShip(MarketplaceOrder order) {
         order = lockOrder(order.getId());
@@ -432,14 +412,12 @@ public class OrderLifecycleService {
                 sellerOrderHref(order), order);
     }
 
-    /** Reprend sous verrou un reversement encore admissible. */
     @Transactional
     public void retryRelease(MarketplaceOrder order) {
         order = lockOrder(order.getId());
         releaseFunds(order);
     }
 
-    /** Annule une réservation encore en attente et remet son stock une seule fois. */
     @Transactional
     public void cancelAbandoned(MarketplaceOrder order) {
         order = lockOrder(order.getId());
@@ -452,7 +430,6 @@ public class OrderLifecycleService {
         record(order, OrderEventType.CANCELLED, OrderActorType.SYSTEM, null, "Paiement non finalisé");
     }
 
-    /** Remet la quantité vendue en stock si sa déclinaison existe encore. */
     private void restock(MarketplaceOrder order) {
         if (order.getVariant() == null) {
             log.warn("Remise en stock impossible pour la commande {} : déclinaison supprimée", order.getId());
@@ -461,7 +438,6 @@ public class OrderLifecycleService {
         variantRepository.incrementStock(order.getVariant().getId(), Math.max(1, order.getQuantity()));
     }
 
-    /** Ouvre la fenêtre de retour et tente le reversement à la livraison. */
     private void transitionToDelivered(MarketplaceOrder order, OrderActorType actorType, User actor) {
         Instant now = Instant.now();
         order.setDeliveredAt(now);
@@ -478,7 +454,6 @@ public class OrderLifecycleService {
         releaseFunds(order);
     }
 
-    /** Clôture sous verrou une commande admissible sans litige ouvert. */
     @Transactional
     public void complete(MarketplaceOrder order) {
         order = lockOrder(order.getId());
@@ -498,7 +473,6 @@ public class OrderLifecycleService {
         releaseFunds(order);
     }
 
-    /** Tente un reversement et journalise son succès une seule fois. */
     private void releaseFunds(MarketplaceOrder order) {
         if (order.getStripeTransferId() != null) {
             return;
@@ -523,20 +497,17 @@ public class OrderLifecycleService {
                 sellerOrderHref(order), order);
     }
 
-    /** Applique le remboursement sans répéter la remise en stock. */
     private void applyRefund(MarketplaceOrder order, Integer requestedCents, String reason,
                              OrderActorType actorType, User actor) {
         applyRefund(order, requestedCents, reason, actorType, actor, OrderStatus.REFUNDED);
     }
 
-    /** Applique le remboursement sans répéter la remise en stock. */
     private void applyRefund(MarketplaceOrder order, Integer requestedCents, String reason,
                              OrderActorType actorType, User actor, OrderStatus finalStatus) {
         applyRefund(order, requestedCents, reason, actorType, actor, finalStatus,
                 order.getRefundedCents() + ":" + requestedCents);
     }
 
-    /** Applique le remboursement sans répéter la remise en stock. */
     private void applyRefund(MarketplaceOrder order, Integer requestedCents, String reason,
                              OrderActorType actorType, User actor, OrderStatus finalStatus, String operationKey) {
         if (order.getStatus() == OrderStatus.PENDING || order.getStatus() == OrderStatus.CANCELLED) {
@@ -573,26 +544,22 @@ public class OrderLifecycleService {
                 buyerOrderHref(order), order);
     }
 
-    /** Informe les deux parties sur leur suivi de commande. */
     private void notifyBoth(MarketplaceOrder order, NotificationType type, String title, String body) {
         notificationService.notify(order.getBuyer(), type, title, body, buyerOrderHref(order), order);
         notificationService.notify(order.getSeller(), type, title, body, sellerOrderHref(order), order);
     }
 
-    /** Ajoute un événement et ses pièces jointes au journal de commande. */
     private void record(MarketplaceOrder order, OrderEventType type, OrderActorType actorType,
                         User actor, String message) {
         record(order, type, actorType, actor, message, List.of());
     }
 
-    /** Ajoute un événement et ses pièces jointes au journal de commande. */
     private void record(MarketplaceOrder order, OrderEventType type, OrderActorType actorType,
                         User actor, String message, List<UUID> fileIds) {
         List<StoredFile> attachments = fileIds.isEmpty() ? List.of() : storedFileRepository.findAllById(fileIds);
         eventRepository.save(new OrderEvent(order, type, actorType, actor, message, attachments));
     }
 
-    /** Verrouille une commande et vérifie qu’elle appartient au vendeur. */
     @Transactional(propagation = Propagation.MANDATORY)
     public MarketplaceOrder requireSellerOrder(User seller, UUID orderId) {
         MarketplaceOrder order = lockOrder(orderId);
@@ -602,7 +569,6 @@ public class OrderLifecycleService {
         return order;
     }
 
-    /** Verrouille une commande et vérifie qu’elle appartient à l’acheteur. */
     private MarketplaceOrder requireBuyerOrder(User buyer, UUID orderId) {
         MarketplaceOrder order = lockOrder(orderId);
         if (order.getBuyer() == null || !order.getBuyer().getId().equals(buyer.getId())) {
@@ -611,7 +577,6 @@ public class OrderLifecycleService {
         return order;
     }
 
-    /** Refuse les paramètres modifiés et reconnaît une opération déjà validée. */
     private boolean isRefundReplay(MarketplaceOrder order, RefundRequest request) {
         if (request.operationId() == null) {
             return false;
@@ -630,7 +595,6 @@ public class OrderLifecycleService {
         return true;
     }
 
-    /** Relit la commande sous verrou avant de décider une transition. */
     private MarketplaceOrder lockOrder(UUID id) {
         MarketplaceOrder order = entityManager.find(MarketplaceOrder.class, id, LockModeType.PESSIMISTIC_WRITE);
         if (order == null) {
@@ -640,7 +604,6 @@ public class OrderLifecycleService {
         return order;
     }
 
-    /** Présente le nom de la pièce et sa déclinaison figée. */
     private String itemLabel(MarketplaceOrder order) {
         if (order.getProduct() == null) {
             return "ta commande";
@@ -649,7 +612,6 @@ public class OrderLifecycleService {
         return order.getVariantLabel() != null ? label + " (" + order.getVariantLabel() + ")" : label;
     }
 
-    /** Présente le transporteur et le numéro de suivi disponibles. */
     private String trackingSummary(MarketplaceOrder order) {
         if (order.getTrackingNumber() == null || order.getTrackingNumber().isBlank()) {
             return order.getCarrier() != null ? "Transporteur : " + order.getCarrier() + "." : "";
@@ -658,17 +620,14 @@ public class OrderLifecycleService {
                 + "Suivi " + order.getTrackingNumber();
     }
 
-    /** Construit le lien vers le suivi acheteur. */
     private String buyerOrderHref(MarketplaceOrder order) {
         return "/commande/suivi/?id=" + order.getId();
     }
 
-    /** Construit le lien vers le suivi vendeur. */
     private String sellerOrderHref(MarketplaceOrder order) {
         return "/commandes?order=" + order.getId();
     }
 
-    /** Formate les centimes en euros pour les messages. */
     private String formatCents(int cents) {
         return String.format("%.2f €", cents / 100.0).replace('.', ',');
     }

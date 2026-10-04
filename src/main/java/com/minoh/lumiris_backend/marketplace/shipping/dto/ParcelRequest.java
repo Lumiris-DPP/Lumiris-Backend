@@ -1,8 +1,5 @@
 package com.minoh.lumiris_backend.marketplace.shipping.dto;
 
-// Tout ce qu'un transporteur exige pour fabriquer un bordereau, exprimé sans vocabulaire de
-// prestataire : l'adaptateur traduit. `reference` est le numéro que l'atelier lira sur l'étiquette
-// et que le support retrouvera côté agrégateur.
 public record ParcelRequest(
         Address from,
         Address to,
@@ -10,7 +7,7 @@ public record ParcelRequest(
         int weightGrams,
         String reference
 ) {
-    /** Décrit les coordonnées nécessaires au transport du colis. */
+
     public record Address(
             String fullName,
             String line1,

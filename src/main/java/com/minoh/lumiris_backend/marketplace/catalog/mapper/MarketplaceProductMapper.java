@@ -10,11 +10,9 @@ import com.minoh.lumiris_backend.marketplace.catalog.dto.out.MarketplaceItemResp
 import com.minoh.lumiris_backend.marketplace.catalog.dto.out.ProductVariantResponse;
 import org.springframework.stereotype.Component;
 
-/** Recopie les champs du formulaire et assemble la réponse d’une annonce. */
 @Component
 public class MarketplaceProductMapper {
 
-    // Remplacement complet (PUT). dppForm résolu par le service (peut être null pour délier).
     public void applyUpdate(MarketplaceProduct p, UpdateProductRequest req, DppForm dppForm) {
         applyForm(p, req, dppForm);
         if (req.status() != null) {
@@ -22,9 +20,6 @@ public class MarketplaceProductMapper {
         }
     }
 
-    // Vue canonique d'un produit (CRUD, recherche, suggestions). Le score comparable
-    // provient exclusivement du DPP lié ; le reste de la présentation est résolu en lot
-    // par MarketplaceItemAssembler.
     public MarketplaceItemResponse toResponse(MarketplaceProduct p, IrisScore score,
                                               ProductPresentation presentation) {
         ArtisanProfile artisan = p.getArtisanProfile();
@@ -64,13 +59,10 @@ public class MarketplaceProductMapper {
         );
     }
 
-    /** Additionne le stock exposé des déclinaisons chargées. */
     private static int totalStock(ProductPresentation presentation) {
         return presentation.variants().stream().mapToInt(ProductVariantResponse::stock).sum();
     }
 
-    // Champs communs à la création et à la mise à jour (le statut, les déclinaisons et le guide des
-    // mesures sont traités par l'appelant).
     private void applyForm(MarketplaceProduct p, ProductForm req, DppForm dppForm) {
         p.setDppForm(dppForm);
         p.setName(req.name());
@@ -88,7 +80,6 @@ public class MarketplaceProductMapper {
         p.setPhotoUrl(req.photoUrl());
     }
 
-    /** Normalise la devise annoncée selon le comportement existant. */
     private static String normalizeCurrency(String currency) {
         return currency != null && !currency.isBlank() ? currency.toUpperCase() : "EUR";
     }

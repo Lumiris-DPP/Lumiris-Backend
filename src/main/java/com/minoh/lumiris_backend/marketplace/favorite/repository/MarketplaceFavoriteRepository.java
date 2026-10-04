@@ -10,15 +10,10 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
-/** Accède aux favoris et réserve atomiquement leurs alertes. */
 public interface MarketplaceFavoriteRepository extends JpaRepository<MarketplaceFavorite, UUID> {
 
-    /** Retrouve le favori précis de l’utilisateur pour cette pièce. */
     Optional<MarketplaceFavorite> findByUser_IdAndProduct_Id(UUID userId, UUID productId);
 
-    // Racine sur le produit pour que le join fetch de l'atelier reste sans ambiguïté, et surtout
-    // pour renvoyer le MÊME tuple (produit, score) que toutes les autres requêtes du catalogue :
-    // l'assembleur existant le consomme sans rien changer.
     @Query("""
             select p, s
             from MarketplaceProduct p
@@ -30,8 +25,6 @@ public interface MarketplaceFavoriteRepository extends JpaRepository<Marketplace
             """)
     List<Object[]> findScoredByUserId(@Param("userId") UUID userId);
 
-    // Candidats « il n'en reste qu'un » : le seuil porte sur le stock TOTAL de la pièce (le favori
-    // suit une annonce, pas une taille).
     @Query("""
             select f from MarketplaceFavorite f
             join fetch f.user
@@ -44,8 +37,6 @@ public interface MarketplaceFavoriteRepository extends JpaRepository<Marketplace
             """)
     List<MarketplaceFavorite> findLowStockCandidates(@Param("threshold") long threshold);
 
-    // Remise à zéro du détecteur de front dès que le stock repasse au-dessus du seuil : sans elle
-    // l'acheteur serait alerté une seule fois dans sa vie, même si la pièce se raréfie à nouveau.
     @Modifying
     @Query("""
             update MarketplaceFavorite f set f.lowStockNotifiedAt = null
@@ -56,10 +47,6 @@ public interface MarketplaceFavoriteRepository extends JpaRepository<Marketplace
             """)
     int clearLowStockFlags(@Param("threshold") long threshold);
 
-    // Candidats « le prix a baissé » : baisse d'au moins minDropCents ET d'au moins
-    // (100 - maxRatioPercent) %. Ratio en arithmétique entière — aucune comparaison flottante en SQL.
-    // Un seuil plat seul est du bruit sur un manteau à 400 €, un pourcentage seul en est sur une
-    // pièce à 20 €.
     @Query("""
             select f from MarketplaceFavorite f
             join fetch f.user
@@ -72,15 +59,11 @@ public interface MarketplaceFavoriteRepository extends JpaRepository<Marketplace
     List<MarketplaceFavorite> findPriceDropCandidates(@Param("minDropCents") int minDropCents,
                                                       @Param("maxRatioPercent") int maxRatioPercent);
 
-    // Revendications conditionnelles : le balayage tourne sur chaque instance, et un double tir
-    // signifierait un e-mail en double. Même mécanisme que le décrément de stock — on ne notifie que
-    // si l'update a effectivement affecté une ligne, le perdant de la course reste silencieux.
     @Modifying
     @Query("update MarketplaceFavorite f set f.lowStockNotifiedAt = :now "
             + "where f.id = :id and f.lowStockNotifiedAt is null")
     int claimLowStock(@Param("id") UUID id, @Param("now") Instant now);
 
-    /** Réserve atomiquement l’alerte de baisse de prix de ce favori. */
     @Modifying
     @Query("update MarketplaceFavorite f set f.lastPriceCents = :newPrice "
             + "where f.id = :id and f.lastPriceCents = :observedPrice")

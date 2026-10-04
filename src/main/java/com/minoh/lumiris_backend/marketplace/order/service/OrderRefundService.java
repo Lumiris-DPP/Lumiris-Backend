@@ -17,7 +17,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
-/** Exécute les remboursements Stripe et les reprises de fonds par opération. */
 @Service
 @RequiredArgsConstructor
 public class OrderRefundService {
@@ -26,16 +25,13 @@ public class OrderRefundService {
 
     private final StripeProperties properties;
 
-    /** Décrit les données de RefundOutcome pour les commandes. */
     public record RefundOutcome(String refundId, String transferReversalId, int amountCents) {}
 
-    /** Exécute une opération de remboursement avec une clé stable pour ses reprises. */
     @Transactional(propagation = Propagation.MANDATORY)
     public RefundOutcome refund(MarketplaceOrder order, int amountCents, String reason) {
         return refund(order, amountCents, reason, order.getRefundedCents() + ":" + amountCents);
     }
 
-    /** Exécute une opération de remboursement avec une clé stable pour ses reprises. */
     @Transactional(propagation = Propagation.MANDATORY)
     public RefundOutcome refund(MarketplaceOrder order, int amountCents, String reason, String operationKey) {
         properties.requireSecretKey();
@@ -68,12 +64,10 @@ public class OrderRefundService {
         return new RefundOutcome(refund.getId(), reversalId, amountCents);
     }
 
-    /** Calcule le solde encore remboursable de la commande. */
     public int refundableCents(MarketplaceOrder order) {
         return Math.max(0, order.getAmountTotalCents() + order.getShippingCents() - order.getRefundedCents());
     }
 
-    /** Calcule la part proportionnelle du vendeur selon la règle existante. */
     private long reversalAmount(MarketplaceOrder order, int refundCents) {
         int charged = order.getAmountTotalCents() + order.getShippingCents();
         if (charged <= 0) {
@@ -83,7 +77,6 @@ public class OrderRefundService {
         return Math.min(amount, order.getNetCents());
     }
 
-    /** Reprend les fonds du vendeur sous la clé stable de l’opération. */
     private String reverseTransfer(MarketplaceOrder order, long amount, String operationKey) {
         if (amount <= 0) {
             return null;

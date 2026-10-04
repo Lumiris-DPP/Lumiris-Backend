@@ -5,9 +5,6 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.util.UUID;
 
-// Une déclinaison dans le formulaire produit. `id` nul = création ; `version` porte le verrou
-// optimiste d'une déclinaison existante, pour qu'une sauvegarde partie d'un stock périmé échoue
-// en conflit au lieu d'écraser une vente concurrente.
 public record ProductVariantForm(
         UUID id,
         @Size(max = 40) String sizeLabel,

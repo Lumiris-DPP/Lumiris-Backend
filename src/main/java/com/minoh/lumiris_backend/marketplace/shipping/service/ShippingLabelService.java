@@ -22,14 +22,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-// Étiquette d'expédition en un clic. Remplace trois allers-retours par colis — recopier l'adresse
-// chez le transporteur, imprimer, revenir saisir le suivi — par une action unique : le bordereau
-// est fabriqué depuis l'adresse DÉJÀ stockée sur la commande, le suivi revient rempli, et la
-// commande passe expédiée sans aucune saisie.
-//
-// Rien n'est irréversible pour l'atelier : si l'agrégateur n'est pas configuré, ou refuse, la
-// saisie manuelle du suivi reste ouverte et reste de toute façon le chemin d'une remise en main
-// propre ou d'un transporteur hors agrégateur.
 @Service
 @RequiredArgsConstructor
 public class ShippingLabelService {
@@ -44,9 +36,6 @@ public class ShippingLabelService {
     private final StorageService storageService;
     private final OrderLifecycleService lifecycleService;
 
-    // Ce que l'UI vendeur doit savoir AVANT de proposer le bouton : l'intégration est-elle active,
-    // et l'atelier a-t-il de quoi expédier. Sans cet état, l'atelier découvrirait qu'il lui manque
-    // une adresse au moment précis où il essaie d'imprimer.
     @Transactional(readOnly = true)
     public ShippingLabelResponse.Availability availability(String sellerEmail) {
         if (!provider.configured()) {
@@ -59,7 +48,6 @@ public class ShippingLabelService {
         return new ShippingLabelResponse.Availability(true, provider.name(), addressReady);
     }
 
-    /** Crée et stocke le bordereau avant de marquer la commande expédiée. */
     @Transactional
     public ShippingLabelResponse generate(String sellerEmail, UUID orderId) {
         User seller = userRepository.getByEmail(sellerEmail);
@@ -99,9 +87,6 @@ public class ShippingLabelService {
                 label.trackingUrl());
     }
 
-    // L'adresse de livraison est saisie au checkout et validée à ce moment-là ; une commande
-    // antérieure à cette validation peut néanmoins être incomplète. Autant le dire ici plutôt que
-    // de laisser le transporteur renvoyer une erreur illisible.
     private void requireDeliverable(MarketplaceOrder order) {
         if (order.getShipToLine1() == null || order.getShipToPostalCode() == null
                 || order.getShipToCity() == null) {
@@ -110,7 +95,6 @@ public class ShippingLabelService {
         }
     }
 
-    /** Construit le colis depuis les adresses et le poids de la commande. */
     private ParcelRequest parcelFor(MarketplaceOrder order, ArtisanProfile profile) {
         MarketplaceProduct product = order.getProduct();
         int declaredWeight = product != null ? product.getWeightGrams() * Math.max(1, order.getQuantity()) : 0;
@@ -136,9 +120,6 @@ public class ShippingLabelService {
                 shortReference(order));
     }
 
-    // Le numéro de facture est la référence que l'atelier et l'acheteur partagent déjà ; à défaut
-    // (facture émise au paiement seulement), un préfixe de l'identifiant de commande suffit à
-    // retrouver le colis côté agrégateur.
     private static String shortReference(MarketplaceOrder order) {
         return order.getInvoiceNumber() != null
                 ? order.getInvoiceNumber()

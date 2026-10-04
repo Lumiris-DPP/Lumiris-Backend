@@ -11,14 +11,12 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
-/** Expose la préparation du paiement du panier de l’acheteur authentifié. */
 @RestController
 @RequiredArgsConstructor
 public class MarketplaceCheckoutController {
 
     private final DirectSaleService directSaleService;
 
-    /** Prépare une intention payable avec les réservations du panier. */
     @PostMapping("/api/marketplace/checkout/intent")
     ResponseEntity<PaymentIntentResponse> checkoutIntent(@Valid @RequestBody CartIntentRequest request,
                                                       @CurrentUserEmail String email) {

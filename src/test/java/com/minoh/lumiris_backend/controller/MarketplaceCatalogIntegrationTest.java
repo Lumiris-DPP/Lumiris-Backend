@@ -49,17 +49,11 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppContextSetup;
 
-/**
- * Catalogue marketplace par ses URL réelles (sécurité, validation, sérialisation), sur un vrai
- * PostgreSQL : publication, édition, archivage, suppression, rollback d'une annonce sur déclinaison
- * ou mesure invalide, recherche et tris, suggestions, piste d'audit et compteur de vues. Écrit avant
- * le découpage de MarketplaceService pour prouver que les contrats ne bougent pas.
- */
 @Tag("integration")
 @Testcontainers
 @SpringBootTest(properties = {
         "security.jwt.secret=0123456789012345678901234567890123456789012345678901234567890123",
-        // Sans clé, la création du Price Stripe de l'annonce est sautée : aucun appel réseau.
+
         "stripe.secret-key=",
         "stripe.publishable-key=",
         "stripe.webhook-secret=whsec_catalog_test",
@@ -75,7 +69,6 @@ import static org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppC
 })
 class MarketplaceCatalogIntegrationTest {
 
-    // Champs de MarketplaceItemResponse tels que sérialisés : le contrat de toutes les routes catalogue.
     private static final Set<String> ITEM_FIELDS = new TreeSet<>(List.of(
             "id", "artisanProfileId", "artisanName", "dppFormId", "name", "description", "category", "material",
             "originCountry", "priceCents", "currency", "stock", "variants", "sizeGuide", "shippingCents",
@@ -96,7 +89,6 @@ class MarketplaceCatalogIntegrationTest {
     @Autowired
     private JdbcTemplate jdbc;
 
-    // Le dispatcher est neutralisé : ces tests ne doivent pas envoyer de courriel réel.
     @MockitoBean
     private EmailOutboxDispatcher emailOutboxDispatcher;
 
@@ -121,8 +113,6 @@ class MarketplaceCatalogIntegrationTest {
         reset(decisionLogRecorder);
     }
 
-    // Publication : la conversion d'un passeport valide crée l'annonce, ses déclinaisons et son guide
-    // des mesures, visible ensuite du public par sa fiche et par son passeport.
     @Test
     void publish_createsTheListingWithVariantsAndSizeGuide() throws Exception {
         Atelier atelier = atelier();
@@ -144,7 +134,6 @@ class MarketplaceCatalogIntegrationTest {
         assertThat(call(200, get("/public/marketplace/products/by-dpp/" + dpp)).get("id").asText()).isEqualTo(id);
     }
 
-    // Édition : remplacement complet des déclinaisons (gardée, retirée, ajoutée) et du guide des mesures.
     @Test
     void edit_replacesVariantsAndSizeGuide() throws Exception {
         Atelier atelier = atelier();
@@ -167,7 +156,6 @@ class MarketplaceCatalogIntegrationTest {
         assertThat(updated.get("sizeGuide").get(0).get("sizeLabel").asText()).isEqualTo("L");
     }
 
-    // Une déclinaison dont le stock a bougé pendant la saisie est refusée en conflit, sans rien changer.
     @Test
     void edit_withStaleVariantVersion_isRefusedAndChangesNothing() throws Exception {
         Atelier atelier = atelier();
@@ -183,7 +171,6 @@ class MarketplaceCatalogIntegrationTest {
         assertUnchanged(created);
     }
 
-    // Une mesure pour une taille absente annule toute la mise à jour : nom, prix, déclinaisons et guide.
     @Test
     void edit_withSizeGuideForAbsentSize_rollsBackProductAndVariants() throws Exception {
         Atelier atelier = atelier();
@@ -201,7 +188,6 @@ class MarketplaceCatalogIntegrationTest {
         assertUnchanged(created);
     }
 
-    // Deux déclinaisons identiques à la publication : rien n'est créé, ni annonce ni déclinaison.
     @Test
     void publish_withDuplicateVariantCombination_createsNothing() throws Exception {
         Atelier atelier = atelier();
@@ -216,7 +202,6 @@ class MarketplaceCatalogIntegrationTest {
                 Integer.class, dpp)).isZero();
     }
 
-    // Archivage : l'annonce reste dans le catalogue de l'atelier mais sort du catalogue public.
     @Test
     void archive_removesTheListingFromThePublicCatalogue() throws Exception {
         Atelier atelier = atelier();
@@ -243,7 +228,6 @@ class MarketplaceCatalogIntegrationTest {
         });
     }
 
-    // Suppression : possible sans commande ; refusée en conflit dès qu'une commande existe.
     @Test
     void delete_withoutOrders_removesTheListing_andWithOrders_isRefused() throws Exception {
         Atelier atelier = atelier();
@@ -258,8 +242,6 @@ class MarketplaceCatalogIntegrationTest {
         call(200, get("/api/marketplace/products/" + sold).with(user(atelier.email()).roles("ARTISAN")));
     }
 
-    // Recherche : chaque tri rend l'ordre attendu et produit une décision auditable, persistée même si
-    // la recherche est en lecture seule (transaction séparée du recorder).
     @Test
     void search_sortsAndRecordsAnAuditableDecision() throws Exception {
         Atelier atelier = atelier();
@@ -297,7 +279,6 @@ class MarketplaceCatalogIntegrationTest {
         call(403, get("/api/marketplace/decision-logs/" + logId).with(user(atelier.email()).roles("ARTISAN")));
     }
 
-    // Piste d'audit en échec : la recherche répond quand même, avec un log transitoire non persisté.
     @Test
     void search_whenTheDecisionLogCannotBeWritten_stillAnswers() throws Exception {
         Atelier atelier = atelier();
@@ -311,8 +292,6 @@ class MarketplaceCatalogIntegrationTest {
         assertThat(result.get("decisionLog").get("id").isNull()).isTrue();
     }
 
-    // Suggestions : jusqu'à trois pièces de score au moins égal au scan, triées par score décroissant ;
-    // la catégorie s'élargit quand elle n'en compte pas trois, sans jamais baisser le seuil.
     @Test
     void suggest_returnsUpToThreeAboveTheScannedScore() throws Exception {
         Atelier sameCategory = atelier();
@@ -347,7 +326,6 @@ class MarketplaceCatalogIntegrationTest {
         assertThat(strict.get("decisionLog").get("sortKey").asText()).isEqualTo("IRIS_DESC_THEN_ATELIER_PLUS");
     }
 
-    // Panier et vues : fiches par identifiants (les inconnues absentes), compteur de vues incrémenté.
     @Test
     void cartLookupAndViews_useThePublicCatalogue() throws Exception {
         Atelier atelier = atelier();
@@ -360,16 +338,12 @@ class MarketplaceCatalogIntegrationTest {
                 UUID.fromString(id))).isEqualTo(1L);
     }
 
-    // Les déclinaisons ne s'écrivent que dans la transaction de leur annonce : appelées seules, refus.
     @Test
     void variantsCannotBeWrittenOutsideTheListingTransaction() {
         assertThatThrownBy(() -> variantService.seedDefaultVariant(new MarketplaceProduct(), 1))
                 .isInstanceOf(IllegalTransactionStateException.class);
     }
 
-    // Republication d'un passeport déjà en vente : même annonce (identifiant, vues), champs réécrits ;
-    // ceux que la requête ne renvoie pas reprennent leur valeur par défaut, et les déclinaisons comme
-    // le guide sont remplacés.
     @Test
     void republish_keepsTheListingAndResetsWhatIsNotSent() throws Exception {
         Atelier atelier = atelier();
@@ -405,8 +379,6 @@ class MarketplaceCatalogIntegrationTest {
         assertThat(again.get("sizeGuide").get(0).get("sizeLabel").asText()).isEqualTo("L");
     }
 
-    // Conversion sans déclinaisons : une seule déclinaison sans libellé, au stock demandé, puis à la
-    // quantité du passeport quand aucun stock n'est donné ; c'est la même déclinaison qui est réécrite.
     @Test
     void publishWithoutVariants_usesTheRequestedStockThenThePassportQuantity() throws Exception {
         Atelier atelier = atelier();
@@ -430,11 +402,8 @@ class MarketplaceCatalogIntegrationTest {
                 .isEqualTo(withStock.get("variants").get(0).get("id").asText());
     }
 
-    // ── Données et outils ───────────────────────────────────────────────────
-
     private record Atelier(UUID userId, String email, String category) {}
 
-    // Atelier abonné et encaissable, avec une catégorie propre au test pour isoler ses recherches.
     private Atelier atelier() {
         UUID user = UUID.randomUUID();
         String email = "atelier-" + user + "@lumiris.test";
@@ -457,7 +426,6 @@ class MarketplaceCatalogIntegrationTest {
         return email;
     }
 
-    // Passeport valide de l'atelier, avec son score Iris.
     private UUID dpp(Atelier atelier, String name, double irisTotal) {
         UUID dpp = UUID.randomUUID();
         jdbc.update("insert into dpp_forms (id, user_id, status, product_name, product_category, quantity) "
@@ -478,7 +446,6 @@ class MarketplaceCatalogIntegrationTest {
                 .content(convertBody("M", "Ecru").replace("\"priceCents\":8900", "\"priceCents\":" + priceCents)));
     }
 
-    // Publication à deux déclinaisons : S Ecru (stock 3), puis la seconde (stock 1), et une mesure pour S.
     private static String convertBody(String secondSize, String secondColor) {
         return "{\"priceCents\":8900,\"currency\":\"EUR\",\"material\":\"Lin\",\"shippingCents\":690,"
                 + "\"preparationDays\":2,\"weightGrams\":600,\"status\":\"PUBLISHED\",\"variants\":["
@@ -503,7 +470,6 @@ class MarketplaceCatalogIntegrationTest {
         return "{\"sizeLabel\":\"" + size + "\",\"label\":\"" + label + "\",\"valueMm\":" + valueMm + ",\"position\":0}";
     }
 
-    // Vérifie en base qu'une mise à jour refusée n'a rien laissé : produit, déclinaisons et guide.
     private void assertUnchanged(JsonNode created) {
         UUID id = UUID.fromString(created.get("id").asText());
         assertThat(jdbc.queryForObject("select name from marketplace_products where id = ?", String.class, id))
@@ -550,7 +516,6 @@ class MarketplaceCatalogIntegrationTest {
         return ids;
     }
 
-    // Mot alphabétique unique : isole les recherches texte et les catégories d'un test à l'autre.
     private static String uniqueWord() {
         StringBuilder word = new StringBuilder();
         for (char c : UUID.randomUUID().toString().replace("-", "").substring(0, 10).toCharArray()) {

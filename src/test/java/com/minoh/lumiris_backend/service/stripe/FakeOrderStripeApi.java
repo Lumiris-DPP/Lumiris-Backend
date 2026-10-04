@@ -14,7 +14,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-/** Simule les remboursements et reversements Stripe sur un serveur HTTP local. */
 final class FakeOrderStripeApi implements AutoCloseable {
     private final HttpServer server;
     private final ExecutorService executor = Executors.newCachedThreadPool();
@@ -28,7 +27,6 @@ final class FakeOrderStripeApi implements AutoCloseable {
     private volatile CountDownLatch entered;
     private volatile CountDownLatch release;
 
-    /** Démarre le serveur et redirige le SDK Stripe. */
     FakeOrderStripeApi() throws IOException {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/v1/", this::handle);
@@ -37,42 +35,33 @@ final class FakeOrderStripeApi implements AutoCloseable {
         Stripe.overrideApiBase("http://127.0.0.1:" + server.getAddress().getPort());
     }
 
-    /** Prépare une pause contrôlée lors du prochain remboursement. */
     void holdRefund() {
         entered = new CountDownLatch(1);
         release = new CountDownLatch(1);
     }
 
-    /** Attend que le remboursement ait atteint Stripe. */
     boolean awaitRefund() throws InterruptedException {
         return entered.await(10, TimeUnit.SECONDS);
     }
 
-    /** Autorise la réponse au remboursement en attente. */
     void releaseRefund() {
         if (release != null) release.countDown();
     }
 
-    /** Rend le prochain remboursement indisponible sans reprise automatique du SDK. */
     void failRefund(boolean value) {
         failRefund = value;
     }
 
-    /** Rend les reversements indisponibles pour vérifier leur reprise. */
     void failTransfer(boolean value) {
         failTransfer = value;
     }
 
-    /** Compte les remboursements réellement créés. */
     int refunds() { return refunds.get(); }
 
-    /** Compte les reprises de fonds réellement créées. */
     int reversals() { return reversals.get(); }
 
-    /** Compte les reversements réellement créés. */
     int transfers() { return transfers.get(); }
 
-    /** Efface les opérations du scénario précédent. */
     void reset() {
         responses.clear();
         parameters.clear();
@@ -85,7 +74,6 @@ final class FakeOrderStripeApi implements AutoCloseable {
         release = null;
     }
 
-    /** Ferme le serveur et restaure l'adresse du SDK. */
     @Override
     public void close() {
         releaseRefund();
@@ -94,7 +82,6 @@ final class FakeOrderStripeApi implements AutoCloseable {
         Stripe.overrideApiBase(Stripe.LIVE_API_BASE);
     }
 
-    /** Répond au SDK en conservant les effets sous leur clé d'idempotence. */
     private void handle(HttpExchange exchange) throws IOException {
         String path = exchange.getRequestURI().getPath();
         String params = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
@@ -133,7 +120,6 @@ final class FakeOrderStripeApi implements AutoCloseable {
         respond(exchange, 200, body);
     }
 
-    /** Écrit une réponse JSON au client HTTP. */
     private void respond(HttpExchange exchange, int status, String body) throws IOException {
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().set("Content-Type", "application/json");

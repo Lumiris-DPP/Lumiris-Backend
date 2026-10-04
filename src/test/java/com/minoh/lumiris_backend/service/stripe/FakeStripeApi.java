@@ -21,15 +21,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-// API Stripe de test, servie par le serveur HTTP du JDK : le SDK réel y est redirigé par
-// Stripe.overrideApiBase, ce qui fonctionne sur tous les threads (Mockito ne peut pas simuler les
-// méthodes statiques avec le mock-maker « subclass » du projet). Elle reproduit la règle documentée
-// des clés d'idempotence : même clé et mêmes paramètres → même réponse ; même clé et paramètres
-// différents → erreur 400 idempotency_error ; même clé pendant le traitement de la première →
-// conflit 409 idempotency_key_in_use, que le SDK rejoue.
 final class FakeStripeApi implements AutoCloseable {
 
-    // Montant maximal d'un PaymentIntent en euros chez Stripe (999 999,99 €).
     private static final long MAX_AMOUNT = 99_999_999L;
 
     record Request(String method, String path, String idempotencyKey, Map<String, String> params) {}
@@ -48,7 +41,6 @@ final class FakeStripeApi implements AutoCloseable {
     private volatile long processingMillis;
     private volatile boolean unavailable;
 
-    // Démarre le faux Stripe local et y dirige les appels du SDK.
     FakeStripeApi() throws IOException {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.setExecutor(Executors.newCachedThreadPool());
@@ -57,55 +49,42 @@ final class FakeStripeApi implements AutoCloseable {
         Stripe.overrideApiBase("http://127.0.0.1:" + server.getAddress().getPort());
     }
 
-    // Les réponses de création attendent qu'un nombre donné d'appels soit arrivé : les transactions
-    // concurrentes ont alors toutes passé les contrôles, et reprennent ensemble avant qu'aucune n'ait
-    // réservé ni validé.
     void holdCreationsUntil(int parties) {
         creationBarrier = new CyclicBarrier(parties);
     }
 
-    // Synchronise les annulations concurrentes avec la même borne que les créations.
     void holdCancellationsUntil(int parties) {
         cancellationBarrier = new CyclicBarrier(parties);
     }
 
-    // Exécute une action sur le thread HTTP à la prochaine annulation pour croiser un webhook entre les phases.
     void onNextCancellation(Runnable action) {
         cancellationAction = action;
     }
 
-    // Allonge le traitement d'une création : une seconde requête de même clé arrive alors pendant
-    // que la première est en cours, et reçoit le conflit 409 que Stripe renvoie dans ce cas.
     void slowCreations(long millis) {
         processingMillis = millis;
     }
 
-    // Simule un Stripe injoignable : toute requête répond 500 sans nouvelle tentative du SDK.
     void setUnavailable(boolean unavailable) {
         this.unavailable = unavailable;
     }
 
-    // Change l'état courant d'une intention sans réécrire sa réponse de création mémorisée.
     void setStatus(String paymentIntentId, String status) {
         statusById.put(paymentIntentId, status);
     }
 
-    // Relit l'état courant de l'intention simulée.
     String status(String paymentIntentId) {
         return statusById.get(paymentIntentId);
     }
 
-    // Rend une copie des requêtes reçues pour les assertions.
     List<Request> requests() {
         return List.copyOf(requests);
     }
 
-    // Compte les appels d'une méthode dont la route commence par le préfixe donné.
     long count(String method, String pathPrefix) {
         return requests.stream().filter(r -> r.method().equals(method) && r.path().startsWith(pathPrefix)).count();
     }
 
-    // Efface les données et les simulations du scénario précédent.
     void reset() {
         requests.clear();
         byIdempotencyKey.clear();
@@ -118,14 +97,12 @@ final class FakeStripeApi implements AutoCloseable {
         unavailable = false;
     }
 
-    // Arrête le serveur local et restaure l'adresse habituelle du SDK.
     @Override
     public void close() {
         Stripe.overrideApiBase(Stripe.LIVE_API_BASE);
         server.stop(0);
     }
 
-    // Journalise la requête et la dirige vers l'opération Stripe simulée.
     private void handle(HttpExchange exchange) throws IOException {
         String method = exchange.getRequestMethod();
         String path = exchange.getRequestURI().getPath();
@@ -149,7 +126,6 @@ final class FakeStripeApi implements AutoCloseable {
         }
     }
 
-    // Vérifie les bornes Stripe et renvoie une création idempotente ou son conflit temporaire.
     private void create(HttpExchange exchange, String key, Map<String, String> params) throws IOException {
         if (key != null && key.length() > 255) {
             respond(exchange, 400, error("invalid_request_error", null, "Idempotency key exceeds 255 characters."));
@@ -171,9 +147,6 @@ final class FakeStripeApi implements AutoCloseable {
         respond(exchange, response.status(), response.body());
     }
 
-    // Comme chez Stripe : la première requête d'une clé crée le PaymentIntent ; une requête de même
-    // clé arrivée pendant ce traitement reçoit un conflit (null ici) ; les suivantes reçoivent la même
-    // réponse, ou une erreur si leurs paramètres diffèrent.
     private Stored decide(String key, Map<String, String> params) {
         synchronized (this) {
             Stored previous = key != null ? byIdempotencyKey.get(key) : null;
@@ -198,7 +171,6 @@ final class FakeStripeApi implements AutoCloseable {
         }
     }
 
-    // Retient brièvement une création pour simuler un traitement concurrent.
     private static void sleep(long millis) {
         if (millis <= 0) {
             return;
@@ -210,7 +182,6 @@ final class FakeStripeApi implements AutoCloseable {
         }
     }
 
-    // Rend l'état actuel de l'intention, indépendamment de la réponse de création mémorisée.
     private void retrieve(HttpExchange exchange, String id) throws IOException {
         if (!statusById.containsKey(id)) {
             respond(exchange, 404, error("invalid_request_error", "resource_missing", "No such payment_intent."));
@@ -219,7 +190,6 @@ final class FakeStripeApi implements AutoCloseable {
         respond(exchange, 200, paymentIntent(id, Map.of()));
     }
 
-    // Annule une intention encore payable et refuse une intention déjà payée ou annulée.
     private void cancel(HttpExchange exchange, String id) throws IOException {
         String status = statusById.get(id);
         if (status == null) {
@@ -241,12 +211,10 @@ final class FakeStripeApi implements AutoCloseable {
         respond(exchange, 200, paymentIntent(id, Map.of()));
     }
 
-    // Synchronise les créations avec une attente bornée à dix secondes.
     private void awaitBarrier() {
         awaitBarrier(creationBarrier);
     }
 
-    // Attend une barrière du faux Stripe pendant dix secondes au maximum.
     private void awaitBarrier(CyclicBarrier barrier) {
         if (barrier == null) {
             return;
@@ -258,7 +226,6 @@ final class FakeStripeApi implements AutoCloseable {
         }
     }
 
-    // Sérialise l'intention simulée dans le format attendu par le SDK Stripe.
     private String paymentIntent(String id, Map<String, String> params) {
         return "{\"id\":\"" + id + "\",\"object\":\"payment_intent\",\"status\":\"" + statusById.get(id) + "\","
                 + "\"client_secret\":\"" + id + "_secret_test\","
@@ -267,13 +234,11 @@ final class FakeStripeApi implements AutoCloseable {
                 + "\"metadata\":{}}";
     }
 
-    // Construit le corps JSON d'une erreur Stripe simulée.
     private static String error(String type, String code, String message) {
         return "{\"error\":{\"type\":\"" + type + "\"," + (code != null ? "\"code\":\"" + code + "\"," : "")
                 + "\"message\":\"" + message + "\"}}";
     }
 
-    // Décode les paramètres du formulaire envoyé par le SDK.
     private static Map<String, String> parseForm(InputStream body) throws IOException {
         String raw = new String(body.readAllBytes(), StandardCharsets.UTF_8);
         Map<String, String> params = new TreeMap<>();
@@ -289,7 +254,6 @@ final class FakeStripeApi implements AutoCloseable {
         return params;
     }
 
-    // Envoie la réponse JSON avec son statut HTTP et ferme son flux.
     private static void respond(HttpExchange exchange, int status, String body) throws IOException {
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().add("Content-Type", "application/json");

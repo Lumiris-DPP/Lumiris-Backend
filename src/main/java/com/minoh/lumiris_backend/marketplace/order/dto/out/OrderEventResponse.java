@@ -6,7 +6,6 @@ import java.util.List;
 import java.util.UUID;
 import java.util.function.Function;
 
-/** Décrit les données de OrderEventResponse pour les commandes. */
 public record OrderEventResponse(
         UUID id,
         String type,
@@ -16,7 +15,6 @@ public record OrderEventResponse(
         Instant createdAt
 ) {
 
-    /** Construit la réponse à partir des données persistantes de la commande. */
     public static OrderEventResponse from(OrderEvent e, Function<UUID, String> presign) {
         return new OrderEventResponse(
                 e.getId(),

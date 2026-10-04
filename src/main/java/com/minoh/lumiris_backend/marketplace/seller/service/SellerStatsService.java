@@ -23,12 +23,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-// LUMIRIS-22 · Agrégats du tableau de bord vendeur (ATELIER) : ventes, CA net, garde-robe, vues.
 @Service
 @RequiredArgsConstructor
 public class SellerStatsService {
 
-    // Une commande "vendue" = encaissée et non remboursée, à tout stade du cycle de vie.
     private static final Set<OrderStatus> SOLD = OrderStatus.sold();
 
     private final MarketplaceOrderRepository orderRepository;
@@ -37,7 +35,6 @@ public class SellerStatsService {
     private final UserRepository userRepository;
     private final PayoutScheduleResolver payoutScheduleResolver;
 
-    /** Agrège les ventes, les vues et les pièces de la garde-robe de l’atelier. */
     @Transactional(readOnly = true)
     public SellerStatsResponse getStats(String userEmail) {
         User artisan = requireArtisan(userEmail);
@@ -59,7 +56,6 @@ public class SellerStatsService {
         );
     }
 
-    // Historique des ventes de l'atelier (hors commandes non confirmées).
     @Transactional(readOnly = true)
     public List<SellerSaleResponse> getSales(String userEmail) {
         User artisan = requireArtisan(userEmail);
@@ -69,7 +65,6 @@ public class SellerStatsService {
                 .toList();
     }
 
-    // Trésorerie escrow : montants nets retenus (en attente d'expédition) vs déjà reversés.
     @Transactional(readOnly = true)
     public SellerEarningsResponse getEarnings(String userEmail) {
         User artisan = requireArtisan(userEmail);
@@ -80,9 +75,6 @@ public class SellerStatsService {
         );
     }
 
-    // Échéancier daté : une ligne par versement attendu, la plus proche en tête. Les commandes déjà
-    // versées en sont absentes — leur détail vit dans l'écran des commandes, et un échéancier qui
-    // reprendrait le passé cesserait de répondre à la seule question qu'il traite : quand suis-je payé.
     @Transactional(readOnly = true)
     public SellerPayoutScheduleResponse getPayoutSchedule(String userEmail) {
         User artisan = requireArtisan(userEmail);
@@ -104,7 +96,6 @@ public class SellerStatsService {
         );
     }
 
-    /** Décrit le net retenu et l’échéance d’une vente. */
     private SellerPayoutEntryResponse toPayoutEntry(MarketplaceOrder order) {
         PayoutScheduleResolver.PayoutForecast forecast = payoutScheduleResolver.forecast(order);
         return new SellerPayoutEntryResponse(
@@ -120,7 +111,6 @@ public class SellerStatsService {
         );
     }
 
-    /** Additionne les nets des commandes retenues par le prédicat. */
     private static long sumWhere(List<SellerPayoutEntryResponse> entries, PayoutExpectation expectation) {
         return entries.stream()
                 .filter(e -> e.expectation() == expectation)
@@ -128,7 +118,6 @@ public class SellerStatsService {
                 .sum();
     }
 
-    /** Refuse l’accès aux statistiques d’un utilisateur sans rôle artisan. */
     private User requireArtisan(String userEmail) {
         User user = userRepository.getByEmail(userEmail);
         if (user.getRole() != UserRole.ARTISAN) {

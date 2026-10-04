@@ -19,8 +19,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-// LUMIRIS-22 · Onboarding vendeur Stripe Connect (Express). La plateforme crée le compte connecté,
-// génère un lien d'onboarding hébergé, et suit charges_enabled/payouts_enabled (payouts nets de commission).
 @Service
 @RequiredArgsConstructor
 public class SellerConnectService {
@@ -31,8 +29,6 @@ public class SellerConnectService {
     private final SellerAccountRepository sellerAccountRepository;
     private final UserRepository userRepository;
 
-    // Crée (si besoin) le compte Express de l'artisan et renvoie un lien d'onboarding hébergé
-    // (repli/redirection ; l'UI ATELIER privilégie désormais l'onboarding EMBARQUÉ, cf. createOnboardingSession).
     @Transactional
     public String startOnboarding(String userEmail) {
         properties.requireSecretKey();
@@ -49,7 +45,6 @@ public class SellerConnectService {
         });
     }
 
-    // Renvoie l'id du compte Connect de l'artisan, en le créant + persistant au premier appel.
     private String ensureAccountId(User user) throws StripeException {
         SellerAccount existing = sellerAccountRepository.findByUser_Id(user.getId()).orElse(null);
         if (existing != null) {
@@ -71,7 +66,6 @@ public class SellerConnectService {
         return created.getId();
     }
 
-    /** Relit le compte Connect puis expose ses capacités actuelles. */
     @Transactional
     public SellerStatusResponse getStatus(String userEmail) {
         User user = requireSeller(userEmail);
@@ -89,7 +83,6 @@ public class SellerConnectService {
         return toStatus(account);
     }
 
-    // Webhook account.updated : synchronise l'état du compte connecté.
     @Transactional
     public void syncFromStripe(String stripeAccountId) {
         sellerAccountRepository.findByStripeAccountId(stripeAccountId).ifPresent(account -> {
@@ -104,7 +97,6 @@ public class SellerConnectService {
         });
     }
 
-    /** Mémorise le compte Connect associé au vendeur. */
     private void persistAccount(User user, String accountId, Account stripeAccount) {
         SellerAccount account = new SellerAccount();
         account.setUser(user);
@@ -113,20 +105,16 @@ public class SellerConnectService {
         sellerAccountRepository.save(account);
     }
 
-    /** Recopie les capacités reçues du compte Connect. */
     private void applyStripeState(SellerAccount account, Account stripeAccount) {
         account.setChargesEnabled(Boolean.TRUE.equals(stripeAccount.getChargesEnabled()));
         account.setPayoutsEnabled(Boolean.TRUE.equals(stripeAccount.getPayoutsEnabled()));
         account.setOnboardingCompleted(Boolean.TRUE.equals(stripeAccount.getDetailsSubmitted()));
     }
 
-    /** Construit l’état vendeur depuis son compte Connect persisté. */
     private SellerStatusResponse toStatus(SellerAccount a) {
         return new SellerStatusResponse(true, a.isOnboardingCompleted(), a.isChargesEnabled(), a.isPayoutsEnabled());
     }
 
-    // Artisan (vente directe) ou retoucheur (devis de réparation) : mêmes comptes Connect, même
-    // mécanique de reversement net de commission.
     private User requireSeller(String email) {
         User user = userRepository.getByEmail(email);
         if (user.getRole() != UserRole.ARTISAN && user.getRole() != UserRole.REPAIRER) {

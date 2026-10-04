@@ -18,7 +18,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** Expose les commandes possédées par l’acheteur. */
 @Service
 @RequiredArgsConstructor
 public class BuyerOrderService {
@@ -29,7 +28,6 @@ public class BuyerOrderService {
     private final WardrobeItemRepository wardrobeItemRepository;
     private final UserRepository userRepository;
 
-    /** Liste les commandes de l’acheteur connecté. */
     @Transactional(readOnly = true)
     public List<OrderResponse> getMyOrders(String userEmail) {
         User user = userRepository.getByEmail(userEmail);
@@ -37,7 +35,6 @@ public class BuyerOrderService {
                 .stream().map(OrderResponse::from).toList();
     }
 
-    /** Charge le détail d’une commande appartenant à l’acheteur. */
     @Transactional(readOnly = true)
     public OrderDetailResponse getMyOrder(String userEmail, UUID orderId) {
         MarketplaceOrder order = requireOwned(userEmail, orderId);
@@ -45,7 +42,6 @@ public class BuyerOrderService {
                 storageService::getPresignedUrl);
     }
 
-    /** Charge les lignes du paiement appartenant à l’acheteur. */
     @Transactional(readOnly = true)
     public OrderGroupResponse getMyOrderGroup(String userEmail, String paymentIntentId) {
         User user = userRepository.getByEmail(userEmail);
@@ -58,7 +54,6 @@ public class BuyerOrderService {
         return OrderGroupResponse.from(paymentIntentId, orders);
     }
 
-    /** Liste les pièces possédées par l’acheteur. */
     @Transactional(readOnly = true)
     public List<WardrobeItemResponse> getWardrobe(String userEmail) {
         User user = userRepository.getByEmail(userEmail);
@@ -66,7 +61,6 @@ public class BuyerOrderService {
                 .stream().map(WardrobeItemResponse::from).toList();
     }
 
-    /** Refuse une commande absente ou appartenant à un autre acheteur. */
     private MarketplaceOrder requireOwned(String userEmail, UUID orderId) {
         User user = userRepository.getByEmail(userEmail);
         return orderRepository.findById(orderId)

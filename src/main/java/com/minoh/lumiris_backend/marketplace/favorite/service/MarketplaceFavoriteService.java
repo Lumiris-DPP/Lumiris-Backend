@@ -16,9 +16,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-// Liste d'envies de l'acheteur. Sur des pièces uniques à prix artisanal, la décision n'est presque
-// jamais prise au premier passage : le favori est le seul moyen de revenir à une pièce vue la
-// veille, et le destinataire des alertes de rupture et de baisse de prix.
 @Service
 @RequiredArgsConstructor
 public class MarketplaceFavoriteService {
@@ -28,7 +25,6 @@ public class MarketplaceFavoriteService {
     private final UserRepository userRepository;
     private final MarketplaceItemAssembler assembler;
 
-    /** Ajoute une pièce publiée aux favoris sans doubler une entrée existante. */
     @Transactional
     public void add(String email, UUID productId) {
         User user = userRepository.getByEmail(email);
@@ -46,7 +42,6 @@ public class MarketplaceFavoriteService {
         favoriteRepository.save(favorite);
     }
 
-    /** Retire uniquement le favori de cet acheteur. */
     @Transactional
     public void remove(String email, UUID productId) {
         User user = userRepository.getByEmail(email);
@@ -54,9 +49,6 @@ public class MarketplaceFavoriteService {
                 .ifPresent(favoriteRepository::delete);
     }
 
-    // Volontairement SANS le filtre d'achetabilité appliqué au catalogue : l'acheteur a explicitement
-    // demandé ces pièces, et faire disparaître une ligne de sa propre liste est pire que l'afficher
-    // indisponible. La réponse porte déjà statut et stock, le front sait quoi griser.
     @Transactional(readOnly = true)
     public List<MarketplaceItemResponse> list(String email) {
         User user = userRepository.getByEmail(email);

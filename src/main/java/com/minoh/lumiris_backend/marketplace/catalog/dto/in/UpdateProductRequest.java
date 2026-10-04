@@ -13,9 +13,6 @@ import jakarta.validation.constraints.Size;
 import java.util.List;
 import java.util.UUID;
 
-// Mise à jour (remplacement complet) d'un produit du catalogue artisan.
-// Les champs numériques ajoutés sont des wrappers @NotNull et non des primitifs : un client qui
-// oublie l'un d'eux reçoit un 400 au lieu d'écraser silencieusement la donnée par 0.
 public record UpdateProductRequest(
         @NotBlank @Size(max = 255) String name,
         @Size(max = 4000) String description,

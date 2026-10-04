@@ -12,12 +12,6 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
-// Envoie une alerte de favori dans sa PROPRE transaction : un balayage de plusieurs centaines
-// d'envois ne doit pas tenir une transaction ouverte pendant des minutes, et l'échec de l'un ne
-// doit pas annuler les autres.
-//
-// La revendication conditionnelle est la garde anti-doublon : le job tourne sur chaque instance, et
-// un double tir signifierait un e-mail en double. On ne notifie que si l'update a affecté une ligne.
 @Component
 @RequiredArgsConstructor
 public class FavoriteAlertRecorder {
@@ -25,14 +19,11 @@ public class FavoriteAlertRecorder {
     private final MarketplaceFavoriteRepository favoriteRepository;
     private final NotificationService notificationService;
 
-    // Détecteur de front : un favori dont la pièce est repassée au-dessus du seuil redevient
-    // alertable. Sans cette remise à zéro, l'acheteur ne serait prévenu qu'une fois dans sa vie.
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void resetLowStockFlags(long threshold) {
         favoriteRepository.clearLowStockFlags(threshold);
     }
 
-    /** Réserve puis envoie une alerte de stock faible une seule fois. */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public boolean sendLowStock(MarketplaceFavorite favorite) {
         if (favoriteRepository.claimLowStock(favorite.getId(), Instant.now()) == 0) {
@@ -47,7 +38,6 @@ public class FavoriteAlertRecorder {
         return true;
     }
 
-    /** Réserve puis envoie une alerte de baisse de prix une seule fois. */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public boolean sendPriceDrop(MarketplaceFavorite favorite) {
         int previousPrice = favorite.getLastPriceCents();
@@ -64,13 +54,10 @@ public class FavoriteAlertRecorder {
         return true;
     }
 
-    // L'app mobile est exportée en statique avec un slash final : sans lui, la notification pointe
-    // sur une 404.
     private static String productHref(MarketplaceProduct product) {
         return "/boutique/produit/?id=" + product.getId();
     }
 
-    /** Formate les centimes en euros pour le message affiché. */
     private static String formatCents(int cents) {
         return String.format(Locale.ROOT, "%.2f", cents / 100.0).replace('.', ',') + " €";
     }

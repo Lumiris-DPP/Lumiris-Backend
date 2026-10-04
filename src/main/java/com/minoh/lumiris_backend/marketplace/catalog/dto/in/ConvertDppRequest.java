@@ -9,7 +9,6 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.util.List;
 
-/** Décrit les champs validés pour publier une pièce issue d’un passeport. */
 public record ConvertDppRequest(
         @Min(0) int priceCents,
         @Size(max = 3) String currency,

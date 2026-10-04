@@ -18,7 +18,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/** Délègue les décisions de la plateforme sur les litiges. */
 @RestController
 @RequestMapping("/api/admin/disputes")
 @RequiredArgsConstructor
@@ -27,13 +26,11 @@ public class AdminDisputeController {
     private final DisputeService disputeService;
     private final OrderLifecycleService lifecycleService;
 
-    /** Délègue l’action listOpen au service de commandes. */
     @GetMapping
     ResponseEntity<List<SellerOrderResponse>> listOpen() {
         return ResponseEntity.ok(disputeService.listOpen());
     }
 
-    /** Ajoute un message au fil accessible aux parties et à la plateforme. */
     @PostMapping("/{orderId}/messages")
     ResponseEntity<Void> postMessage(@PathVariable UUID orderId,
                                      @Valid @RequestBody OrderMessageRequest request,
@@ -42,7 +39,6 @@ public class AdminDisputeController {
         return ResponseEntity.noContent().build();
     }
 
-    /** Délègue l’action resolve au service de commandes. */
     @PostMapping("/{orderId}/resolve")
     ResponseEntity<Void> resolve(@PathVariable UUID orderId,
                                  @Valid @RequestBody DisputeResolutionRequest request,

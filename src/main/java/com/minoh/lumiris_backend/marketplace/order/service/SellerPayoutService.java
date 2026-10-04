@@ -21,7 +21,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
-/** Reverse les fonds au vendeur après livraison sans écrire le statut. */
 @Service
 @RequiredArgsConstructor
 public class SellerPayoutService {
@@ -32,7 +31,6 @@ public class SellerPayoutService {
     private final StripeProperties properties;
     private final SellerAccountRepository sellerAccountRepository;
 
-    /** Tente le reversement sans annuler la livraison en cas de refus métier ou de panne Stripe. */
     @Transactional(propagation = Propagation.MANDATORY,
             noRollbackFor = {BillingException.class, BillingValidationException.class})
     public Optional<String> createTransfer(MarketplaceOrder order) {
@@ -67,7 +65,6 @@ public class SellerPayoutService {
         }
     }
 
-    /** Retrouve la charge capturée associée au paiement de la commande. */
     private String resolveChargeId(String paymentIntentId) throws StripeException {
         if (paymentIntentId == null) {
             throw new BillingValidationException("Aucun paiement rattaché à cette vente.");

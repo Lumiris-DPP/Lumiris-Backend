@@ -15,8 +15,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-// File d'arbitrage de la plateforme. La vue reprend le DTO vendeur : l'arbitre a besoin
-// exactement des mêmes éléments (montants, adresse, suivi, historique) pour trancher.
 @Service
 @RequiredArgsConstructor
 public class DisputeService {
@@ -25,7 +23,6 @@ public class DisputeService {
     private final OrderEventRepository eventRepository;
     private final StorageService storageService;
 
-    /** Présente les commandes dont le litige attend un arbitrage. */
     @Transactional(readOnly = true)
     public List<SellerOrderResponse> listOpen() {
         List<MarketplaceOrder> orders = orderRepository.findByDisputeStatusOrderByDisputeOpenedAtAsc(DisputeStatus.OPEN);

@@ -19,15 +19,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-// Piste d'audit des tris du catalogue public : chaque recherche et chaque suggestion laisse une
-// décision horodatée, qui prouve que la commission n'a pas compté, relisible par l'audit interne.
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class MarketplaceDecisionLogService {
 
-    // Borne la taille d'une ligne de log de décision : un SEARCH peut trier tout le catalogue,
-    // et ces lignes append-only sont écrites par un endpoint public (croissance non prunable).
     private static final int MAX_DECISION_LOG_ENTRIES = 500;
 
     private final MarketplaceDecisionLogRepository decisionLogRepository;
@@ -36,11 +32,6 @@ public class MarketplaceDecisionLogService {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    // Best-effort : un échec d'écriture de la piste d'audit ne doit JAMAIS faire échouer ni rollback la
-    // lecture (search/suggest). Deux choses le garantissent : DecisionLogRecorder écrit dans sa propre
-    // transaction (REQUIRES_NEW) — c'est aussi ce qui permet d'écrire depuis une recherche en lecture
-    // seule —, et l'exception est interceptée ici. En cas d'échec on renvoie un log transitoire non
-    // persisté (id null) plutôt qu'une 500.
     public DecisionLogResponse record(String context, String sortKey, Object requestEcho,
                                       List<DecisionLogResponse.Entry> ranked) {
         List<DecisionLogResponse.Entry> kept = capForLog(ranked);
@@ -56,8 +47,6 @@ public class MarketplaceDecisionLogService {
         }
     }
 
-    // Audit indépendant réservé aux ADMIN : la piste d'audit n'est ni publique ni rattachée à un
-    // artisan (aucun ownership à vérifier), on restreint donc au rôle d'audit interne.
     @Transactional(readOnly = true)
     public DecisionLogResponse getDecisionLog(String email, UUID id) {
         requireAdmin(email);
@@ -68,14 +57,12 @@ public class MarketplaceDecisionLogService {
                 entity.isCommissionConsidered(), entity.getCreatedAt(), ranked);
     }
 
-    // Borne le nombre d'entrées écrites dans le log (taille de ligne JSONB append-only, non prunable).
     private static List<DecisionLogResponse.Entry> capForLog(List<DecisionLogResponse.Entry> ranked) {
         return ranked.size() <= MAX_DECISION_LOG_ENTRIES
                 ? ranked
                 : ranked.subList(0, MAX_DECISION_LOG_ENTRIES);
     }
 
-    // Refuse l'utilisateur courant s'il n'appartient pas à l'audit interne.
     private void requireAdmin(String email) {
         User user = userRepository.getByEmail(email);
         if (user.getRole() != UserRole.ADMIN) {
@@ -83,7 +70,6 @@ public class MarketplaceDecisionLogService {
         }
     }
 
-    // Sérialise la requête ou le classement pour la ligne JSONB.
     private String writeJson(Object value) {
         try {
             return objectMapper.writeValueAsString(value);
@@ -92,7 +78,6 @@ public class MarketplaceDecisionLogService {
         }
     }
 
-    // Relit le classement enregistré.
     private List<DecisionLogResponse.Entry> readEntries(String json) {
         try {
             return objectMapper.readValue(json, new TypeReference<List<DecisionLogResponse.Entry>>() {});

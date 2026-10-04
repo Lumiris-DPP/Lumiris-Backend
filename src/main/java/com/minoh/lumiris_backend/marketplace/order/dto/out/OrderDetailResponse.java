@@ -6,7 +6,6 @@ import java.util.List;
 import java.util.UUID;
 import java.util.function.Function;
 
-/** Décrit les données de OrderDetailResponse pour les commandes. */
 public record OrderDetailResponse(
         OrderResponse order,
         ShippingAddressResponse shipTo,
@@ -17,7 +16,6 @@ public record OrderDetailResponse(
         List<OrderEventResponse> timeline
 ) {
 
-    /** Construit la réponse à partir des données persistantes de la commande. */
     public static OrderDetailResponse from(MarketplaceOrder o, List<OrderEvent> events,
                                            Function<UUID, String> presign) {
         return new OrderDetailResponse(

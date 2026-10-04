@@ -25,9 +25,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
-// Déclinaisons d'une annonce et son guide des mesures. Ces écritures n'ont de sens qu'avec celle de
-// l'annonce : MANDATORY exige la transaction du catalogue de l'atelier, si bien qu'une déclinaison
-// ou une mesure invalide annule toute l'écriture, produit compris, au lieu d'en laisser une moitié.
 @Service
 @RequiredArgsConstructor
 public class MarketplaceVariantService {
@@ -36,8 +33,6 @@ public class MarketplaceVariantService {
     private final MarketplaceSizeMeasurementRepository measurementRepository;
     private final MarketplaceVariantMapper variantMapper;
 
-    // Remplace les déclinaisons puis le guide des mesures, dont les tailles doivent exister parmi les
-    // déclinaisons retenues.
     @Transactional(propagation = Propagation.MANDATORY)
     public void replaceVariantsAndSizeGuide(MarketplaceProduct product, List<ProductVariantForm> variants,
                                             List<SizeMeasurementForm> sizeGuide) {
@@ -45,9 +40,6 @@ public class MarketplaceVariantService {
         applySizeGuide(product, sizeGuide, sizes);
     }
 
-    // Une annonce convertie sans grille de déclinaisons garde le comportement d'origine : une seule
-    // déclinaison sans libellé, qui porte tout le stock et n'affiche aucun sélecteur à l'acheteur.
-    // Lue sous verrou, comme dans applyVariants : une vente concurrente attend cette écriture.
     @Transactional(propagation = Propagation.MANDATORY)
     public void seedDefaultVariant(MarketplaceProduct product, int stock) {
         List<MarketplaceProductVariant> existing = variantRepository.lockByProductId(product.getId());
@@ -65,9 +57,6 @@ public class MarketplaceVariantService {
         }
     }
 
-    // Réconciliation du remplacement complet : les lignes identifiées sont mises à jour, les
-    // nouvelles insérées, les absentes supprimées. Renvoie les tailles retenues, seules autorisées
-    // dans le guide des mesures.
     private Set<String> applyVariants(MarketplaceProduct product, List<ProductVariantForm> forms) {
         List<ProductVariantForm> normalized = normalizeVariants(forms);
         if (normalized.isEmpty()) {
@@ -75,15 +64,10 @@ public class MarketplaceVariantService {
         }
         assertDistinctCombinations(normalized);
 
-        // Lecture sous verrou : sans lui, une vente commise entre cette lecture et l'écriture serait
-        // effacée, Hibernate réécrivant le stock et la version lus ici.
         Map<UUID, MarketplaceProductVariant> existing = variantRepository
                 .lockByProductId(product.getId()).stream()
                 .collect(Collectors.toMap(MarketplaceProductVariant::getId, v -> v));
 
-        // Les déclinaisons retirées partent AVANT que les nouvelles n'arrivent : Hibernate ordonne
-        // ses insertions avant ses suppressions au flush, et une combinaison libérée puis reprise
-        // violerait sinon l'index unique.
         Set<UUID> kept = normalized.stream()
                 .map(ProductVariantForm::id)
                 .filter(Objects::nonNull)
@@ -122,7 +106,6 @@ public class MarketplaceVariantService {
         return sizes;
     }
 
-    // Remplace le guide des mesures : une cote par taille et par libellé, sur une taille existante.
     private void applySizeGuide(MarketplaceProduct product, List<SizeMeasurementForm> forms, Set<String> sizes) {
         measurementRepository.deleteByProductId(product.getId());
         if (forms == null || forms.isEmpty()) {
@@ -155,7 +138,6 @@ public class MarketplaceVariantService {
         }
     }
 
-    // Écarte les lignes vides, rogne les libellés et ramène un stock négatif à zéro.
     private static List<ProductVariantForm> normalizeVariants(List<ProductVariantForm> forms) {
         if (forms == null) {
             return List.of();
@@ -168,7 +150,6 @@ public class MarketplaceVariantService {
                 .toList();
     }
 
-    // Pré-contrôle métier : sans lui l'index unique remonterait en 500 au flush.
     private static void assertDistinctCombinations(List<ProductVariantForm> forms) {
         Set<String> seen = new HashSet<>();
         for (ProductVariantForm form : forms) {
@@ -181,11 +162,6 @@ public class MarketplaceVariantService {
         }
     }
 
-    // La version n'est incrémentée QUE par les requêtes de stock atomiques (vente, remboursement) :
-    // elle signifie exactement « le stock a bougé sous toi » depuis que le formulaire a été lu.
-    // L'incrémenter aussi à l'enregistrement artisan ferait échouer deux bascules de visibilité
-    // successives, sans qu'aucune vente n'ait eu lieu. Une vente pendant l'enregistrement, elle, est
-    // tenue à l'écart par le verrou de lecture.
     private static void assertFreshVersion(ProductVariantForm form, MarketplaceProductVariant variant) {
         if (form.version() != null && form.version() != variant.getVersion()) {
             throw new ConflictException(
@@ -194,7 +170,6 @@ public class MarketplaceVariantService {
         }
     }
 
-    // Libellé rogné, ou null s'il ne reste rien.
     private static String trimToNull(String s) {
         if (s == null) {
             return null;

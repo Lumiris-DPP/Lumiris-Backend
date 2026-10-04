@@ -45,7 +45,6 @@ import java.util.concurrent.ExecutionException;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/** Vérifie les commandes et leurs courses sur un PostgreSQL PostGIS jetable. */
 @Testcontainers
 @SpringBootTest(properties = {
         "security.jwt.secret=0123456789012345678901234567890123456789012345678901234567890123",
@@ -68,29 +67,25 @@ class OrderLifecycleIntegrationTest {
     @Autowired private OrderScheduler scheduler;
     @Autowired private MarketplaceOrderRepository orders;
     @Autowired private PlatformTransactionManager transactionManager;
-    // Le dispatcher est neutralisé : ces tests ne doivent pas envoyer de courriel réel.
+
     @MockitoBean
     private EmailOutboxDispatcher emailOutboxDispatcher;
 
     @MockitoBean private MinioClient minioClient;
     @MockitoBean private BlockchainService blockchainService;
 
-    /** Démarre Stripe local avant les scénarios. */
     @BeforeAll
     static void startStripe() throws Exception { stripe = new FakeOrderStripeApi(); }
 
-    /** Ferme Stripe local après les scénarios. */
     @AfterAll
     static void stopStripe() { stripe.close(); }
 
-    /** Réinitialise Stripe et retire les anciennes fixtures des échéances du scheduler. */
     @BeforeEach
     void resetStripe() {
         stripe.reset();
         jdbc.update("update marketplace_orders set status = 'COMPLETED', net_cents = 0");
     }
 
-    /** Refuse les lectures et mutations d'un acheteur étranger. */
     @Test
     void foreignBuyer_isDenied() {
         Fixture f = fixture("SHIPPED");
@@ -104,7 +99,6 @@ class OrderLifecycleIntegrationTest {
         assertThat(events(f, "DELIVERED")).isZero();
     }
 
-    /** Refuse les lectures et mutations d'un vendeur étranger. */
     @Test
     void foreignSeller_isDenied() {
         Fixture f = fixture("PAID");
@@ -117,7 +111,6 @@ class OrderLifecycleIntegrationTest {
         assertThat(stripe.refunds()).isZero();
     }
 
-    /** Refuse une livraison et un retour avant expédition ainsi qu'une double expédition. */
     @Test
     void forbiddenTransitions_areRejected() {
         Fixture f = fixture("PAID");
@@ -129,7 +122,6 @@ class OrderLifecycleIntegrationTest {
         assertThat(events(f, "SHIPPED")).isEqualTo(1);
     }
 
-    /** Expédie puis livre une commande avec un seul reversement au vendeur. */
     @Test
     void shippingThenDelivery_releasesFundsOnce() {
         Fixture f = fixture("PAID");
@@ -144,7 +136,6 @@ class OrderLifecycleIntegrationTest {
         assertThat(jdbc.queryForObject("select return_deadline > delivered_at from marketplace_orders where id = ?", Boolean.class, f.order())).isTrue();
     }
 
-    /** Parcourt le retour accepté jusqu'au remboursement intégral et à la remise en stock. */
     @Test
     void acceptedReturn_refundsAndRestocksOnce() {
         Fixture f = fixture("SHIPPED");
@@ -166,7 +157,6 @@ class OrderLifecycleIntegrationTest {
         }
     }
 
-    /** Distingue deux gestes identiques puis rembourse le solde sans répéter le stock. */
     @Test
     void equalPartialRefunds_thenTotal_keepAmountsAndStockCorrect() {
         Fixture f = fixture("DELIVERED");
@@ -187,7 +177,6 @@ class OrderLifecycleIntegrationTest {
         assertThat(events(f, "REFUNDED")).isEqualTo(3);
     }
 
-    /** Refuse de réutiliser un identifiant avec un montant différent. */
     @Test
     void reusedOperationWithDifferentParameters_isRejected() {
         Fixture f = fixture("PAID");
@@ -199,7 +188,6 @@ class OrderLifecycleIntegrationTest {
         assertThat(stripe.refunds()).isEqualTo(1);
     }
 
-    /** Refuse un montant excessif et le remboursement d'un paiement non confirmé. */
     @Test
     void invalidRefunds_haveNoEffects() {
         Fixture paid = fixture("PAID");
@@ -212,7 +200,6 @@ class OrderLifecycleIntegrationTest {
         assertThat(stock(paid)).isZero();
     }
 
-    /** Reprend une panne après reprise des fonds sans reprendre deux fois le vendeur. */
     @Test
     void refundFailureAfterReversal_retryDoesNotReverseTwice() {
         Fixture f = fixture("DELIVERED");
@@ -230,7 +217,6 @@ class OrderLifecycleIntegrationTest {
         assertThat(refunded(f)).isEqualTo(200);
     }
 
-    /** Reprend un succès Stripe suivi d'un rollback PostgreSQL sans doubler les effets. */
     @Test
     void stripeSuccessThenDatabaseRollback_retryIsIdempotent() {
         Fixture f = fixture("PAID");
@@ -248,7 +234,6 @@ class OrderLifecycleIntegrationTest {
         assertThat(events(f, "REFUNDED")).isEqualTo(1);
     }
 
-    /** Sérialise deux retries réellement concurrents du même remboursement. */
     @Test
     void concurrentRefundRetries_haveOneEffect() throws Exception {
         Fixture f = fixture("PAID");
@@ -260,7 +245,6 @@ class OrderLifecycleIntegrationTest {
         assertThat(events(f, "REFUNDED")).isEqualTo(1);
     }
 
-    /** Sérialise deux opérations distinctes de même montant sans perdre leur cumul. */
     @Test
     void concurrentDistinctRefunds_keepBothOperations() throws Exception {
         Fixture f = fixture("PAID");
@@ -271,7 +255,6 @@ class OrderLifecycleIntegrationTest {
         assertThat(events(f, "REFUNDED")).isEqualTo(2);
     }
 
-    /** Ignore une copie périmée du scheduler après une demande de retour. */
     @Test
     void staleSchedulerSnapshot_doesNotOverwriteReturn() {
         Fixture f = fixture("SHIPPED");
@@ -283,7 +266,6 @@ class OrderLifecycleIntegrationTest {
         assertThat(events(f, "DELIVERED")).isZero();
     }
 
-    /** Sérialise deux confirmations de livraison sans doubler le reversement ni le journal. */
     @Test
     void concurrentDeliveryConfirmations_releaseFundsOnce() throws Exception {
         Fixture f = fixture("SHIPPED");
@@ -318,7 +300,6 @@ class OrderLifecycleIntegrationTest {
         }
     }
 
-    /** Applique les échéances automatiques une seule fois et préserve les litiges ouverts. */
     @Test
     void schedulerDeliversAndCompletesOnce_preservingDisputes() {
         Fixture delivered = fixture("SHIPPED");
@@ -338,7 +319,6 @@ class OrderLifecycleIntegrationTest {
         assertThat(events(disputed, "DELIVERED")).isZero();
     }
 
-    /** Répète un abandon sur deux copies périmées sans remettre deux pièces en rayon. */
     @Test
     void abandonedOrderRetries_restockOnlyOnce() {
         Fixture f = fixture("PENDING");
@@ -351,7 +331,6 @@ class OrderLifecycleIntegrationTest {
         assertThat(events(f, "CANCELLED")).isEqualTo(1);
     }
 
-    /** Reprend un reversement échoué sans doubler la livraison ni les fonds. */
     @Test
     void failedPayout_isRetriedBySchedulerOnce() {
         Fixture f = fixture("SHIPPED");
@@ -366,7 +345,6 @@ class OrderLifecycleIntegrationTest {
         assertThat(events(f, "FUNDS_RELEASED")).isEqualTo(1);
     }
 
-    /** Annule avant expédition et refuse toute nouvelle annulation sans effet supplémentaire. */
     @Test
     void cancellation_refundsAndRestocksOnce() {
         Fixture f = fixture("PAID");
@@ -378,7 +356,6 @@ class OrderLifecycleIntegrationTest {
         assertThat(stripe.refunds()).isEqualTo(1);
     }
 
-    /** Lance deux transactions et prouve leur attente sur le verrou PostgreSQL. */
     private void raceRefunds(Fixture f, RefundRequest first, RefundRequest second) throws Exception {
         ExecutorService pool = Executors.newFixedThreadPool(2);
         stripe.holdRefund();
@@ -397,7 +374,6 @@ class OrderLifecycleIntegrationTest {
         }
     }
 
-    /** Observe l'attente des transactions sur les verrous du PostgreSQL jetable. */
     private void awaitWaitingTransactions(int expected) {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
         int waiting = 0;
@@ -416,10 +392,8 @@ class OrderLifecycleIntegrationTest {
         assertThat(waiting).as("Transactions en attente d'un verrou PostgreSQL").isGreaterThanOrEqualTo(expected);
     }
 
-    /** Regroupe les identifiants et propriétaires d'une commande de test. */
     private record Fixture(UUID order, UUID variant, String buyer, String seller, String intent) {}
 
-    /** Insère une commande autonome sans appeler le checkout ni le catalogue. */
     private Fixture fixture(String status) {
         UUID buyer = user("CONSUMER");
         UUID seller = user("ARTISAN");
@@ -441,34 +415,25 @@ class OrderLifecycleIntegrationTest {
         return new Fixture(order, variant, email(buyer), email(seller), intent);
     }
 
-    /** Insère un utilisateur isolé avec le rôle demandé. */
     private UUID user(String role) {
         UUID id = UUID.randomUUID();
         jdbc.update("insert into users(id,email,password_hash,role,name) values (?,?,'{noop}x',?,'Test')", id, id + "@lumiris.test", role);
         return id;
     }
 
-    /** Relit le courriel d'un utilisateur de test. */
     private String email(UUID id) { return jdbc.queryForObject("select email from users where id = ?", String.class, id); }
 
-    /** Prépare un suivi d'expédition valide. */
     private ShipOrderRequest shipping() { return new ShipOrderRequest("Poste", "TRACK", "https://example.test/TRACK"); }
 
-    /** Charge une copie de commande pour simuler un appel interne. */
     private MarketplaceOrder load(Fixture f) { return orders.findById(f.order()).orElseThrow(); }
 
-    /** Relit le statut persistant de la commande. */
     private String status(Fixture f) { return jdbc.queryForObject("select status from marketplace_orders where id = ?", String.class, f.order()); }
 
-    /** Relit le cumul remboursé en base. */
     private int refunded(Fixture f) { return jdbc.queryForObject("select refunded_cents from marketplace_orders where id = ?", Integer.class, f.order()); }
 
-    /** Relit le stock effectif de la déclinaison. */
     private int stock(Fixture f) { return jdbc.queryForObject("select stock from marketplace_product_variants where id = ?", Integer.class, f.variant()); }
 
-    /** Compte les événements persistants d'un type donné. */
     private int events(Fixture f, String type) { return jdbc.queryForObject("select count(*) from marketplace_order_events where order_id = ? and type = ?", Integer.class, f.order(), type); }
 
-    /** Compte les pièces encore présentes dans la garde-robe. */
     private int wardrobe(Fixture f) { return jdbc.queryForObject("select count(*) from wardrobe_items where order_id = ?", Integer.class, f.order()); }
 }

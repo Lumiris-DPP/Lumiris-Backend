@@ -805,7 +805,8 @@ class OrderLifecycleIntegrationTest {
     // Préserve les anciens paramètres valides et reprend les anciens refus de validation.
     @Test
     void review14_legacyLongReasonRetries_doNotChangeParametersUnderSameKey() throws Exception {
-        for (String reason : List.of("r".repeat(501), "a".repeat(499) + "😺")) {
+        for (String reason : List.of("r".repeat(501), "court", "r".repeat(500),
+                "a".repeat(499) + "😺", "😺".repeat(500), "sha256:" + reasonDigest("r".repeat(501)))) {
             stripe.reset();
             Fixture f = roundedFixture();
             UUID operation = UUID.randomUUID();
@@ -865,6 +866,36 @@ class OrderLifecycleIntegrationTest {
         assertThat(stripe.reversedCents()).isEqualTo(12);
     }
 
+    // Refuse la reprise automatique d'un ancien format hashé déjà exécuté.
+    @Test
+    void review14_legacyHashedSuccess_requiresReconciliation() throws Exception {
+        Fixture f = fixture("PAID");
+        assertThat(load(f).getStripeTransferId()).isNull();
+        String reason = "r".repeat(501);
+        UUID operation = UUID.randomUUID();
+        String key = "refund:" + f.order() + ":" + operation;
+        Refund.create(RefundCreateParams.builder().setPaymentIntent(f.intent()).setAmount(200L)
+                        .putMetadata("order_id", f.order().toString())
+                        .putMetadata("reason", "sha256:" + reasonDigest(reason)).build(),
+                RequestOptions.builder().setIdempotencyKey(key).build());
+        RefundRequest request = new RefundRequest(200, reason, operation);
+        for (int attempt = 0; attempt < 2; attempt++) {
+            Throwable failure = org.assertj.core.api.Assertions.catchThrowable(() ->
+                    lifecycle.refund(f.seller(), f.order(), request));
+            assertThat(failure).isInstanceOf(BillingException.class);
+            assertThat(failure.getCause()).isInstanceOf(StripeException.class);
+            assertThat(stripe.lastRefundKey()).isEqualTo(key);
+            assertThat(stripe.refunds()).isEqualTo(1);
+            assertThat(stripe.reversals()).isZero();
+            assertThat(refunded(f)).isZero();
+            assertThat(stock(f)).isZero();
+            assertThat(wardrobe(f)).isEqualTo(1);
+            assertThat(events(f, "REFUNDED")).isZero();
+            assertThat(jdbc.queryForObject("select count(*) from marketplace_order_refund_operations where order_id=?",
+                    Integer.class, f.order())).isZero();
+        }
+    }
+
     // Refuse le passage au motif court après succès Stripe et rollback SQL.
     @Test
     void review14_pendingLongReasonCannotSwitchToShort() {
@@ -875,6 +906,20 @@ class OrderLifecycleIntegrationTest {
     @Test
     void review14_pendingShortReasonCannotSwitchToLong() {
         verifyPendingReasonSwitch("court", "r".repeat(501));
+    }
+
+    // Refuse le texte littéral après un motif hashé et un rollback SQL.
+    @Test
+    void review14_hashAliasLongToShortMustReject() throws Exception {
+        String reason = "r".repeat(501);
+        verifyPendingReasonSwitch(reason, "sha256:" + reasonDigest(reason));
+    }
+
+    // Refuse le motif hashé après son texte littéral et un rollback SQL.
+    @Test
+    void review14_hashAliasShortToLongMustReject() throws Exception {
+        String reason = "r".repeat(501);
+        verifyPendingReasonSwitch("sha256:" + reasonDigest(reason), reason);
     }
 
     // Vérifie le refus du motif modifié puis la reprise du remboursement initial.

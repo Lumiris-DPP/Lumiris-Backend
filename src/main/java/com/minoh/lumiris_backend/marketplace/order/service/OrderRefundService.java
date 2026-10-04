@@ -60,15 +60,16 @@ public class OrderRefundService {
         String reversalId = order.getStripeTransferId() != null
                 ? reverseTransfer(order, amountCents, reason, operationKey)
                 : null;
+        var refundParams = RefundCreateParams.builder()
+                .setPaymentIntent(order.getStripePaymentIntentId())
+                .setAmount((long) amountCents)
+                .putMetadata("order_id", order.getId().toString())
+                .putMetadata("reason", stripeReason);
+        if (hashedReason) refundParams.putMetadata("reason_format", "sha256");
 
         Refund refund = StripeCalls.billed("Remboursement impossible", () ->
                 Refund.create(
-                        RefundCreateParams.builder()
-                                .setPaymentIntent(order.getStripePaymentIntentId())
-                                .setAmount((long) amountCents)
-                                .putMetadata("order_id", order.getId().toString())
-                                .putMetadata("reason", stripeReason)
-                                .build(),
+                        refundParams.build(),
                         RequestOptions.builder()
                                 .setIdempotencyKey("refund:" + order.getId() + ":" + operationKey)
                                 .build()));

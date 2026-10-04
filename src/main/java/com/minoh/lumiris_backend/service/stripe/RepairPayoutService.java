@@ -6,7 +6,7 @@ import com.minoh.lumiris_backend.entity.RepairRequest;
 import com.minoh.lumiris_backend.entity.SellerAccount;
 import com.minoh.lumiris_backend.exception.BillingValidationException;
 import com.minoh.lumiris_backend.repository.RepairRequestRepository;
-import com.minoh.lumiris_backend.repository.SellerAccountRepository;
+import com.minoh.lumiris_backend.marketplace.seller.repository.SellerAccountRepository;
 import com.stripe.exception.StripeException;
 import com.stripe.model.PaymentIntent;
 import com.stripe.model.Transfer;

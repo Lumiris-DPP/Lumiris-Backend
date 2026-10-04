@@ -43,8 +43,9 @@ public class MarketplaceProductVariant extends Auditable {
 
     // Version de ligne, incrémentée par chaque écriture de stock. Le formulaire artisan renvoie
     // celle qu'il a lue : si une vente est passée entre-temps, la sauvegarde est refusée en conflit
-    // au lieu d'écraser le stock réel. Volontairement pas @Version — l'incrément appartient aux
-    // requêtes de stock atomiques, pas au cycle de vie Hibernate.
+    // au lieu d'écraser le stock réel ; une vente arrivée pendant la sauvegarde attend le verrou que
+    // celle-ci pose sur la ligne. Volontairement pas @Version — l'incrément appartient aux requêtes de
+    // stock atomiques, pas au cycle de vie Hibernate.
     @Column(nullable = false)
     private long version;
 }

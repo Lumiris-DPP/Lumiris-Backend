@@ -10,6 +10,14 @@ import com.minoh.lumiris_backend.marketplace.order.dto.in.ShipOrderRequest;
 import com.minoh.lumiris_backend.entity.MarketplaceOrder;
 import com.minoh.lumiris_backend.entity.OrderActorType;
 import com.minoh.lumiris_backend.exception.BillingException;
+import com.minoh.lumiris_backend.exception.GlobalExceptionHandler;
+import com.minoh.lumiris_backend.dto.out.ErrorResponse;
+import com.stripe.exception.StripeException;
+import com.stripe.model.Refund;
+import com.stripe.model.Transfer;
+import com.stripe.net.RequestOptions;
+import com.stripe.param.RefundCreateParams;
+import com.stripe.param.TransferReversalCollectionCreateParams;
 import com.minoh.lumiris_backend.exception.BillingValidationException;
 import com.minoh.lumiris_backend.exception.ResourceNotFoundException;
 import com.minoh.lumiris_backend.exception.RoleNotAllowedException;
@@ -24,11 +32,16 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.http.HttpStatus;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -38,6 +51,9 @@ import org.testcontainers.utility.DockerImageName;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.UUID;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.HexFormat;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -69,6 +85,7 @@ class OrderLifecycleIntegrationTest {
     @Autowired private OrderScheduler scheduler;
     @Autowired private MarketplaceOrderRepository orders;
     @Autowired private PlatformTransactionManager transactionManager;
+    @Autowired private GlobalExceptionHandler exceptionHandler;
 
     @MockitoBean
     private EmailOutboxDispatcher emailOutboxDispatcher;
@@ -642,6 +659,215 @@ class OrderLifecycleIntegrationTest {
         assertThat(refunded(f)).isEqualTo(100);
         assertThat(stripe.reversedCents()).isEqualTo(95);
         assertThat(stripe.refunds()).isEqualTo(2);
+    }
+
+    // Conserve l'ancienne reprise pendant les fractions et leur rollback.
+    @ParameterizedTest
+    @ValueSource(ints = {47, 48, 49})
+    void review14_legacyFractionsReplayAndRollback_keepReference(int previous) {
+        Fixture f = roundedFixture();
+        stripe.historicalReversal("trr_old", previous);
+        jdbc.update("update marketplace_orders set refunded_cents=50, stripe_transfer_reversal_id='trr_old' where id=?", f.order());
+        jdbc.update("update marketplace_product_variants set stock=1 where id=?", f.variant());
+        RefundRequest first = new RefundRequest(25, "Fraction", UUID.randomUUID());
+        RefundRequest last = new RefundRequest(25, "Solde", UUID.randomUUID());
+        lifecycle.refund(f.seller(), f.order(), first);
+        lifecycle.refund(f.seller(), f.order(), first);
+        assertThat(refunded(f)).isEqualTo(75);
+        assertThat(stripe.reversedCents()).isEqualTo(71);
+        assertThatThrownBy(() -> new TransactionTemplate(transactionManager).executeWithoutResult(tx -> {
+            lifecycle.refund(f.seller(), f.order(), last);
+            throw new IllegalStateException("Rollback après Stripe");
+        })).isInstanceOf(IllegalStateException.class);
+        assertThat(refunded(f)).isEqualTo(75);
+        assertThat(stripe.reversedCents()).isEqualTo(95);
+        assertThat(jdbc.queryForObject("select count(*) from marketplace_order_refund_operations where order_id=?", Integer.class, f.order())).isEqualTo(1);
+        stripe.expireReversalKeys();
+        lifecycle.refund(f.seller(), f.order(), last);
+        lifecycle.refund(f.seller(), f.order(), last);
+        assertThat(refunded(f)).isEqualTo(100);
+        assertThat(stripe.reversedCents()).isEqualTo(95);
+        assertThat(stripe.refunds()).isEqualTo(2);
+        assertThat(stripe.reversals()).isEqualTo(2);
+        assertThat(load(f).getStripeTransferReversalId()).isEqualTo("trr_old");
+        assertThat(stock(f)).isEqualTo(1);
+        assertThat(wardrobe(f)).isZero();
+    }
+
+    // Garde le motif complet malgré un rollback après remboursement Stripe.
+    @ParameterizedTest
+    @ValueSource(ints = {501, 2000})
+    void review14_longReasonRollback_preservesFullReason(int length) throws Exception {
+        Fixture f = roundedFixture();
+        String reason = "r".repeat(length);
+        RefundRequest request = new RefundRequest(50, reason, UUID.randomUUID());
+        assertThatThrownBy(() -> new TransactionTemplate(transactionManager).executeWithoutResult(tx -> {
+            lifecycle.refund(f.seller(), f.order(), request);
+            throw new IllegalStateException("Rollback après Stripe");
+        })).isInstanceOf(IllegalStateException.class);
+        assertThat(refunded(f)).isZero();
+        assertThat(stock(f)).isZero();
+        assertThat(stripe.reversedCents()).isEqualTo(48);
+        assertThat(stripe.refunds()).isEqualTo(1);
+        assertThat(stripe.lastRefundReason()).isEqualTo("sha256:" + reasonDigest(reason));
+        String stripeKey = stripe.lastRefundKey();
+        lifecycle.refund(f.seller(), f.order(), request);
+        lifecycle.refund(f.seller(), f.order(), request);
+        assertThat(stripe.lastRefundKey()).isEqualTo(stripeKey);
+        assertThat(stripe.refunds()).isEqualTo(1);
+        assertThat(stripe.reversals()).isEqualTo(1);
+        assertThat(load(f).getRefundReason()).isEqualTo(reason);
+        assertThat(jdbc.queryForObject("select reason from marketplace_order_refund_operations where order_id=? and operation_id=?", String.class, f.order(), request.operationId())).isEqualTo(reason);
+        lifecycle.refund(f.seller(), f.order(), new RefundRequest(50, reason, UUID.randomUUID()));
+        assertThat(refunded(f)).isEqualTo(100);
+        assertThat(stripe.reversedCents()).isEqualTo(95);
+        assertThat(stock(f)).isEqualTo(1);
+        assertThat(wardrobe(f)).isZero();
+    }
+
+    // Borne les métadonnées Unicode sans couper les paires de surrogates.
+    @Test
+    void review14_unicodeReasons_preserveFullTextAndBoundMetadata() throws Exception {
+        for (String reason : List.of("é".repeat(2000), "😺".repeat(1000), "a".repeat(499) + "😺", "r".repeat(500))) {
+            stripe.reset();
+            Fixture f = roundedFixture();
+            RefundRequest request = new RefundRequest(50, reason, UUID.randomUUID());
+            lifecycle.refund(f.seller(), f.order(), request);
+            lifecycle.refund(f.seller(), f.order(), request);
+            assertThat(load(f).getRefundReason()).isEqualTo(reason);
+            assertThat(stripe.lastRefundReason().codePointCount(0, stripe.lastRefundReason().length())).isLessThanOrEqualTo(500);
+            assertThat(stripe.lastRefundReason()).isEqualTo(reason.codePointCount(0, reason.length()) > 500
+                    ? "sha256:" + reasonDigest(reason) : reason);
+            assertThat(stripe.refunds()).isEqualTo(1);
+            assertThat(stripe.reversedCents()).isEqualTo(48);
+        }
+    }
+
+    // Rejoue une annulation à motif long après rollback SQL.
+    @Test
+    void review14_longCancellationRollback_keepsRefundStable() {
+        Fixture f = roundedFixture();
+        jdbc.update("update marketplace_orders set status='PAID' where id=?", f.order());
+        String reason = "c".repeat(501) + "😺".repeat(749);
+        assertThatThrownBy(() -> new TransactionTemplate(transactionManager).executeWithoutResult(tx -> {
+            lifecycle.cancel(f.buyer(), f.order(), reason);
+            throw new IllegalStateException("Rollback après Stripe");
+        })).isInstanceOf(IllegalStateException.class);
+        assertThat(status(f)).isEqualTo("PAID");
+        assertThat(refunded(f)).isZero();
+        assertThat(stock(f)).isZero();
+        lifecycle.cancel(f.buyer(), f.order(), reason);
+        assertThat(status(f)).isEqualTo("CANCELLED");
+        assertThat(refunded(f)).isEqualTo(100);
+        assertThat(load(f).getRefundReason()).isEqualTo(reason);
+        assertThat(stripe.refunds()).isEqualTo(1);
+        assertThat(stripe.reversals()).isEqualTo(1);
+        assertThat(stripe.reversedCents()).isEqualTo(95);
+        assertThat(stock(f)).isEqualTo(1);
+        assertThat(wardrobe(f)).isZero();
+        List<String> notifications = jdbc.queryForList("select body from notifications where order_id=? and type='ORDER_CANCELLED'", String.class, f.order());
+        assertThat(notifications).isNotEmpty();
+        for (String body : notifications) {
+            assertThat(body.codePointCount(0, body.length())).isEqualTo(1000);
+            assertThat(body).endsWith("😺");
+            assertThat(new String(body.getBytes(StandardCharsets.UTF_8), StandardCharsets.UTF_8)).isEqualTo(body);
+        }
+    }
+
+    // Rejoue un litige à motif long après rollback SQL.
+    @Test
+    void review14_longDisputeRollback_keepsRefundStable() {
+        Fixture f = roundedFixture();
+        jdbc.update("update marketplace_orders set dispute_status='OPEN' where id=?", f.order());
+        String admin = email(user("ADMIN"));
+        String reason = "d".repeat(2000);
+        DisputeResolutionRequest request = new DisputeResolutionRequest(reason, 100);
+        assertThatThrownBy(() -> new TransactionTemplate(transactionManager).executeWithoutResult(tx -> {
+            lifecycle.resolveDispute(admin, f.order(), request);
+            throw new IllegalStateException("Rollback après Stripe");
+        })).isInstanceOf(IllegalStateException.class);
+        assertThat(refunded(f)).isZero();
+        assertThat(stock(f)).isZero();
+        assertThat(jdbc.queryForObject("select dispute_status from marketplace_orders where id=?", String.class, f.order())).isEqualTo("OPEN");
+        lifecycle.resolveDispute(admin, f.order(), request);
+        assertThat(refunded(f)).isEqualTo(100);
+        assertThat(load(f).getRefundReason()).isEqualTo(reason);
+        assertThat(jdbc.queryForObject("select dispute_resolution from marketplace_orders where id=?", String.class, f.order())).isEqualTo(reason);
+        assertThat(jdbc.queryForList("select body from notifications where order_id=? and type='DISPUTE_RESOLVED'", String.class, f.order()))
+                .isNotEmpty().allSatisfy(body -> assertThat(body.length()).isEqualTo(1000));
+        assertThat(stripe.refunds()).isEqualTo(1);
+        assertThat(stripe.reversals()).isEqualTo(1);
+        assertThat(stripe.reversedCents()).isEqualTo(95);
+        assertThat(stock(f)).isEqualTo(1);
+        assertThat(wardrobe(f)).isZero();
+    }
+
+    // Préserve les anciens paramètres valides et reprend les anciens refus de validation.
+    @Test
+    void review14_legacyLongReasonRetries_doNotChangeParametersUnderSameKey() throws Exception {
+        for (String reason : List.of("r".repeat(501), "a".repeat(499) + "😺")) {
+            stripe.reset();
+            Fixture f = roundedFixture();
+            UUID operation = UUID.randomUUID();
+            String refundKey = "refund:" + f.order() + ":" + operation;
+            Transfer.retrieve("tr_order").getReversals().create(
+                    TransferReversalCollectionCreateParams.builder().setAmount(48L)
+                            .putMetadata("order_id", f.order().toString())
+                            .putMetadata("operation_key", operation.toString())
+                            .putMetadata("refunded_before", "0").putMetadata("refund_cents", "50")
+                            .putMetadata("reason_hash", reasonDigest(reason)).build(),
+                    RequestOptions.builder().setIdempotencyKey("reversal:" + f.order() + ":" + operation).build());
+            Throwable oldFailure = org.assertj.core.api.Assertions.catchThrowable(() -> Refund.create(
+                    RefundCreateParams.builder().setPaymentIntent(f.intent()).setAmount(50L)
+                            .putMetadata("order_id", f.order().toString()).putMetadata("reason", reason).build(),
+                    RequestOptions.builder().setIdempotencyKey(refundKey).build()));
+            boolean invalidMetadata = reason.codePointCount(0, reason.length()) > 500;
+            if (invalidMetadata) assertThat(oldFailure).isInstanceOf(StripeException.class);
+            else assertThat(oldFailure).isNull();
+            lifecycle.refund(f.seller(), f.order(), new RefundRequest(50, reason, operation));
+            assertThat(stripe.lastRefundKey()).isEqualTo(refundKey + (invalidMetadata ? ":reason-sha256" : ""));
+            assertThat(refunded(f)).isEqualTo(50);
+            assertThat(stripe.refunds()).isEqualTo(1);
+            assertThat(stripe.reversals()).isEqualTo(1);
+            assertThat(load(f).getRefundReason()).isEqualTo(reason);
+        }
+    }
+
+    // Traduit la panne de pagination et conserve les effets SQL précédents.
+    @Test
+    void review14_pageFailure_preservesBillingContractAndAtomicity() throws Exception {
+        Fixture f = roundedFixture();
+        for (int i = 0; i < 12; i++) {
+            lifecycle.refund(f.seller(), f.order(), new RefundRequest(1, "Fraction", UUID.randomUUID()));
+        }
+        assertThat(stripe.reversals()).isEqualTo(11);
+        stripe.failPage(true);
+        RefundRequest request = new RefundRequest(1, "Fraction", UUID.randomUUID());
+        Throwable failure = org.assertj.core.api.Assertions.catchThrowable(() -> lifecycle.refund(f.seller(), f.order(), request));
+        assertThat(stripe.pages()).isPositive();
+        assertThat(refunded(f)).isEqualTo(12);
+        assertThat(stripe.refunds()).isEqualTo(12);
+        assertThat(stripe.reversedCents()).isEqualTo(11);
+        assertThat(jdbc.queryForObject("select count(*) from marketplace_order_refund_operations where order_id=?", Integer.class, f.order())).isEqualTo(12);
+        assertThat(stock(f)).isEqualTo(1);
+        assertThat(wardrobe(f)).isEqualTo(1);
+        assertThat(failure).isInstanceOf(BillingException.class).hasMessageContaining("Reprise des fonds au vendeur impossible");
+        assertThat(failure.getCause()).isInstanceOf(StripeException.class);
+        ErrorResponse response = ReflectionTestUtils.invokeMethod(exceptionHandler, "handleBilling", failure);
+        assertThat(response.status()).isEqualTo(502);
+        assertThat(response.code()).isEqualTo("BILLING_ERROR");
+        assertThat(GlobalExceptionHandler.class.getDeclaredMethod("handleBilling", BillingException.class)
+                .getAnnotation(ResponseStatus.class).value()).isEqualTo(HttpStatus.BAD_GATEWAY);
+        stripe.failPage(false);
+        lifecycle.refund(f.seller(), f.order(), request);
+        assertThat(refunded(f)).isEqualTo(13);
+        assertThat(stripe.refunds()).isEqualTo(13);
+        assertThat(stripe.reversedCents()).isEqualTo(12);
+    }
+
+    // Calcule l'empreinte nécessaire aux anciens appels Stripe simulés.
+    private String reasonDigest(String reason) throws Exception {
+        return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(reason.getBytes(StandardCharsets.UTF_8)));
     }
 
     // Prépare une commande de 100 centimes avec un versement de 95.

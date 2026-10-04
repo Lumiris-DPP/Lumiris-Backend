@@ -29,6 +29,10 @@ final class FakeOrderStripeApi implements AutoCloseable {
     private final AtomicInteger reversals = new AtomicInteger();
     private final AtomicInteger transfers = new AtomicInteger();
     private volatile boolean failRefund;
+    private volatile boolean failPage;
+    private final AtomicInteger pages = new AtomicInteger();
+    private volatile String lastRefundReason;
+    private volatile String lastRefundKey;
     private final List<Map<String, Object>> reversalHistory = new ArrayList<>();
     private int reversalLimit = 900;
     private int reversedCents;
@@ -65,6 +69,18 @@ final class FakeOrderStripeApi implements AutoCloseable {
     void failRefund(boolean value) {
         failRefund = value;
     }
+
+    // Prépare une panne sur les pages suivantes des reprises.
+    void failPage(boolean value) { failPage = value; }
+
+    // Compte les pages supplémentaires réellement demandées.
+    int pages() { return pages.get(); }
+
+    // Lit le motif du dernier remboursement exécuté.
+    String lastRefundReason() { return lastRefundReason; }
+
+    // Lit la clé du dernier remboursement exécuté.
+    String lastRefundKey() { return lastRefundKey; }
 
     // Prépare un échec du prochain versement simulé.
     void failTransfer(boolean value) {
@@ -109,6 +125,10 @@ final class FakeOrderStripeApi implements AutoCloseable {
         reversals.set(0);
         transfers.set(0);
         failRefund = false;
+        failPage = false;
+        pages.set(0);
+        lastRefundReason = null;
+        lastRefundKey = null;
         failTransfer = false;
         entered = null;
         release = null;
@@ -142,6 +162,14 @@ final class FakeOrderStripeApi implements AutoCloseable {
             return;
         }
         if (exchange.getRequestMethod().equals("GET")) {
+            if (path.endsWith("/reversals")) {
+                pages.incrementAndGet();
+                if (failPage) {
+                    exchange.getResponseHeaders().add("Stripe-Should-Retry", "false");
+                    respond(exchange, 500, "{\"error\":{\"type\":\"api_error\",\"message\":\"Page indisponible\"}}");
+                    return;
+                }
+            }
             Map<String, String> query = decode(exchange.getRequestURI().getRawQuery());
             int start = 0;
             if (query.containsKey("starting_after")) {
@@ -160,12 +188,17 @@ final class FakeOrderStripeApi implements AutoCloseable {
             return;
         }
         String key = exchange.getRequestHeaders().getFirst("Idempotency-Key");
+        Map<String, String> values = decode(params);
+        if (values.entrySet().stream().anyMatch(entry -> entry.getKey().startsWith("metadata[")
+                && entry.getValue().codePointCount(0, entry.getValue().length()) > 500)) {
+            respond(exchange, 400, "{\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Métadonnée supérieure à 500 caractères\"}}");
+            return;
+        }
         String previous = parameters.putIfAbsent(key, params);
         if (previous != null && !previous.equals(params)) {
             respond(exchange, 400, "{\"error\":{\"type\":\"idempotency_error\",\"message\":\"Paramètres différents\"}}");
             return;
         }
-        Map<String, String> values = decode(params);
         int amount = Integer.parseInt(values.getOrDefault("amount", "0"));
         if (path.endsWith("/reversals") && !responses.containsKey(key) && reversedCents + amount > reversalLimit) {
             respond(exchange, 400, "{\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Reprise supérieure au reliquat\"}}");
@@ -175,6 +208,10 @@ final class FakeOrderStripeApi implements AutoCloseable {
             String object = path.equals("/v1/refunds") ? "refund" : path.endsWith("reversals") ? "transfer_reversal" : "transfer";
             AtomicInteger count = object.equals("refund") ? refunds : object.equals("transfer_reversal") ? reversals : transfers;
             String id = object + "_" + count.incrementAndGet();
+            if (object.equals("refund")) {
+                lastRefundReason = values.get("metadata[reason]");
+                lastRefundKey = key;
+            }
             if (object.equals("transfer_reversal")) {
                 Map<String, String> metadata = new LinkedHashMap<>();
                 values.forEach((name, value) -> {

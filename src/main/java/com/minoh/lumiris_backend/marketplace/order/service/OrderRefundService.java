@@ -13,6 +13,7 @@ import com.stripe.param.TransferReversalCollectionCreateParams;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.Map;
 import java.util.Objects;
@@ -53,6 +54,9 @@ public class OrderRefundService {
             throw new BillingValidationException(
                     "Montant de remboursement invalide (maximum remboursable : " + refundable + " centimes).");
         }
+        String fullReason = reason == null ? "" : reason;
+        boolean hashedReason = fullReason.codePointCount(0, fullReason.length()) > 500;
+        String stripeReason = hashedReason ? "sha256:" + reasonHash(reason) : fullReason;
         String reversalId = order.getStripeTransferId() != null
                 ? reverseTransfer(order, amountCents, reason, operationKey)
                 : null;
@@ -63,10 +67,11 @@ public class OrderRefundService {
                                 .setPaymentIntent(order.getStripePaymentIntentId())
                                 .setAmount((long) amountCents)
                                 .putMetadata("order_id", order.getId().toString())
-                                .putMetadata("reason", reason == null ? "" : reason)
+                                .putMetadata("reason", stripeReason)
                                 .build(),
                         RequestOptions.builder()
-                                .setIdempotencyKey("refund:" + order.getId() + ":" + operationKey)
+                                .setIdempotencyKey("refund:" + order.getId() + ":" + operationKey
+                                        + (hashedReason ? ":reason-sha256" : ""))
                                 .build()));
 
         log.info("Commande {} remboursée : {}c (refund {}, reversal {})",
@@ -91,7 +96,16 @@ public class OrderRefundService {
             String reasonHash = reasonHash(reason);
             String existingId = null;
             long reversed = 0;
-            for (TransferReversal previous : transfer.getReversals().autoPagingIterable()) {
+            var page = transfer.getReversals();
+            var history = new ArrayList<>(page.getData());
+            while (Boolean.TRUE.equals(page.getHasMore())) {
+                if (page.getData().isEmpty()) {
+                    throw new BillingValidationException("Historique de reprise incomplet : rapprochement nécessaire.");
+                }
+                page = page.list(Map.of("starting_after", page.getData().getLast().getId()));
+                history.addAll(page.getData());
+            }
+            for (TransferReversal previous : history) {
                 reversed += previous.getAmount();
                 Map<String, String> metadata = previous.getMetadata();
                 String previousKey = metadata.get("operation_key");
@@ -142,7 +156,7 @@ public class OrderRefundService {
         });
     }
 
-    // Résume le motif pour vérifier son identité dans l'historique Stripe.
+    // Calcule une empreinte du motif de remboursement.
     private String reasonHash(String reason) {
         try {
             return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")

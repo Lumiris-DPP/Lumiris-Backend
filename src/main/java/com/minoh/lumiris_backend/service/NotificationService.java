@@ -148,13 +148,15 @@ public class NotificationService {
         }
     }
 
+    // Sauvegarde la notification avec un corps adapté à sa taille maximale.
     private void save(User recipient, NotificationType type, String title, String body,
                        String href, MarketplaceOrder order) {
         Notification notification = new Notification();
         notification.setUser(recipient);
         notification.setType(type);
         notification.setTitle(title);
-        notification.setBody(body);
+        notification.setBody(body.substring(0, body.offsetByCodePoints(0,
+                Math.min(1000, body.codePointCount(0, body.length())))));
         notification.setHref(href);
         notification.setOrder(order);
         notificationRepository.save(notification);

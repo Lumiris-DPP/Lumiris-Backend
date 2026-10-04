@@ -542,7 +542,7 @@ public class OrderLifecycleService {
         OrderRefundService.RefundOutcome outcome = refundService.refund(order, amount, reason, operationKey);
 
         order.setStripeRefundId(outcome.refundId());
-        if (outcome.transferReversalId() != null) {
+        if (order.getStripeTransferReversalId() == null && outcome.transferReversalId() != null) {
             order.setStripeTransferReversalId(outcome.transferReversalId());
         }
         order.setRefundedCents(order.getRefundedCents() + outcome.amountCents());

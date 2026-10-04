@@ -825,7 +825,7 @@ class OrderLifecycleIntegrationTest {
             if (invalidMetadata) assertThat(oldFailure).isInstanceOf(StripeException.class);
             else assertThat(oldFailure).isNull();
             lifecycle.refund(f.seller(), f.order(), new RefundRequest(50, reason, operation));
-            assertThat(stripe.lastRefundKey()).isEqualTo(refundKey + (invalidMetadata ? ":reason-sha256" : ""));
+            assertThat(stripe.lastRefundKey()).isEqualTo(refundKey);
             assertThat(refunded(f)).isEqualTo(50);
             assertThat(stripe.refunds()).isEqualTo(1);
             assertThat(stripe.reversals()).isEqualTo(1);
@@ -863,6 +863,54 @@ class OrderLifecycleIntegrationTest {
         assertThat(refunded(f)).isEqualTo(13);
         assertThat(stripe.refunds()).isEqualTo(13);
         assertThat(stripe.reversedCents()).isEqualTo(12);
+    }
+
+    // Refuse le passage au motif court après succès Stripe et rollback SQL.
+    @Test
+    void review14_pendingLongReasonCannotSwitchToShort() {
+        verifyPendingReasonSwitch("r".repeat(501), "court");
+    }
+
+    // Refuse le passage au motif long après succès Stripe et rollback SQL.
+    @Test
+    void review14_pendingShortReasonCannotSwitchToLong() {
+        verifyPendingReasonSwitch("court", "r".repeat(501));
+    }
+
+    // Vérifie le refus du motif modifié puis la reprise du remboursement initial.
+    private void verifyPendingReasonSwitch(String initial, String changed) {
+        Fixture f = fixture("PAID");
+        assertThat(load(f).getStripeTransferId()).isNull();
+        UUID operation = UUID.randomUUID();
+        RefundRequest request = new RefundRequest(200, initial, operation);
+        assertThatThrownBy(() -> new TransactionTemplate(transactionManager).executeWithoutResult(tx -> {
+            lifecycle.refund(f.seller(), f.order(), request);
+            throw new IllegalStateException("Rollback après Stripe");
+        })).isInstanceOf(IllegalStateException.class);
+        assertThat(refunded(f)).isZero();
+        assertThat(stripe.refunds()).isEqualTo(1);
+        String key = stripe.lastRefundKey();
+        Throwable failure = org.assertj.core.api.Assertions.catchThrowable(() ->
+                lifecycle.refund(f.seller(), f.order(), new RefundRequest(200, changed, operation)));
+        assertThat(stripe.refunds()).isEqualTo(1);
+        assertThat(failure).isInstanceOf(BillingException.class);
+        assertThat(failure.getCause()).isInstanceOf(StripeException.class);
+        assertThat(refunded(f)).isZero();
+        assertThat(stock(f)).isZero();
+        assertThat(jdbc.queryForObject("select count(*) from marketplace_order_refund_operations where order_id=?",
+                Integer.class, f.order())).isZero();
+        lifecycle.refund(f.seller(), f.order(), request);
+        lifecycle.refund(f.seller(), f.order(), request);
+        assertThat(stripe.lastRefundKey()).isEqualTo(key);
+        assertThat(stripe.refunds()).isEqualTo(1);
+        assertThat(stripe.reversals()).isZero();
+        assertThat(refunded(f)).isEqualTo(200);
+        assertThat(load(f).getRefundReason()).isEqualTo(initial);
+        assertThat(jdbc.queryForObject("select reason from marketplace_order_refund_operations where order_id=? and operation_id=?",
+                String.class, f.order(), operation)).isEqualTo(initial);
+        assertThat(stock(f)).isEqualTo(1);
+        assertThat(wardrobe(f)).isEqualTo(1);
+        assertThat(events(f, "REFUNDED")).isEqualTo(1);
     }
 
     // Calcule l'empreinte nécessaire aux anciens appels Stripe simulés.

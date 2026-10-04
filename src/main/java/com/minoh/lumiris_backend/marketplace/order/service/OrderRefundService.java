@@ -70,8 +70,7 @@ public class OrderRefundService {
                                 .putMetadata("reason", stripeReason)
                                 .build(),
                         RequestOptions.builder()
-                                .setIdempotencyKey("refund:" + order.getId() + ":" + operationKey
-                                        + (hashedReason ? ":reason-sha256" : ""))
+                                .setIdempotencyKey("refund:" + order.getId() + ":" + operationKey)
                                 .build()));
 
         log.info("Commande {} remboursée : {}c (refund {}, reversal {})",

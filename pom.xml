@@ -370,6 +370,9 @@
 							<!--suppress UnresolvedMavenProperty -->
 							<nvdApiKey>${env.NVD_API_KEY}</nvdApiKey>
 							<skipTestScope>true</skipTestScope>
+							<!-- OSS Index exige un compte Sonatype (401 sans identifiants) et le projet n'a aucun binaire .NET : la NVD reste la source. -->
+							<ossindexAnalyzerEnabled>false</ossindexAnalyzerEnabled>
+							<assemblyAnalyzerEnabled>false</assemblyAnalyzerEnabled>
 							<formats>
 								<format>HTML</format>
 								<format>SARIF</format>

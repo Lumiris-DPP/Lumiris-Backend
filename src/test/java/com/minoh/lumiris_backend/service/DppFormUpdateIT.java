@@ -8,6 +8,7 @@ import com.minoh.lumiris_backend.entity.User;
 import com.minoh.lumiris_backend.entity.UserRole;
 import com.minoh.lumiris_backend.repository.StoredFileRepository;
 import com.minoh.lumiris_backend.repository.UserRepository;
+import io.minio.MinioClient;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -72,6 +73,9 @@ class DppFormUpdateIT {
 
     @MockitoBean
     private BlockchainService blockchainService;
+
+    @MockitoBean
+    private MinioClient minioClient;
 
     private static final String EMAIL = "artisan-it@lumiris.test";
     private User user;

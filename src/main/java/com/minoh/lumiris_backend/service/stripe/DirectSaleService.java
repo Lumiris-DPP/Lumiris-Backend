@@ -2,6 +2,8 @@ package com.minoh.lumiris_backend.service.stripe;
 
 import com.minoh.lumiris_backend.config.MarketplaceProperties;
 import com.minoh.lumiris_backend.config.stripe.StripeProperties;
+import com.minoh.lumiris_backend.dto.in.CartIntentRequest;
+import com.minoh.lumiris_backend.dto.out.PaymentIntentResponse;
 import com.minoh.lumiris_backend.entity.DppForm;
 import com.minoh.lumiris_backend.entity.MarketplaceOrder;
 import com.minoh.lumiris_backend.entity.MarketplaceProduct;
@@ -13,18 +15,16 @@ import com.minoh.lumiris_backend.entity.WardrobeItem;
 import com.minoh.lumiris_backend.exception.BillingException;
 import com.minoh.lumiris_backend.exception.BillingValidationException;
 import com.minoh.lumiris_backend.exception.ResourceNotFoundException;
+import com.minoh.lumiris_backend.integration.stripe.StripeCalls;
 import com.minoh.lumiris_backend.mapper.MarketplaceVariantMapper;
+import com.minoh.lumiris_backend.repository.MarketplaceOrderRepository;
 import com.minoh.lumiris_backend.repository.MarketplaceProductRepository;
 import com.minoh.lumiris_backend.repository.MarketplaceProductVariantRepository;
-import com.minoh.lumiris_backend.dto.in.CartIntentRequest;
-import com.minoh.lumiris_backend.dto.out.PaymentIntentResponse;
-import com.minoh.lumiris_backend.repository.MarketplaceOrderRepository;
+import com.minoh.lumiris_backend.repository.UserRepository;
+import com.minoh.lumiris_backend.repository.WardrobeItemRepository;
 import com.minoh.lumiris_backend.service.OrderLifecycleService;
 import com.minoh.lumiris_backend.service.PayableSellerResolver;
 import com.minoh.lumiris_backend.service.PreparationDelayResolver;
-import com.minoh.lumiris_backend.repository.UserRepository;
-import com.minoh.lumiris_backend.repository.WardrobeItemRepository;
-import com.minoh.lumiris_backend.integration.stripe.StripeCalls;
 import com.stripe.exception.InvalidRequestException;
 import com.stripe.exception.StripeException;
 import com.stripe.model.PaymentIntent;
@@ -53,13 +53,14 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
-// Prépare le paiement et réserve les pièces du panier.
+// Paiement du panier : vérifier, ouvrir le paiement Stripe, réserver le stock, confirmer au webhook.
 @Service
 @RequiredArgsConstructor
 public class DirectSaleService {
 
     private static final Logger log = LoggerFactory.getLogger(DirectSaleService.class);
 
+    // Statuts Stripe où le paiement n'est ni réussi ni abandonné.
     private static final Set<String> STILL_SETTLING_STATUSES = Set.of("processing", "requires_capture");
     private static final String PAID_CART_MESSAGE =
             "Ce panier vient d'être payé : retrouve ta commande dans « Mes commandes ».";
@@ -77,24 +78,33 @@ public class DirectSaleService {
     private final MarketplaceVariantMapper variantMapper;
     private final PlatformTransactionManager transactionManager;
 
-    // Prépare le paiement du panier en transactions successives.
+    // ===== Point d'entrée, appelé par MarketplaceCheckoutController =====
+
+    // Checkout du panier : vérifie, ouvre le paiement Stripe, libère l'ancien, réserve.
     @Transactional(propagation = Propagation.NEVER)
     public PaymentIntentResponse createCartPaymentIntent(String buyerEmail, CartIntentRequest request) {
         properties.requireSecretKey();
         TransactionTemplate transaction = new TransactionTemplate(transactionManager);
+        // Étape 1, transaction courte : le panier est relu et vérifié.
         Checkout checkout = transaction.execute(status -> prepareCheckout(buyerEmail, request));
+        // Chaque étape valide sa propre transaction : un échec plus loin n'annule pas les précédentes.
         while (true) {
+            // Étape 2 : le paiement Stripe de ce panier.
             Attempt attempt = transaction.execute(status -> openAttempt(checkout));
-
+            // Étape 3 : les anciens paniers rendent leur stock.
             releaseSupersededReservations(checkout.buyer(), attempt.paymentIntentId());
+            // Étape 4 : stock réservé et commandes PENDING enregistrées.
             PaymentIntentResponse response = transaction.execute(status -> finishAttempt(checkout, attempt, request.shipping()));
+            // null : le paiement a été annulé entre-temps, on recommence.
             if (response != null) {
                 return response;
             }
         }
     }
 
-    // Vérifie les pièces, les ateliers et les montants du panier.
+    // ===== Étape 1. Vérifier le panier (prix, déclinaisons, vendeurs, stock, devise, totaux) =====
+
+    // Étape 1 : relit le panier en base et refuse ce qui ne peut pas être payé.
     private Checkout prepareCheckout(String buyerEmail, CartIntentRequest request) {
         User buyer = userRepository.getByEmail(buyerEmail);
 
@@ -109,197 +119,7 @@ public class DirectSaleService {
                 idempotencyKey(buyer, lines, totals.amount(), currency));
     }
 
-    // Relit le paiement avant de réserver et adresser les commandes.
-    private PaymentIntentResponse finishAttempt(Checkout checkout, Attempt attempt,
-                                                 CartIntentRequest.ShippingAddress shipping) {
-        String paymentIntentId = attempt.paymentIntentId();
-        orderRepository.lockPaymentIntent(paymentIntentId);
-        List<MarketplaceOrder> orders = orderRepository.lockByStripePaymentIntentId(paymentIntentId);
-        PaymentIntent intent = StripeCalls.billed("Lecture du paiement impossible", () -> PaymentIntent.retrieve(paymentIntentId));
-        requirePaymentStillPayable(intent);
-
-        if (!orders.isEmpty() && orders.stream().noneMatch(order -> order.getStatus() == OrderStatus.PENDING)
-                && orders.stream().anyMatch(order -> order.getStatus() != OrderStatus.CANCELLED)) {
-            throw new BillingValidationException(PAID_CART_MESSAGE);
-        }
-
-        if ("canceled".equals(intent.getStatus()) || (!orders.isEmpty()
-                && orders.stream().allMatch(order -> order.getStatus() == OrderStatus.CANCELLED))) {
-            return null;
-        }
-
-        if (orders.isEmpty()) {
-            reserveStock(checkout.lines());
-            persistOrders(checkout.buyer(), checkout.bySeller(), checkout.totals().shippingBySeller(), paymentIntentId,
-                    attempt.transferGroup(), shipping);
-        } else {
-            refreshPendingOrders(orders, shipping);
-        }
-
-        CartTotals totals = checkout.totals();
-        return new PaymentIntentResponse(
-                intent.getClientSecret(), properties.publishableKey(),
-                totals.amount(), totals.items(), totals.shipping(), totals.commission(),
-                shipments(checkout.bySeller(), totals.shippingBySeller()));
-    }
-
-    // Ouvre une tentative utilisable après les tentatives annulées.
-    private Attempt openAttempt(Checkout checkout) {
-        String key = checkout.idempotencyKey();
-        while (true) {
-
-            String transferGroup = "og_" + UUID.nameUUIDFromBytes(key.getBytes(StandardCharsets.UTF_8));
-            PaymentIntent intent = createIntent(checkout.buyer(), checkout.totals().amount(), checkout.currency(),
-                    transferGroup, key);
-            orderRepository.lockPaymentIntent(intent.getId());
-            List<MarketplaceOrder> orders = orderRepository.lockByStripePaymentIntentId(intent.getId());
-
-            String intentId = intent.getId();
-            intent = StripeCalls.billed("Lecture du paiement impossible", () -> PaymentIntent.retrieve(intentId));
-            requirePaymentStillPayable(intent);
-            if ("canceled".equals(intent.getStatus())) {
-
-                releaseReservations(intent.getId());
-            }
-            boolean cancelled = !orders.isEmpty()
-                    && orders.stream().allMatch(order -> order.getStatus() == OrderStatus.CANCELLED);
-            if (!cancelled && !(orders.isEmpty() && "canceled".equals(intent.getStatus()))) {
-                return new Attempt(intent.getId(), transferGroup);
-            }
-            key = "checkout:after:" + UUID.nameUUIDFromBytes(
-                    (key + ":after:" + intent.getId()).getBytes(StandardCharsets.UTF_8));
-        }
-    }
-
-    // Refuse un paiement déjà encaissé ou encore en cours.
-    private void requirePaymentStillPayable(PaymentIntent intent) {
-        if ("succeeded".equals(intent.getStatus())) {
-            throw new BillingValidationException(PAID_CART_MESSAGE);
-        }
-        if (STILL_SETTLING_STATUSES.contains(intent.getStatus())) {
-            throw new BillingValidationException(
-                    "Le paiement de ce panier est en cours : retrouve son état dans « Mes commandes ».");
-        }
-    }
-
-    // Actualise uniquement les adresses des commandes encore en attente.
-    private void refreshPendingOrders(List<MarketplaceOrder> orders, CartIntentRequest.ShippingAddress shipping) {
-        List<MarketplaceOrder> pending = orders.stream()
-                .filter(order -> order.getStatus() == OrderStatus.PENDING)
-                .toList();
-        if (pending.isEmpty()) {
-            throw new BillingValidationException(PAID_CART_MESSAGE);
-        }
-        pending.forEach(order -> {
-            applyShippingAddress(order, shipping);
-            orderRepository.save(order);
-        });
-    }
-
-    // Confirme les commandes payées et ajoute les pièces acquises.
-    @Transactional
-    public void fulfillByPaymentIntent(String paymentIntentId) {
-        List<MarketplaceOrder> orders = orderRepository.lockByStripePaymentIntentId(paymentIntentId);
-        int confirmed = 0;
-        for (MarketplaceOrder order : orders) {
-            if (order.getStatus() == OrderStatus.CANCELLED && order.getStripeRefundId() == null) {
-
-                log.error("PaymentIntent {} encaissé pour la commande annulée {} : remboursement à traiter",
-                        paymentIntentId, order.getId());
-                continue;
-            }
-            if (order.getStatus() != OrderStatus.PENDING) {
-                continue;
-            }
-            order.setStatus(OrderStatus.PAID);
-            String invoiceNumber = "INV-" + order.getId().toString().substring(0, 8).toUpperCase();
-            order.setInvoiceNumber(invoiceNumber);
-            orderRepository.save(order);
-
-            if (order.getBuyer() != null && !wardrobeItemRepository.existsByOrder_Id(order.getId())) {
-                wardrobeItemRepository.save(wardrobeItemFor(order, invoiceNumber));
-            }
-            lifecycleService.markPaid(order);
-            confirmed++;
-        }
-        if (confirmed > 0) {
-            log.info("PaymentIntent {} → {} commande(s) PAID + ajoutées à la Garde-Robe", paymentIntentId, confirmed);
-        }
-    }
-
-    // Relit le paiement avant de confirmer ou libérer sa réservation.
-    @Transactional
-    public void settlePendingPayment(String paymentIntentId) {
-        PaymentIntent intent;
-        try {
-            intent = PaymentIntent.retrieve(paymentIntentId);
-        } catch (InvalidRequestException e) {
-
-            if ("resource_missing".equals(e.getCode())) {
-                releaseReservations(paymentIntentId);
-            } else {
-                log.warn("Statut du PaymentIntent {} illisible, réservation conservée : {}", paymentIntentId, e.getMessage());
-            }
-            return;
-        } catch (StripeException e) {
-
-            log.warn("Statut du PaymentIntent {} illisible, réservation conservée : {}", paymentIntentId, e.getMessage());
-            return;
-        }
-        String status = intent.getStatus();
-        if ("succeeded".equals(status)) {
-            fulfillByPaymentIntent(paymentIntentId);
-            return;
-        }
-        if (STILL_SETTLING_STATUSES.contains(status)) {
-            return;
-        }
-        if ("canceled".equals(status) || cancelAtStripe(intent)) {
-            releaseReservations(paymentIntentId);
-        }
-    }
-
-    // Demande l'annulation du paiement avant de libérer les pièces.
-    private boolean cancelAtStripe(PaymentIntent intent) {
-        try {
-            intent.cancel(PaymentIntentCancelParams.builder().build(),
-                    RequestOptions.builder().setIdempotencyKey("cancel:" + intent.getId()).build());
-            return true;
-        } catch (StripeException e) {
-            log.warn("Annulation du PaymentIntent {} impossible, réservation conservée : {}",
-                    intent.getId(), e.getMessage());
-            return false;
-        }
-    }
-
-    // Annule les commandes encore en attente et rend leur stock.
-    private void releaseReservations(String paymentIntentId) {
-        for (MarketplaceOrder order : orderRepository.lockByStripePaymentIntentId(paymentIntentId)) {
-            if (order.getStatus() == OrderStatus.PENDING) {
-                lifecycleService.cancelAbandoned(order);
-            }
-        }
-    }
-
-    // Prépare la pièce acquise avec sa facture et sa garantie.
-    private WardrobeItem wardrobeItemFor(MarketplaceOrder order, String invoiceNumber) {
-        DppForm dpp = order.getDppForm();
-        WardrobeItem item = new WardrobeItem();
-        item.setUser(order.getBuyer());
-        item.setDppForm(dpp);
-        item.setOrder(order);
-        item.setInvoiceNumber(invoiceNumber);
-        item.setWarrantyDescription(dpp != null ? dpp.getWarrantyDescription() : null);
-        if (dpp != null && dpp.getWarrantyMonths() != null && dpp.getWarrantyMonths() > 0) {
-            item.setWarrantyUntil(item.getAcquiredAt()
-                    .atZone(ZoneOffset.UTC)
-                    .plusMonths(dpp.getWarrantyMonths())
-                    .toInstant());
-        }
-        return item;
-    }
-
-    // Charge les pièces publiées et leurs déclinaisons demandées.
+    // Charge chaque produit publié et sa déclinaison ; le prix vient de la base, jamais du client.
     private List<CartLine> loadLines(List<CartIntentRequest.Line> items) {
         return items.stream().map(line -> {
             MarketplaceProduct product = productRepository.findById(line.productId())
@@ -309,7 +129,7 @@ public class DirectSaleService {
         }).toList();
     }
 
-    // Vérifie la déclinaison choisie ou utilise l'unique déclinaison.
+    // Retrouve la déclinaison demandée, ou la seule s'il n'y en a qu'une.
     private MarketplaceProductVariant resolveVariant(MarketplaceProduct product, UUID variantId) {
         if (variantId != null) {
             MarketplaceProductVariant variant = variantRepository.findById(variantId)
@@ -329,7 +149,7 @@ public class DirectSaleService {
                 "Choisis une taille pour « " + product.getName() + " » avant de payer.");
     }
 
-    // Refuse les ateliers qui ne peuvent pas recevoir le paiement.
+    // Refuse le panier si un atelier ne peut pas encore recevoir de paiement.
     private void requireSellersPayable(Map<UUID, List<CartLine>> bySeller) {
         Set<UUID> payable = payableSellerResolver.payableUserIds(bySeller.keySet());
         for (Map.Entry<UUID, List<CartLine>> entry : bySeller.entrySet()) {
@@ -341,7 +161,7 @@ public class DirectSaleService {
         }
     }
 
-    // Vérifie le stock en incluant les réservations de cet acheteur.
+    // Vérifie le stock, en comptant ce que cet acheteur a déjà réservé.
     private void requireStockAvailable(User buyer, List<CartLine> lines) {
         Map<UUID, Integer> held = heldByBuyer(buyer, lines);
         for (CartLine line : lines) {
@@ -353,7 +173,7 @@ public class DirectSaleService {
         }
     }
 
-    // Charge les quantités déjà réservées par cet acheteur.
+    // Quantités déjà réservées par cet acheteur dans ses commandes PENDING.
     private Map<UUID, Integer> heldByBuyer(User buyer, List<CartLine> lines) {
         Set<UUID> variantIds = lines.stream().map(line -> line.variant().getId()).collect(Collectors.toSet());
         Map<UUID, Integer> held = new HashMap<>();
@@ -363,7 +183,7 @@ public class DirectSaleService {
         return held;
     }
 
-    // Vérifie que toutes les pièces utilisent la même devise.
+    // Un paiement Stripe n'a qu'une devise : toutes les pièces doivent l'utiliser.
     private String requireSingleCurrency(List<CartLine> lines) {
         Set<String> currencies = lines.stream()
                 .map(line -> line.product().getCurrency().toLowerCase(Locale.ROOT))
@@ -374,7 +194,7 @@ public class DirectSaleService {
         return currencies.iterator().next();
     }
 
-    // Calcule les montants et les frais de livraison par atelier.
+    // Articles, port (le plus cher par atelier) et commission, en centimes, sans dépassement.
     private CartTotals totals(List<CartLine> lines, Map<UUID, List<CartLine>> bySeller) {
         try {
             int items = 0;
@@ -396,19 +216,7 @@ public class DirectSaleService {
         }
     }
 
-    // Réserve les quantités en suivant l'ordre des déclinaisons.
-    private void reserveStock(List<CartLine> lines) {
-        List<CartLine> byVariantId = lines.stream()
-                .sorted(Comparator.comparing(line -> line.variant().getId().toString()))
-                .toList();
-        for (CartLine line : byVariantId) {
-            if (variantRepository.decrementStock(line.variant().getId(), line.quantity()) == 0) {
-                throw new BillingValidationException("Stock insuffisant pour « " + lineLabel(line) + " ».");
-            }
-        }
-    }
-
-    // Identifie le même panier de l'acheteur pendant la minute.
+    // Même panier dans la même minute = même clé, donc Stripe renvoie le même paiement.
     private String idempotencyKey(User buyer, List<CartLine> lines, int amount, String currency) {
         String cartSig = lines.stream()
                 .map(l -> l.variant().getId() + "x" + l.quantity())
@@ -418,7 +226,36 @@ public class DirectSaleService {
                 + ":" + (System.currentTimeMillis() / 60_000);
     }
 
-    // Crée le paiement Stripe et traduit les erreurs de montant.
+    // ===== Étape 2. Ouvrir le paiement Stripe =====
+
+    // Étape 2 : crée le paiement Stripe ; s'il est déjà annulé, recommence avec une clé neuve.
+    private Attempt openAttempt(Checkout checkout) {
+        String key = checkout.idempotencyKey();
+        while (true) {
+            String transferGroup = "og_" + UUID.nameUUIDFromBytes(key.getBytes(StandardCharsets.UTF_8));
+            PaymentIntent intent = createIntent(checkout.buyer(), checkout.totals().amount(), checkout.currency(),
+                    transferGroup, key);
+            orderRepository.lockPaymentIntent(intent.getId());
+            List<MarketplaceOrder> orders = orderRepository.lockByStripePaymentIntentId(intent.getId());
+
+            String intentId = intent.getId();
+            intent = StripeCalls.billed("Lecture du paiement impossible", () -> PaymentIntent.retrieve(intentId));
+            requirePaymentStillPayable(intent);
+            if ("canceled".equals(intent.getStatus())) {
+                releaseReservations(intent.getId());
+            }
+            boolean cancelled = !orders.isEmpty()
+                    && orders.stream().allMatch(order -> order.getStatus() == OrderStatus.CANCELLED);
+            if (!cancelled && !(orders.isEmpty() && "canceled".equals(intent.getStatus()))) {
+                return new Attempt(intent.getId(), transferGroup);
+            }
+            // Paiement annulé pour cette clé : on en dérive une neuve pour obtenir un paiement neuf.
+            key = "checkout:after:" + UUID.nameUUIDFromBytes(
+                    (key + ":after:" + intent.getId()).getBytes(StandardCharsets.UTF_8));
+        }
+    }
+
+    // Appelle Stripe avec la clé d'idempotence : un double appel ne crée pas deux paiements.
     private PaymentIntent createIntent(User buyer, int amount, String currency,
                                        String transferGroup, String idempotencyKey) {
         try {
@@ -444,7 +281,20 @@ public class DirectSaleService {
         }
     }
 
-    // Traite séparément les anciennes réservations avant la nouvelle réservation.
+    // Refuse si ce paiement est déjà encaissé ou encore en traitement.
+    private void requirePaymentStillPayable(PaymentIntent intent) {
+        if ("succeeded".equals(intent.getStatus())) {
+            throw new BillingValidationException(PAID_CART_MESSAGE);
+        }
+        if (STILL_SETTLING_STATUSES.contains(intent.getStatus())) {
+            throw new BillingValidationException(
+                    "Le paiement de ce panier est en cours : retrouve son état dans « Mes commandes ».");
+        }
+    }
+
+    // ===== Étape 3. Libérer les anciens paniers de l'acheteur =====
+
+    // Étape 3 : règle chaque ancien paiement en attente, chacun dans sa transaction.
     private void releaseSupersededReservations(User buyer, String currentPaymentIntentId) {
         TransactionTemplate ownTransaction = new TransactionTemplate(transactionManager);
         ownTransaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
@@ -454,7 +304,113 @@ public class DirectSaleService {
         }
     }
 
-    // Enregistre les commandes avec les montants et l'adresse du panier.
+    // Règle un paiement en attente : confirmé s'il est payé, stock rendu sinon (aussi OrderScheduler).
+    @Transactional
+    public void settlePendingPayment(String paymentIntentId) {
+        PaymentIntent intent;
+        try {
+            intent = PaymentIntent.retrieve(paymentIntentId);
+        } catch (InvalidRequestException e) {
+            // Paiement inconnu chez Stripe : la réservation est libérée.
+            if ("resource_missing".equals(e.getCode())) {
+                releaseReservations(paymentIntentId);
+            } else {
+                log.warn("Statut du PaymentIntent {} illisible, réservation conservée : {}", paymentIntentId, e.getMessage());
+            }
+            return;
+        } catch (StripeException e) {
+            // Stripe injoignable : on garde la réservation et on réessaiera.
+            log.warn("Statut du PaymentIntent {} illisible, réservation conservée : {}", paymentIntentId, e.getMessage());
+            return;
+        }
+        String status = intent.getStatus();
+        if ("succeeded".equals(status)) {
+            fulfillByPaymentIntent(paymentIntentId);
+            return;
+        }
+        if (STILL_SETTLING_STATUSES.contains(status)) {
+            return;
+        }
+        if ("canceled".equals(status) || cancelAtStripe(intent)) {
+            releaseReservations(paymentIntentId);
+        }
+    }
+
+    // Annule le paiement chez Stripe ; en cas d'échec, la réservation est gardée.
+    private boolean cancelAtStripe(PaymentIntent intent) {
+        try {
+            intent.cancel(PaymentIntentCancelParams.builder().build(),
+                    RequestOptions.builder().setIdempotencyKey("cancel:" + intent.getId()).build());
+            return true;
+        } catch (StripeException e) {
+            log.warn("Annulation du PaymentIntent {} impossible, réservation conservée : {}",
+                    intent.getId(), e.getMessage());
+            return false;
+        }
+    }
+
+    // Annule les commandes encore PENDING de ce paiement et rend leur stock.
+    private void releaseReservations(String paymentIntentId) {
+        for (MarketplaceOrder order : orderRepository.lockByStripePaymentIntentId(paymentIntentId)) {
+            if (order.getStatus() == OrderStatus.PENDING) {
+                lifecycleService.cancelAbandoned(order);
+            }
+        }
+    }
+
+    // ===== Étape 4. Réserver le stock et enregistrer les commandes =====
+
+    // Étape 4 : sous verrou, réserve le stock et crée les commandes, ou met à jour l'existant.
+    private PaymentIntentResponse finishAttempt(Checkout checkout, Attempt attempt,
+                                                 CartIntentRequest.ShippingAddress shipping) {
+        String paymentIntentId = attempt.paymentIntentId();
+        // Verrou sur le paiement : deux requêtes du même panier passent l'une après l'autre.
+        orderRepository.lockPaymentIntent(paymentIntentId);
+        List<MarketplaceOrder> orders = orderRepository.lockByStripePaymentIntentId(paymentIntentId);
+        PaymentIntent intent = StripeCalls.billed("Lecture du paiement impossible", () -> PaymentIntent.retrieve(paymentIntentId));
+        requirePaymentStillPayable(intent);
+
+        // Commandes déjà payées : on ne recrée rien.
+        if (!orders.isEmpty() && orders.stream().noneMatch(order -> order.getStatus() == OrderStatus.PENDING)
+                && orders.stream().anyMatch(order -> order.getStatus() != OrderStatus.CANCELLED)) {
+            throw new BillingValidationException(PAID_CART_MESSAGE);
+        }
+
+        // Paiement ou commandes annulés : null fait recommencer createCartPaymentIntent.
+        if ("canceled".equals(intent.getStatus()) || (!orders.isEmpty()
+                && orders.stream().allMatch(order -> order.getStatus() == OrderStatus.CANCELLED))) {
+            return null;
+        }
+
+        // Premier passage : réserve et crée ; sinon met seulement à jour l'adresse.
+        if (orders.isEmpty()) {
+            reserveStock(checkout.lines());
+            persistOrders(checkout.buyer(), checkout.bySeller(), checkout.totals().shippingBySeller(), paymentIntentId,
+                    attempt.transferGroup(), shipping);
+        } else {
+            refreshPendingOrders(orders, shipping);
+        }
+
+        CartTotals totals = checkout.totals();
+        return new PaymentIntentResponse(
+                intent.getClientSecret(), properties.publishableKey(),
+                totals.amount(), totals.items(), totals.shipping(), totals.commission(),
+                shipments(checkout.bySeller(), totals.shippingBySeller()));
+    }
+
+    // Baisse le stock en SQL conditionnel ; l'ordre fixe des variantes évite les interblocages.
+    private void reserveStock(List<CartLine> lines) {
+        List<CartLine> byVariantId = lines.stream()
+                .sorted(Comparator.comparing(line -> line.variant().getId().toString()))
+                .toList();
+        for (CartLine line : byVariantId) {
+            if (variantRepository.decrementStock(line.variant().getId(), line.quantity()) == 0) {
+                throw new BillingValidationException("Stock insuffisant pour « " + lineLabel(line) + " ».");
+            }
+        }
+    }
+
+    // Crée une commande PENDING par ligne ; le port va sur la première ligne de chaque atelier.
     private void persistOrders(User buyer, Map<UUID, List<CartLine>> bySeller,
                                Map<UUID, Integer> shippingBySeller, String paymentIntentId,
                                String transferGroup, CartIntentRequest.ShippingAddress shipping) {
@@ -488,7 +444,21 @@ public class DirectSaleService {
         }
     }
 
-    // Reporte les coordonnées de livraison sur la commande.
+    // Panier déjà enregistré : met seulement à jour l'adresse des commandes PENDING.
+    private void refreshPendingOrders(List<MarketplaceOrder> orders, CartIntentRequest.ShippingAddress shipping) {
+        List<MarketplaceOrder> pending = orders.stream()
+                .filter(order -> order.getStatus() == OrderStatus.PENDING)
+                .toList();
+        if (pending.isEmpty()) {
+            throw new BillingValidationException(PAID_CART_MESSAGE);
+        }
+        pending.forEach(order -> {
+            applyShippingAddress(order, shipping);
+            orderRepository.save(order);
+        });
+    }
+
+    // Copie l'adresse de livraison sur la commande (pays par défaut : FR).
     private void applyShippingAddress(MarketplaceOrder order, CartIntentRequest.ShippingAddress shipping) {
         order.setShipToName(shipping.fullName());
         order.setShipToLine1(shipping.line1());
@@ -500,7 +470,7 @@ public class DirectSaleService {
         order.setShipToPhone(shipping.phone());
     }
 
-    // Présente les frais et délais de chaque atelier du panier.
+    // Résumé par atelier pour l'écran : nombre de pièces, port et délai de préparation.
     private List<PaymentIntentResponse.Shipment> shipments(Map<UUID, List<CartLine>> bySeller,
                                                            Map<UUID, Integer> shippingBySeller) {
         Instant now = Instant.now();
@@ -515,26 +485,80 @@ public class DirectSaleService {
                 .toList();
     }
 
-    // Regroupe les pièces et les montants du panier vérifié.
-    private record Checkout(User buyer, List<CartLine> lines, Map<UUID, List<CartLine>> bySeller,
-                            CartTotals totals, String currency, String idempotencyKey) {}
+    // ===== Après le paiement, appelé par StripeWebhookService =====
 
-    // Associe le nom de la pièce à sa déclinaison.
+    // Webhook payment_intent.succeeded : passe les commandes PENDING en PAID, une seule fois.
+    @Transactional
+    public void fulfillByPaymentIntent(String paymentIntentId) {
+        // Verrou : deux webhooks identiques ne confirment pas deux fois.
+        List<MarketplaceOrder> orders = orderRepository.lockByStripePaymentIntentId(paymentIntentId);
+        int confirmed = 0;
+        for (MarketplaceOrder order : orders) {
+            if (order.getStatus() == OrderStatus.CANCELLED && order.getStripeRefundId() == null) {
+                // Payé alors que la commande est annulée : on journalise pour rembourser.
+                log.error("PaymentIntent {} encaissé pour la commande annulée {} : remboursement à traiter",
+                        paymentIntentId, order.getId());
+                continue;
+            }
+            // Déjà PAID : rien à refaire (idempotence).
+            if (order.getStatus() != OrderStatus.PENDING) {
+                continue;
+            }
+            order.setStatus(OrderStatus.PAID);
+            String invoiceNumber = "INV-" + order.getId().toString().substring(0, 8).toUpperCase();
+            order.setInvoiceNumber(invoiceNumber);
+            orderRepository.save(order);
+
+            if (order.getBuyer() != null && !wardrobeItemRepository.existsByOrder_Id(order.getId())) {
+                wardrobeItemRepository.save(wardrobeItemFor(order, invoiceNumber));
+            }
+            lifecycleService.markPaid(order);
+            confirmed++;
+        }
+        if (confirmed > 0) {
+            log.info("PaymentIntent {} → {} commande(s) PAID + ajoutées à la Garde-Robe", paymentIntentId, confirmed);
+        }
+    }
+
+    // Crée la pièce dans la garde-robe de l'acheteur, avec facture et fin de garantie.
+    private WardrobeItem wardrobeItemFor(MarketplaceOrder order, String invoiceNumber) {
+        DppForm dpp = order.getDppForm();
+        WardrobeItem item = new WardrobeItem();
+        item.setUser(order.getBuyer());
+        item.setDppForm(dpp);
+        item.setOrder(order);
+        item.setInvoiceNumber(invoiceNumber);
+        item.setWarrantyDescription(dpp != null ? dpp.getWarrantyDescription() : null);
+        if (dpp != null && dpp.getWarrantyMonths() != null && dpp.getWarrantyMonths() > 0) {
+            item.setWarrantyUntil(item.getAcquiredAt()
+                    .atZone(ZoneOffset.UTC)
+                    .plusMonths(dpp.getWarrantyMonths())
+                    .toInstant());
+        }
+        return item;
+    }
+
+    // ===== Types internes =====
+
+    // Nom affiché d'une ligne (produit + taille) pour les messages d'erreur.
     private String lineLabel(CartLine line) {
         String variantLabel = variantMapper.label(line.variant());
         return line.product().getName() + (variantLabel != null ? " (" + variantLabel + ")" : "");
     }
 
-    // Conserve les références du paiement ouvert pour le panier.
+    // Le panier vérifié : acheteur, lignes, lignes par atelier, totaux, devise, clé.
+    private record Checkout(User buyer, List<CartLine> lines, Map<UUID, List<CartLine>> bySeller,
+                            CartTotals totals, String currency, String idempotencyKey) {}
+
+    // Le paiement Stripe ouvert pour ce panier.
     private record Attempt(String paymentIntentId, String transferGroup) {}
 
-    // Regroupe les montants du panier et les frais par atelier.
+    // Les montants du panier, en centimes.
     private record CartTotals(int items, int shipping, int amount, int commission,
                               Map<UUID, Integer> shippingBySeller) {}
 
-    // Associe une pièce à sa déclinaison et sa quantité.
+    // Une ligne du panier : produit, déclinaison, quantité.
     private record CartLine(MarketplaceProduct product, MarketplaceProductVariant variant, int quantity) {
-
         // Multiplie le prix par la quantité sans dépassement silencieux.
         int lineTotal() {
             return Math.multiplyExact(product.getPriceCents(), quantity);

@@ -2,4 +2,16 @@
 <!-- OWASP dependency-check suppressions. Add an entry ONLY with a short justification and,
      ideally, an expiry date once a fixed version is available. -->
 <suppressions xmlns="https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.3.xsd">
+    <suppress until="2026-12-31Z">
+        <notes>CVE-2026-53914 vise le cache de build du compilateur Kotlin (désérialisation), pas kotlin-stdlib
+            chargée à l'exécution par okhttp. Aucun build Kotlin dans ce projet. À retirer quand okhttp tirera 2.4.20.</notes>
+        <packageUrl regex="true">^pkg:maven/org\.jetbrains\.kotlin/kotlin-stdlib.*$</packageUrl>
+        <cve>CVE-2026-53914</cve>
+    </suppress>
+    <suppress>
+        <notes>CVE-2022-31691 vise l'extension d'éditeur Spring Tools (CPE spring_boot_tools), pas spring-boot-devtools.
+            devtools est optionnel et absent du jar livré.</notes>
+        <packageUrl regex="true">^pkg:maven/org\.springframework\.boot/spring-boot-devtools@.*$</packageUrl>
+        <cve>CVE-2022-31691</cve>
+    </suppress>
 </suppressions>

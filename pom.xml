@@ -5,7 +5,7 @@
 	<parent>
 		<groupId>org.springframework.boot</groupId>
 		<artifactId>spring-boot-starter-parent</artifactId>
-		<version>4.0.6</version>
+		<version>4.0.8</version>
 		<relativePath/>
 	</parent>
 	<groupId>com.minoh</groupId>
@@ -21,7 +21,7 @@
 		<stripe.version>28.4.0</stripe.version>
 		<sentry.version>8.28.0</sentry.version>
 		<tomcat.version>11.0.25</tomcat.version>
-		<bouncycastle.version>1.84</bouncycastle.version>
+		<bouncycastle.version>1.85</bouncycastle.version>
 	</properties>
 
 	<dependencies>
@@ -370,6 +370,9 @@
 							<!--suppress UnresolvedMavenProperty -->
 							<nvdApiKey>${env.NVD_API_KEY}</nvdApiKey>
 							<skipTestScope>true</skipTestScope>
+							<!-- OSS Index exige un compte Sonatype (401 sans identifiants) et le projet n'a aucun binaire .NET : la NVD reste la source. -->
+							<ossindexAnalyzerEnabled>false</ossindexAnalyzerEnabled>
+							<assemblyAnalyzerEnabled>false</assemblyAnalyzerEnabled>
 							<formats>
 								<format>HTML</format>
 								<format>SARIF</format>

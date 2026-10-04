@@ -10,12 +10,14 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+// Identifie les ateliers disposant de l'abonnement Atelier Plus.
 @Service
 @RequiredArgsConstructor
 public class AtelierPlusResolver {
 
     private final SubscriptionRepository subscriptionRepository;
 
+    // Vérifie l'abonnement Atelier Plus actif d'un compte.
     @Transactional(readOnly = true)
     public boolean isAtelierPlus(UUID userId) {
         return subscriptionRepository.findByUserId(userId)
@@ -24,6 +26,7 @@ public class AtelierPlusResolver {
                 .orElse(false);
     }
 
+    // Identifie les comptes disposant d'un abonnement Atelier Plus actif.
     @Transactional(readOnly = true)
     public Set<UUID> atelierPlusUserIds(Collection<UUID> userIds) {
         if (userIds.isEmpty()) {

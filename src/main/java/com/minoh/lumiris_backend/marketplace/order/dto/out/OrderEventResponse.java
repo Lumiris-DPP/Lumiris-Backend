@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.function.Function;
 
+// Présente une étape de commande et ses pièces jointes.
 public record OrderEventResponse(
         UUID id,
         String type,
@@ -15,6 +16,7 @@ public record OrderEventResponse(
         Instant createdAt
 ) {
 
+    // Prépare la réponse avec les informations de l'événement et ses pièces jointes.
     public static OrderEventResponse from(OrderEvent e, Function<UUID, String> presign) {
         return new OrderEventResponse(
                 e.getId(),

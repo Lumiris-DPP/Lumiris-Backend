@@ -11,6 +11,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+// Identifie les ateliers pouvant recevoir un paiement.
 @Service
 @RequiredArgsConstructor
 public class PayableSellerResolver {
@@ -18,6 +19,7 @@ public class PayableSellerResolver {
     private final SellerAccountRepository sellerAccountRepository;
     private final SubscriptionRepository subscriptionRepository;
 
+    // Identifie les comptes autorisés à recevoir un paiement.
     @Transactional(readOnly = true)
     public Set<UUID> payableUserIds(Collection<UUID> userIds) {
         if (userIds.isEmpty()) {

@@ -6,9 +6,11 @@ import com.minoh.lumiris_backend.marketplace.catalog.dto.out.ProductVariantRespo
 import com.minoh.lumiris_backend.marketplace.catalog.dto.out.SizeMeasurementResponse;
 import org.springframework.stereotype.Component;
 
+// Prépare les déclinaisons et les mesures du catalogue.
 @Component
 public class MarketplaceVariantMapper {
 
+    // Présente les caractéristiques et le stock de la déclinaison.
     public ProductVariantResponse toResponse(MarketplaceProductVariant variant) {
         return new ProductVariantResponse(
                 variant.getId(),
@@ -21,6 +23,7 @@ public class MarketplaceVariantMapper {
                 variant.getVersion());
     }
 
+    // Présente les caractéristiques de la mesure du guide des tailles.
     public SizeMeasurementResponse toResponse(MarketplaceSizeMeasurement measurement) {
         return new SizeMeasurementResponse(
                 measurement.getSizeLabel(),
@@ -29,10 +32,12 @@ public class MarketplaceVariantMapper {
                 measurement.getPosition());
     }
 
+    // Compose le libellé de taille et de couleur.
     public String label(MarketplaceProductVariant variant) {
         return label(variant.getSizeLabel(), variant.getColorLabel());
     }
 
+    // Compose le libellé de taille et de couleur.
     public String label(String sizeLabel, String colorLabel) {
         boolean hasSize = sizeLabel != null && !sizeLabel.isBlank();
         boolean hasColor = colorLabel != null && !colorLabel.isBlank();

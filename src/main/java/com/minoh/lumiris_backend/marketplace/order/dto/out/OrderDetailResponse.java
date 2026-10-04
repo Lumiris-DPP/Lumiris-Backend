@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.function.Function;
 
+// Présente une commande et son historique.
 public record OrderDetailResponse(
         OrderResponse order,
         ShippingAddressResponse shipTo,
@@ -16,6 +17,7 @@ public record OrderDetailResponse(
         List<OrderEventResponse> timeline
 ) {
 
+    // Prépare la réponse avec les informations de la commande et son historique.
     public static OrderDetailResponse from(MarketplaceOrder o, List<OrderEvent> events,
                                            Function<UUID, String> presign) {
         return new OrderDetailResponse(

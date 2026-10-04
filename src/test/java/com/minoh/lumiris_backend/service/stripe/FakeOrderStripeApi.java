@@ -14,6 +14,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
+// Simule les remboursements et versements sans appeler Stripe.
 final class FakeOrderStripeApi implements AutoCloseable {
     private final HttpServer server;
     private final ExecutorService executor = Executors.newCachedThreadPool();
@@ -27,6 +28,7 @@ final class FakeOrderStripeApi implements AutoCloseable {
     private volatile CountDownLatch entered;
     private volatile CountDownLatch release;
 
+    // Démarre le serveur local simulant les opérations financières.
     FakeOrderStripeApi() throws IOException {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/v1/", this::handle);
@@ -35,33 +37,42 @@ final class FakeOrderStripeApi implements AutoCloseable {
         Stripe.overrideApiBase("http://127.0.0.1:" + server.getAddress().getPort());
     }
 
+    // Retient le remboursement simulé jusqu'à sa libération.
     void holdRefund() {
         entered = new CountDownLatch(1);
         release = new CountDownLatch(1);
     }
 
+    // Attend le remboursement simulé avec une durée bornée.
     boolean awaitRefund() throws InterruptedException {
         return entered.await(10, TimeUnit.SECONDS);
     }
 
+    // Libère le remboursement retenu par le test.
     void releaseRefund() {
         if (release != null) release.countDown();
     }
 
+    // Prépare un échec du prochain remboursement simulé.
     void failRefund(boolean value) {
         failRefund = value;
     }
 
+    // Prépare un échec du prochain versement simulé.
     void failTransfer(boolean value) {
         failTransfer = value;
     }
 
+    // Compte les remboursements enregistrés par le serveur simulé.
     int refunds() { return refunds.get(); }
 
+    // Compte les reprises de versement enregistrées par le test.
     int reversals() { return reversals.get(); }
 
+    // Compte les versements enregistrés par le serveur simulé.
     int transfers() { return transfers.get(); }
 
+    // Réinitialise les compteurs et les erreurs du serveur simulé.
     void reset() {
         responses.clear();
         parameters.clear();
@@ -74,6 +85,7 @@ final class FakeOrderStripeApi implements AutoCloseable {
         release = null;
     }
 
+    // Ferme le serveur simulé et restaure la configuration Stripe.
     @Override
     public void close() {
         releaseRefund();
@@ -82,6 +94,7 @@ final class FakeOrderStripeApi implements AutoCloseable {
         Stripe.overrideApiBase(Stripe.LIVE_API_BASE);
     }
 
+    // Simule les appels de versement, reprise et remboursement.
     private void handle(HttpExchange exchange) throws IOException {
         String path = exchange.getRequestURI().getPath();
         String params = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
@@ -120,6 +133,7 @@ final class FakeOrderStripeApi implements AutoCloseable {
         respond(exchange, 200, body);
     }
 
+    // Envoie la réponse HTTP préparée par le test.
     private void respond(HttpExchange exchange, int status, String body) throws IOException {
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().set("Content-Type", "application/json");

@@ -49,6 +49,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppContextSetup;
 
+// Vérifie le catalogue avec une base de test isolée.
 @Tag("integration")
 @Testcontainers
 @SpringBootTest(properties = {
@@ -107,12 +108,14 @@ class MarketplaceCatalogIntegrationTest {
     private final ObjectMapper json = new ObjectMapper();
     private MockMvc mvc;
 
+    // Prépare les réponses simulées nécessaires au catalogue de test.
     @BeforeEach
     void setUp() {
         mvc = webAppContextSetup(context).apply(springSecurity()).build();
         reset(decisionLogRecorder);
     }
 
+    // Vérifie la publication des déclinaisons et du guide des tailles.
     @Test
     void publish_createsTheListingWithVariantsAndSizeGuide() throws Exception {
         Atelier atelier = atelier();
@@ -134,6 +137,7 @@ class MarketplaceCatalogIntegrationTest {
         assertThat(call(200, get("/public/marketplace/products/by-dpp/" + dpp)).get("id").asText()).isEqualTo(id);
     }
 
+    // Vérifie le remplacement des déclinaisons et du guide des tailles.
     @Test
     void edit_replacesVariantsAndSizeGuide() throws Exception {
         Atelier atelier = atelier();
@@ -156,6 +160,7 @@ class MarketplaceCatalogIntegrationTest {
         assertThat(updated.get("sizeGuide").get(0).get("sizeLabel").asText()).isEqualTo("L");
     }
 
+    // Vérifie qu'une version périmée laisse l'annonce inchangée.
     @Test
     void edit_withStaleVariantVersion_isRefusedAndChangesNothing() throws Exception {
         Atelier atelier = atelier();
@@ -171,6 +176,7 @@ class MarketplaceCatalogIntegrationTest {
         assertUnchanged(created);
     }
 
+    // Vérifie l'annulation des modifications quand une taille manque.
     @Test
     void edit_withSizeGuideForAbsentSize_rollsBackProductAndVariants() throws Exception {
         Atelier atelier = atelier();
@@ -188,6 +194,7 @@ class MarketplaceCatalogIntegrationTest {
         assertUnchanged(created);
     }
 
+    // Vérifie le refus des déclinaisons ayant la même combinaison.
     @Test
     void publish_withDuplicateVariantCombination_createsNothing() throws Exception {
         Atelier atelier = atelier();
@@ -202,6 +209,7 @@ class MarketplaceCatalogIntegrationTest {
                 Integer.class, dpp)).isZero();
     }
 
+    // Vérifie qu'une annonce archivée disparaît du catalogue public.
     @Test
     void archive_removesTheListingFromThePublicCatalogue() throws Exception {
         Atelier atelier = atelier();
@@ -228,6 +236,7 @@ class MarketplaceCatalogIntegrationTest {
         });
     }
 
+    // Vérifie que seules les annonces sans commande sont supprimables.
     @Test
     void delete_withoutOrders_removesTheListing_andWithOrders_isRefused() throws Exception {
         Atelier atelier = atelier();
@@ -242,6 +251,7 @@ class MarketplaceCatalogIntegrationTest {
         call(200, get("/api/marketplace/products/" + sold).with(user(atelier.email()).roles("ARTISAN")));
     }
 
+    // Vérifie le classement recherché et sa justification enregistrée.
     @Test
     void search_sortsAndRecordsAnAuditableDecision() throws Exception {
         Atelier atelier = atelier();
@@ -279,6 +289,7 @@ class MarketplaceCatalogIntegrationTest {
         call(403, get("/api/marketplace/decision-logs/" + logId).with(user(atelier.email()).roles("ARTISAN")));
     }
 
+    // Vérifie que l'échec du journal ne bloque pas la recherche.
     @Test
     void search_whenTheDecisionLogCannotBeWritten_stillAnswers() throws Exception {
         Atelier atelier = atelier();
@@ -292,6 +303,7 @@ class MarketplaceCatalogIntegrationTest {
         assertThat(result.get("decisionLog").get("id").isNull()).isTrue();
     }
 
+    // Vérifie les suggestions selon le score et la catégorie.
     @Test
     void suggest_returnsUpToThreeAboveTheScannedScore() throws Exception {
         Atelier sameCategory = atelier();
@@ -326,6 +338,7 @@ class MarketplaceCatalogIntegrationTest {
         assertThat(strict.get("decisionLog").get("sortKey").asText()).isEqualTo("IRIS_DESC_THEN_ATELIER_PLUS");
     }
 
+    // Vérifie la consultation des pièces et le comptage des vues.
     @Test
     void cartLookupAndViews_useThePublicCatalogue() throws Exception {
         Atelier atelier = atelier();
@@ -338,12 +351,14 @@ class MarketplaceCatalogIntegrationTest {
                 UUID.fromString(id))).isEqualTo(1L);
     }
 
+    // Vérifie que les déclinaisons exigent la transaction de l'annonce.
     @Test
     void variantsCannotBeWrittenOutsideTheListingTransaction() {
         assertThatThrownBy(() -> variantService.seedDefaultVariant(new MarketplaceProduct(), 1))
                 .isInstanceOf(IllegalTransactionStateException.class);
     }
 
+    // Vérifie la republication sans duplication et les valeurs omises.
     @Test
     void republish_keepsTheListingAndResetsWhatIsNotSent() throws Exception {
         Atelier atelier = atelier();
@@ -379,6 +394,7 @@ class MarketplaceCatalogIntegrationTest {
         assertThat(again.get("sizeGuide").get(0).get("sizeLabel").asText()).isEqualTo("L");
     }
 
+    // Vérifie le stock initial demandé ou repris du passeport.
     @Test
     void publishWithoutVariants_usesTheRequestedStockThenThePassportQuantity() throws Exception {
         Atelier atelier = atelier();
@@ -402,8 +418,10 @@ class MarketplaceCatalogIntegrationTest {
                 .isEqualTo(withStock.get("variants").get(0).get("id").asText());
     }
 
+    // Regroupe les références d'un atelier créé pour le test.
     private record Atelier(UUID userId, String email, String category) {}
 
+    // Crée un atelier actif dans la base de test.
     private Atelier atelier() {
         UUID user = UUID.randomUUID();
         String email = "atelier-" + user + "@lumiris.test";
@@ -418,6 +436,7 @@ class MarketplaceCatalogIntegrationTest {
         return new Atelier(user, email, "cat" + uniqueWord());
     }
 
+    // Crée un compte administrateur distinct pour le test.
     private String admin() {
         UUID user = UUID.randomUUID();
         String email = "admin-" + user + "@lumiris.test";
@@ -426,6 +445,7 @@ class MarketplaceCatalogIntegrationTest {
         return email;
     }
 
+    // Crée un passeport et son score pour la pièce testée.
     private UUID dpp(Atelier atelier, String name, double irisTotal) {
         UUID dpp = UUID.randomUUID();
         jdbc.update("insert into dpp_forms (id, user_id, status, product_name, product_category, quantity) "
@@ -434,10 +454,12 @@ class MarketplaceCatalogIntegrationTest {
         return dpp;
     }
 
+    // Publie la pièce et ses déclinaisons depuis le passeport testé.
     private JsonNode publish(Atelier atelier, String name, double irisTotal) throws Exception {
         return publish(atelier, name, 8900, irisTotal);
     }
 
+    // Publie la pièce et ses déclinaisons depuis le passeport testé.
     private JsonNode publish(Atelier atelier, String name, int priceCents, double irisTotal) throws Exception {
         UUID dpp = dpp(atelier, name, irisTotal);
         return call(201, post("/api/marketplace/products/from-dpp/" + dpp)
@@ -446,6 +468,7 @@ class MarketplaceCatalogIntegrationTest {
                 .content(convertBody("M", "Ecru").replace("\"priceCents\":8900", "\"priceCents\":" + priceCents)));
     }
 
+    // Compose les informations de publication envoyées par le test.
     private static String convertBody(String secondSize, String secondColor) {
         return "{\"priceCents\":8900,\"currency\":\"EUR\",\"material\":\"Lin\",\"shippingCents\":690,"
                 + "\"preparationDays\":2,\"weightGrams\":600,\"status\":\"PUBLISHED\",\"variants\":["
@@ -454,22 +477,26 @@ class MarketplaceCatalogIntegrationTest {
                 + "\"sizeGuide\":[{\"sizeLabel\":\"S\",\"label\":\"Poitrine\",\"valueMm\":480,\"position\":0}]}";
     }
 
+    // Compose les modifications d'annonce envoyées par le test.
     private static String updateBody(String name, int priceCents, String status, String variants, String measures) {
         return "{\"name\":\"" + name + "\",\"priceCents\":" + priceCents + ",\"currency\":\"EUR\",\"material\":\"Lin\","
                 + "\"shippingCents\":690,\"preparationDays\":2,\"weightGrams\":600,\"status\":\"" + status + "\","
                 + "\"variants\":[" + variants + "],\"sizeGuide\":[" + measures + "]}";
     }
 
+    // Compose les données d'une déclinaison envoyées par le test.
     private static String variantJson(String id, String size, int stock, Long version) {
         return "{" + (id != null ? "\"id\":\"" + id + "\"," : "") + "\"sizeLabel\":\"" + size + "\","
                 + "\"colorLabel\":\"Ecru\",\"stock\":" + stock + ",\"position\":0"
                 + (version != null ? ",\"version\":" + version : "") + "}";
     }
 
+    // Compose les données d'une mesure envoyées par le test.
     private static String measureJson(String size, String label, int valueMm) {
         return "{\"sizeLabel\":\"" + size + "\",\"label\":\"" + label + "\",\"valueMm\":" + valueMm + ",\"position\":0}";
     }
 
+    // Vérifie que l'annonce et ses déclinaisons n'ont pas changé.
     private void assertUnchanged(JsonNode created) {
         UUID id = UUID.fromString(created.get("id").asText());
         assertThat(jdbc.queryForObject("select name from marketplace_products where id = ?", String.class, id))
@@ -482,6 +509,7 @@ class MarketplaceCatalogIntegrationTest {
                 String.class, id)).containsExactly("S");
     }
 
+    // Exécute la requête et vérifie le code HTTP attendu.
     private JsonNode call(int expectedStatus, RequestBuilder request) throws Exception {
         MvcResult result = mvc.perform(request).andReturn();
         String body = result.getResponse().getContentAsString(StandardCharsets.UTF_8);
@@ -489,12 +517,14 @@ class MarketplaceCatalogIntegrationTest {
         return body.isBlank() ? json.nullNode() : json.readTree(body);
     }
 
+    // Liste les champs présents dans la réponse JSON.
     private static Set<String> fieldNames(JsonNode node) {
         Set<String> names = new TreeSet<>();
         node.fieldNames().forEachRemaining(names::add);
         return names;
     }
 
+    // Retrouve la déclinaison de la taille demandée dans la réponse.
     private static JsonNode variant(JsonNode item, String size) {
         for (JsonNode variant : item.get("variants")) {
             if (size.equals(variant.get("sizeLabel").asText())) {
@@ -504,18 +534,21 @@ class MarketplaceCatalogIntegrationTest {
         throw new IllegalStateException("Déclinaison " + size + " absente");
     }
 
+    // Liste les tailles présentées dans la réponse du catalogue.
     private static List<String> sizes(JsonNode item) {
         List<String> sizes = new ArrayList<>();
         item.get("variants").forEach(v -> sizes.add(v.get("sizeLabel").asText()));
         return sizes;
     }
 
+    // Liste les références de pièces présentées dans la réponse.
     private static List<String> ids(JsonNode items) {
         List<String> ids = new ArrayList<>();
         items.forEach(item -> ids.add(item.get("id").asText()));
         return ids;
     }
 
+    // Crée un terme distinct pour isoler la recherche du test.
     private static String uniqueWord() {
         StringBuilder word = new StringBuilder();
         for (char c : UUID.randomUUID().toString().replace("-", "").substring(0, 10).toCharArray()) {

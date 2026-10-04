@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+// Expose les décisions de classement à la plateforme.
 @RestController
 @RequestMapping("/api/marketplace/decision-logs")
 @RequiredArgsConstructor
@@ -18,6 +19,7 @@ public class MarketplaceDecisionLogController {
 
     private final MarketplaceDecisionLogService decisionLogService;
 
+    // Consulte la décision de classement demandée par la plateforme.
     @GetMapping("/{id}")
     ResponseEntity<DecisionLogResponse> get(@PathVariable UUID id, @CurrentUserEmail String email) {
         return ResponseEntity.ok(decisionLogService.getDecisionLog(email, id));

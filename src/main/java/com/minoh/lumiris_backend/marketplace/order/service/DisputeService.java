@@ -15,6 +15,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+// Consulte les litiges ouverts pour la plateforme.
 @Service
 @RequiredArgsConstructor
 public class DisputeService {
@@ -23,6 +24,7 @@ public class DisputeService {
     private final OrderEventRepository eventRepository;
     private final StorageService storageService;
 
+    // Liste les litiges ouverts sur les commandes.
     @Transactional(readOnly = true)
     public List<SellerOrderResponse> listOpen() {
         List<MarketplaceOrder> orders = orderRepository.findByDisputeStatusOrderByDisputeOpenedAtAsc(DisputeStatus.OPEN);

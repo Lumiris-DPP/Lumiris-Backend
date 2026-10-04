@@ -21,6 +21,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+// Verse à l'atelier les fonds d'une commande éligible.
 @Service
 @RequiredArgsConstructor
 public class SellerPayoutService {
@@ -31,6 +32,7 @@ public class SellerPayoutService {
     private final StripeProperties properties;
     private final SellerAccountRepository sellerAccountRepository;
 
+    // Verse les fonds seulement si la commande est éligible.
     @Transactional(propagation = Propagation.MANDATORY,
             noRollbackFor = {BillingException.class, BillingValidationException.class})
     public Optional<String> createTransfer(MarketplaceOrder order) {
@@ -65,6 +67,7 @@ public class SellerPayoutService {
         }
     }
 
+    // Retrouve l'encaissement Stripe associé au paiement de la commande.
     private String resolveChargeId(String paymentIntentId) throws StripeException {
         if (paymentIntentId == null) {
             throw new BillingValidationException("Aucun paiement rattaché à cette vente.");

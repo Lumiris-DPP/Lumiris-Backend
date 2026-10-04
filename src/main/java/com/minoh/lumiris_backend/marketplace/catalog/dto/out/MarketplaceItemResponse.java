@@ -5,6 +5,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
+// Présente une pièce avec son atelier et ses déclinaisons.
 public record MarketplaceItemResponse(
         UUID id,
         UUID artisanProfileId,

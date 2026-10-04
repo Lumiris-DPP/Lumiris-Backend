@@ -22,6 +22,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+// Prépare l'étiquette d'expédition d'une commande de l'atelier.
 @Service
 @RequiredArgsConstructor
 public class ShippingLabelService {
@@ -36,6 +37,7 @@ public class ShippingLabelService {
     private final StorageService storageService;
     private final OrderLifecycleService lifecycleService;
 
+    // Indique si le transport est configuré pour l'atelier.
     @Transactional(readOnly = true)
     public ShippingLabelResponse.Availability availability(String sellerEmail) {
         if (!provider.configured()) {
@@ -48,6 +50,7 @@ public class ShippingLabelService {
         return new ShippingLabelResponse.Availability(true, provider.name(), addressReady);
     }
 
+    // Crée et conserve l'étiquette de la commande de l'atelier.
     @Transactional
     public ShippingLabelResponse generate(String sellerEmail, UUID orderId) {
         User seller = userRepository.getByEmail(sellerEmail);
@@ -87,6 +90,7 @@ public class ShippingLabelService {
                 label.trackingUrl());
     }
 
+    // Vérifie les coordonnées et le poids nécessaires à l'envoi.
     private void requireDeliverable(MarketplaceOrder order) {
         if (order.getShipToLine1() == null || order.getShipToPostalCode() == null
                 || order.getShipToCity() == null) {
@@ -95,6 +99,7 @@ public class ShippingLabelService {
         }
     }
 
+    // Prépare les adresses et caractéristiques du colis de la commande.
     private ParcelRequest parcelFor(MarketplaceOrder order, ArtisanProfile profile) {
         MarketplaceProduct product = order.getProduct();
         int declaredWeight = product != null ? product.getWeightGrams() * Math.max(1, order.getQuantity()) : 0;
@@ -120,6 +125,7 @@ public class ShippingLabelService {
                 shortReference(order));
     }
 
+    // Prépare une référence courte de commande pour le transporteur.
     private static String shortReference(MarketplaceOrder order) {
         return order.getInvoiceNumber() != null
                 ? order.getInvoiceNumber()

@@ -11,6 +11,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+// Reporte les événements du transporteur sur la commande.
 @Service
 @RequiredArgsConstructor
 public class CarrierTrackingService {
@@ -21,6 +22,7 @@ public class CarrierTrackingService {
     private final MarketplaceOrderRepository orderRepository;
     private final OrderLifecycleService lifecycleService;
 
+    // Applique le suivi reçu à la commande du colis.
     @Transactional
     public void handle(String payload, String signature) {
         Optional<CarrierEvent> event = provider.readWebhook(payload, signature);

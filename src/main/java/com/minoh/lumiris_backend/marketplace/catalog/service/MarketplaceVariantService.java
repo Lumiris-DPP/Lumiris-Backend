@@ -25,6 +25,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+// Enregistre les déclinaisons et le guide des tailles.
 @Service
 @RequiredArgsConstructor
 public class MarketplaceVariantService {
@@ -33,6 +34,7 @@ public class MarketplaceVariantService {
     private final MarketplaceSizeMeasurementRepository measurementRepository;
     private final MarketplaceVariantMapper variantMapper;
 
+    // Remplace les déclinaisons et mesures de l'annonce en cours.
     @Transactional(propagation = Propagation.MANDATORY)
     public void replaceVariantsAndSizeGuide(MarketplaceProduct product, List<ProductVariantForm> variants,
                                             List<SizeMeasurementForm> sizeGuide) {
@@ -40,6 +42,7 @@ public class MarketplaceVariantService {
         applySizeGuide(product, sizeGuide, sizes);
     }
 
+    // Crée la déclinaison initiale avec le stock fourni.
     @Transactional(propagation = Propagation.MANDATORY)
     public void seedDefaultVariant(MarketplaceProduct product, int stock) {
         List<MarketplaceProductVariant> existing = variantRepository.lockByProductId(product.getId());
@@ -57,6 +60,7 @@ public class MarketplaceVariantService {
         }
     }
 
+    // Enregistre les déclinaisons reçues et retire les anciennes.
     private Set<String> applyVariants(MarketplaceProduct product, List<ProductVariantForm> forms) {
         List<ProductVariantForm> normalized = normalizeVariants(forms);
         if (normalized.isEmpty()) {
@@ -106,6 +110,7 @@ public class MarketplaceVariantService {
         return sizes;
     }
 
+    // Remplace les mesures du guide pour les tailles vendues.
     private void applySizeGuide(MarketplaceProduct product, List<SizeMeasurementForm> forms, Set<String> sizes) {
         measurementRepository.deleteByProductId(product.getId());
         if (forms == null || forms.isEmpty()) {
@@ -138,6 +143,7 @@ public class MarketplaceVariantService {
         }
     }
 
+    // Prépare les libellés et positions des déclinaisons reçues.
     private static List<ProductVariantForm> normalizeVariants(List<ProductVariantForm> forms) {
         if (forms == null) {
             return List.of();
@@ -150,6 +156,7 @@ public class MarketplaceVariantService {
                 .toList();
     }
 
+    // Refuse les déclinaisons ayant la même taille et couleur.
     private static void assertDistinctCombinations(List<ProductVariantForm> forms) {
         Set<String> seen = new HashSet<>();
         for (ProductVariantForm form : forms) {
@@ -162,6 +169,7 @@ public class MarketplaceVariantService {
         }
     }
 
+    // Refuse une modification fondée sur une déclinaison périmée.
     private static void assertFreshVersion(ProductVariantForm form, MarketplaceProductVariant variant) {
         if (form.version() != null && form.version() != variant.getVersion()) {
             throw new ConflictException(
@@ -170,6 +178,7 @@ public class MarketplaceVariantService {
         }
     }
 
+    // Retire les espaces et transforme une valeur vide en absence.
     private static String trimToNull(String s) {
         if (s == null) {
             return null;

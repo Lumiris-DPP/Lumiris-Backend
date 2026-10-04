@@ -33,6 +33,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+// Gère les annonces appartenant à l'artisan connecté.
 @Service
 @RequiredArgsConstructor
 public class SellerCatalogService {
@@ -50,6 +51,7 @@ public class SellerCatalogService {
     private final MarketplaceVariantService variantService;
     private final MarketplaceStripeService marketplaceStripeService;
 
+    // Liste les annonces de l'artisan connecté.
     @Transactional(readOnly = true)
     public List<MarketplaceItemResponse> listMine(String email) {
         User artisan = requireArtisan(email);
@@ -62,12 +64,14 @@ public class SellerCatalogService {
                 salesByProduct);
     }
 
+    // Retrouve une annonce appartenant à l'artisan connecté.
     @Transactional(readOnly = true)
     public MarketplaceItemResponse getMine(String email, UUID id) {
         User artisan = requireArtisan(email);
         return toItem(requireOwnedProduct(id, artisan));
     }
 
+    // Met en vente une pièce depuis son passeport.
     @Transactional
     public MarketplaceItemResponse convertFromDpp(String email, UUID dppFormId, ConvertDppRequest req) {
         User artisan = requireArtisan(email);
@@ -114,6 +118,7 @@ public class SellerCatalogService {
         return toItem(saved);
     }
 
+    // Modifie l'annonce et ses déclinaisons dans la même transaction.
     @Transactional
     public MarketplaceItemResponse update(String email, UUID id, UpdateProductRequest req) {
         User artisan = requireArtisan(email);
@@ -125,6 +130,7 @@ public class SellerCatalogService {
         return toItem(saved);
     }
 
+    // Supprime une annonce sans commande appartenant à l'atelier.
     @Transactional
     public void delete(String email, UUID id) {
         User artisan = requireArtisan(email);
@@ -138,6 +144,7 @@ public class SellerCatalogService {
         productRepository.delete(product);
     }
 
+    // Refuse un prix inférieur au minimum accepté au paiement.
     private static void assertSellablePrice(MarketplaceProduct product) {
         if (product.getStatus() == MarketplaceProductStatus.PUBLISHED
                 && product.getPriceCents() < MIN_SELLABLE_PRICE_CENTS) {
@@ -146,6 +153,7 @@ public class SellerCatalogService {
         }
     }
 
+    // Vérifie que l'abonnement de l'atelier permet la vente.
     private void requireSellingSubscription(User artisan) {
         boolean active = subscriptionRepository.findByUserId(artisan.getId())
                 .filter(UserSubscription::isActive)
@@ -156,6 +164,7 @@ public class SellerCatalogService {
         }
     }
 
+    // Présente l'annonce avec les données du catalogue.
     private MarketplaceItemResponse toItem(MarketplaceProduct p) {
         IrisScore score = p.getDppForm() != null
                 ? irisScoreRepository.findByDppFormId(p.getDppForm().getId()).orElse(null)
@@ -163,6 +172,7 @@ public class SellerCatalogService {
         return assembler.toResponse(new ScoredProduct(p, score));
     }
 
+    // Vérifie que l'utilisateur connecté possède le rôle artisan.
     private User requireArtisan(String email) {
         User user = userRepository.getByEmail(email);
         if (user.getRole() != UserRole.ARTISAN || user.getArtisanProfile() == null) {
@@ -171,11 +181,13 @@ public class SellerCatalogService {
         return user;
     }
 
+    // Vérifie que l'annonce appartient à l'atelier connecté.
     private MarketplaceProduct requireOwnedProduct(UUID id, User artisan) {
         return productRepository.findByIdAndArtisanProfileId(id, artisan.getArtisanProfile().getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Produit introuvable"));
     }
 
+    // Retrouve le passeport désigné et vérifie son propriétaire.
     private DppForm resolveOwnedDpp(UUID dppFormId, User artisan) {
         if (dppFormId == null) {
             return null;

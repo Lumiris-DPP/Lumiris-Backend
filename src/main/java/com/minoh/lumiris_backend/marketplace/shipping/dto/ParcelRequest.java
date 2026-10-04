@@ -1,5 +1,6 @@
 package com.minoh.lumiris_backend.marketplace.shipping.dto;
 
+// Regroupe les informations nécessaires à l'envoi d'un colis.
 public record ParcelRequest(
         Address from,
         Address to,
@@ -8,6 +9,7 @@ public record ParcelRequest(
         String reference
 ) {
 
+    // Porte les coordonnées nécessaires au transporteur.
     public record Address(
             String fullName,
             String line1,

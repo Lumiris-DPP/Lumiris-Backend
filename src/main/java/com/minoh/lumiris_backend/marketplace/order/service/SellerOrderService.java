@@ -20,6 +20,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+// Consulte les commandes appartenant à l'atelier connecté.
 @Service
 @RequiredArgsConstructor
 public class SellerOrderService {
@@ -29,6 +30,7 @@ public class SellerOrderService {
     private final StorageService storageService;
     private final UserRepository userRepository;
 
+    // Présente les commandes de l'atelier avec leurs historiques.
     @Transactional(readOnly = true)
     public List<SellerOrderResponse> list(String sellerEmail) {
         User seller = requireArtisan(sellerEmail);
@@ -42,6 +44,7 @@ public class SellerOrderService {
                 .toList();
     }
 
+    // Présente une commande appartenant à l'atelier connecté.
     @Transactional(readOnly = true)
     public SellerOrderResponse get(String sellerEmail, UUID orderId) {
         User seller = requireArtisan(sellerEmail);
@@ -52,6 +55,7 @@ public class SellerOrderService {
                 storageService::getPresignedUrl);
     }
 
+    // Regroupe les événements chargés pour les commandes demandées.
     private Map<UUID, List<OrderEvent>> loadTimelines(List<MarketplaceOrder> orders) {
         if (orders.isEmpty()) {
             return Map.of();
@@ -61,6 +65,7 @@ public class SellerOrderService {
                 .collect(Collectors.groupingBy(e -> e.getOrder().getId()));
     }
 
+    // Vérifie que l'utilisateur connecté possède le rôle artisan.
     private User requireArtisan(String email) {
         User user = userRepository.getByEmail(email);
         if (user.getRole() != UserRole.ARTISAN) {

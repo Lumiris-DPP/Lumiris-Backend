@@ -64,6 +64,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+// Vérifie les paiements concurrents sur une base isolée.
 @Tag("integration")
 @Testcontainers
 @SpringBootTest(properties = {
@@ -129,21 +130,25 @@ class MarketplaceCheckoutIntegrationTest {
     @MockitoBean
     private BlockchainService blockchainService;
 
+    // Démarre le serveur local simulant les réponses Stripe.
     @BeforeAll
     static void startStripe() throws Exception {
         stripe = new FakeStripeApi();
     }
 
+    // Ferme le serveur local simulant les réponses Stripe.
     @AfterAll
     static void stopStripe() {
         stripe.close();
     }
 
+    // Réinitialise les paiements simulés avant chaque test.
     @BeforeEach
     void resetStripe() {
         stripe.reset();
     }
 
+    // Vérifie qu'un seul acheteur réserve la dernière pièce.
     @Test
     void lastUnit_isReservedByExactlyOneOfTwoConcurrentBuyers() throws Exception {
         Variant variant = listing("EUR", 8900, 1);
@@ -161,6 +166,7 @@ class MarketplaceCheckoutIntegrationTest {
         assertThat(pendingOrders(variant)).isEqualTo(1);
     }
 
+    // Vérifie la stabilité des paramètres et de la clé rejouée.
     @Test
     void retryOfTheSameAttempt_sendsIdenticalParametersUnderTheSameKey() {
         awayFromMinuteEdge();
@@ -179,6 +185,7 @@ class MarketplaceCheckoutIntegrationTest {
         assertThat(pendingOrders(variant)).isEqualTo(1);
     }
 
+    // Vérifie qu'un double clic concurrent ne réserve qu'une fois.
     @Test
     void concurrentRetriesOfTheSameAttempt_reserveOnlyOnce() throws Exception {
         awayFromMinuteEdge();
@@ -197,6 +204,7 @@ class MarketplaceCheckoutIntegrationTest {
         assertThat(pendingOrders(variant)).isEqualTo(1);
     }
 
+    // Vérifie la réutilisation de la dernière pièce déjà réservée.
     @Test
     void retryAfterReservingTheLastUnit_reusesTheReservation() {
         awayFromMinuteEdge();
@@ -211,6 +219,7 @@ class MarketplaceCheckoutIntegrationTest {
         assertThat(pendingOrders(variant)).isEqualTo(1);
     }
 
+    // Vérifie l'annulation du paiement remplacé avant sa nouvelle réservation.
     @Test
     void newAttempt_cancelsTheSupersededIntentAtStripeAndMovesTheReservation() {
         Variant variant = listing("EUR", 8900, 2);
@@ -226,6 +235,7 @@ class MarketplaceCheckoutIntegrationTest {
         assertThat(stock(variant)).isZero();
     }
 
+    // Vérifie le nom du produit dans l'erreur sans déclinaison nommée.
     @Test
     void stockErrorKeepsProductNameWithoutVariantLabel() {
         Variant variant = listing("EUR", 8900, 0);
@@ -241,6 +251,7 @@ class MarketplaceCheckoutIntegrationTest {
         assertThat(pendingOrders(variant)).isZero();
     }
 
+    // Vérifie les tailles et couleurs dans les erreurs de stock.
     @ParameterizedTest
     @CsvSource({"M, bleu, M · bleu", "M, '', M", "'', bleu, bleu"})
     void stockErrorKeepsSizeAndColorLabels(String size, String color, String expectedLabel) {
@@ -257,6 +268,7 @@ class MarketplaceCheckoutIntegrationTest {
         assertThat(pendingOrders(variant)).isZero();
     }
 
+    // Vérifie le refus d'un atelier sans abonnement avant Stripe.
     @Test
     void sellerWithoutActiveSubscription_isRefusedBeforeAnyStripeCall() {
         Variant variant = listing("EUR", 8900, 1);
@@ -267,6 +279,7 @@ class MarketplaceCheckoutIntegrationTest {
         assertThat(stock(variant)).isEqualTo(1);
     }
 
+    // Vérifie le refus de devises différentes avant Stripe.
     @Test
     void cartMixingCurrencies_isRefusedBeforeAnyStripeCall() {
         Variant euros = listing("EUR", 8900, 1);
@@ -279,6 +292,7 @@ class MarketplaceCheckoutIntegrationTest {
         assertThat(creations()).isEmpty();
     }
 
+    // Vérifie le refus d'un dépassement de montant avant Stripe.
     @Test
     void amountOverflowingAnInteger_isRefusedBeforeAnyStripeCall() {
         Variant variant = listing("EUR", 1_500_000_000, 2);
@@ -288,6 +302,7 @@ class MarketplaceCheckoutIntegrationTest {
         assertThat(stock(variant)).isEqualTo(2);
     }
 
+    // Vérifie que les notifications simultanées confirment la commande une fois.
     @Test
     void simultaneousWebhookDeliveries_confirmTheOrderOnce() throws Exception {
         Variant variant = listing("EUR", 8900, 1);
@@ -304,6 +319,7 @@ class MarketplaceCheckoutIntegrationTest {
         assertThat(wardrobeItems(intent)).isEqualTo(1);
     }
 
+    // Vérifie qu'une notification rejouée ne répète aucun effet.
     @Test
     void repeatedWebhook_hasNoSecondEffect() {
         Variant variant = listing("EUR", 8900, 1);
@@ -318,6 +334,7 @@ class MarketplaceCheckoutIntegrationTest {
         assertThat(wardrobeItems(intent)).isEqualTo(1);
     }
 
+    // Vérifie le rejet sans effet d'une signature Stripe invalide.
     @Test
     void webhookWithInvalidSignature_isRejectedWithoutEffect() {
         Variant variant = listing("EUR", 8900, 1);
@@ -329,6 +346,7 @@ class MarketplaceCheckoutIntegrationTest {
         assertThat(orderStatuses(intent)).containsOnly("PENDING");
     }
 
+    // Vérifie qu'un paiement inconnu ne confirme aucune commande.
     @Test
     void unknownPaymentIntent_confirmsNothing() {
         String buyer = buyer();
@@ -339,6 +357,7 @@ class MarketplaceCheckoutIntegrationTest {
                 .isInstanceOf(ResourceNotFoundException.class);
     }
 
+    // Vérifie la confirmation d'un ancien paiement encaissé sans notification.
     @Test
     void stalePendingOrderWhosePaymentSucceeded_isConfirmedBySweep() {
         Variant variant = listing("EUR", 8900, 1);
@@ -354,6 +373,7 @@ class MarketplaceCheckoutIntegrationTest {
         assertThat(stripe.count("POST", "/v1/payment_intents/" + intent + "/cancel")).isZero();
     }
 
+    // Vérifie l'annulation du paiement impayé avant la remise en stock.
     @Test
     void stalePendingOrderNeverPaid_isCancelledAtStripeThenRestocked() {
         Variant variant = listing("EUR", 8900, 1);
@@ -367,6 +387,7 @@ class MarketplaceCheckoutIntegrationTest {
         assertThat(stock(variant)).isEqualTo(1);
     }
 
+    // Vérifie qu'une panne Stripe conserve la réservation existante.
     @Test
     void stalePendingOrderWhileStripeIsUnreachable_keepsItsReservation() {
         Variant variant = listing("EUR", 8900, 1);
@@ -380,6 +401,7 @@ class MarketplaceCheckoutIntegrationTest {
         assertThat(stock(variant)).isZero();
     }
 
+    // Vérifie que les créations concurrentes partagent la même réservation.
     @Test
     void concurrentRetriesWhileStripeIsStillProcessing_reserveOnlyOnce() throws Exception {
         awayFromMinuteEdge();
@@ -397,6 +419,7 @@ class MarketplaceCheckoutIntegrationTest {
         assertThat(pendingOrders(variant)).isEqualTo(1);
     }
 
+    // Vérifie que la confirmation concurrente conserve l'état payé et la facture.
     @Test
     void retryWhileTheWebhookConfirms_keepsThePaidStatusAndInvoice() throws Exception {
         awayFromMinuteEdge();
@@ -427,6 +450,7 @@ class MarketplaceCheckoutIntegrationTest {
         assertThat(events(intent, "PAYMENT_CONFIRMED")).isEqualTo(1);
     }
 
+    // Vérifie le refus d'un retry après la commande payée.
     @Test
     void retryAfterPayment_isRefusedWithoutTouchingThePaidOrder() {
         awayFromMinuteEdge();
@@ -441,6 +465,7 @@ class MarketplaceCheckoutIntegrationTest {
         assertThat(shippingLines(intent)).containsOnly("1 rue du Test");
     }
 
+    // Vérifie qu'un ancien paiement annulé ouvre une nouvelle tentative.
     @Test
     void returnToACancelledAttemptWithinTheMinute_startsAFreshIntent() {
         awayFromMinuteEdge();
@@ -459,6 +484,7 @@ class MarketplaceCheckoutIntegrationTest {
         assertThat(stock(variant)).isEqualTo(2);
     }
 
+    // Vérifie que deux retries croisés rendent des paiements encore utilisables.
     @Test
     void crossedRetries_settleBothOldAttemptsAndReturnLiveIntentsWithoutLockTimeout() throws Exception {
         int secondOfMinute = LocalTime.now().getSecond();
@@ -509,6 +535,7 @@ class MarketplaceCheckoutIntegrationTest {
         assertThat(pendingOrders(second)).isEqualTo(1);
     }
 
+    // Vérifie le refus du checkout dans une transaction existante.
     @Test
     void checkoutInsideAnExistingTransaction_isRefusedBeforeStripeOrStockChanges() {
         Variant variant = listing("EUR", 8900, 1);
@@ -521,6 +548,7 @@ class MarketplaceCheckoutIntegrationTest {
         assertThat(pendingOrders(variant)).isZero();
     }
 
+    // Vérifie la relecture après confirmation entre les phases du checkout.
     @Test
     void webhookBetweenCheckoutPhases_withOpenEntityManager_preservesPaidOrderAndAddress() {
         awayFromMinuteEdge();
@@ -559,6 +587,7 @@ class MarketplaceCheckoutIntegrationTest {
         assertThat(stock(second)).isEqualTo(2);
     }
 
+    // Vérifie les clés bornées et stables après plusieurs annulations.
     @Test
     void repeatedlyCancelledAttempt_keepsBoundedStableKeysAndOneReservation() {
 
@@ -597,6 +626,7 @@ class MarketplaceCheckoutIntegrationTest {
         assertThat(stock(variant)).isZero();
     }
 
+    // Vérifie le refus du retry avant une notification de paiement retardée.
     @Test
     void retryBeforeThePaidWebhook_isRefusedAndPreservesTheOriginalOrder() {
         awayFromMinuteEdge();
@@ -625,6 +655,7 @@ class MarketplaceCheckoutIntegrationTest {
         assertThat(stock(variant)).isEqualTo(2);
     }
 
+    // Vérifie les adresses et réservations pendant un paiement en cours.
     @Test
     void retryWhilePaymentIsSettling_preservesAddressStockAndPendingOrder() {
         awayFromMinuteEdge();
@@ -646,6 +677,7 @@ class MarketplaceCheckoutIntegrationTest {
         assertThat(stripe.count("POST", "/v1/payment_intents/" + intent + "/cancel")).isZero();
     }
 
+    // Vérifie la libération des seules réservations du paiement annulé.
     @Test
     void retryOfStripeCancelledPendingAttempt_releasesOnlyPendingAndStartsFresh() {
         awayFromMinuteEdge();
@@ -668,6 +700,7 @@ class MarketplaceCheckoutIntegrationTest {
         assertThat(events(cancelled, "CANCELLED")).isEqualTo(1);
     }
 
+    // Vérifie qu'un paiement annulé ne rouvre aucune commande payée.
     @Test
     void retryOfStripeCancelledPaidAttempt_doesNotReopenThePaidOrder() {
         awayFromMinuteEdge();
@@ -689,6 +722,7 @@ class MarketplaceCheckoutIntegrationTest {
         assertThat(creations()).hasSize(2);
     }
 
+    // Vérifie que l'annulation survit à l'échec de la nouvelle réservation.
     @Test
     void failedReservationAfterCancellingTheSupersededIntent_keepsTheCancellation() {
         awayFromMinuteEdge();
@@ -705,6 +739,7 @@ class MarketplaceCheckoutIntegrationTest {
         assertThat(stock(variant)).isEqualTo(2);
     }
 
+    // Vérifie qu'un paiement en échec ne bloque pas les suivants.
     @Test
     void sweepWithOneFailingPayment_stillSettlesTheOthers() {
         Variant healthy = listing("EUR", 8900, 1);
@@ -727,6 +762,7 @@ class MarketplaceCheckoutIntegrationTest {
         }
     }
 
+    // Vérifie la traduction du montant trop élevé en erreur de validation.
     @Test
     void amountAboveTheStripeMaximum_isRefusedAsInvalid() {
         Variant variant = listing("EUR", 60_000_000, 2);
@@ -736,6 +772,7 @@ class MarketplaceCheckoutIntegrationTest {
         assertThat(pendingOrders(variant)).isZero();
     }
 
+    // Vérifie qu'une modification artisan n'écrase pas la réservation concurrente.
     @Test
     void saleDuringAnArtisanSave_isNotOverwrittenByTheSave() throws Exception {
         Variant variant = listing("EUR", 8900, 1);
@@ -750,6 +787,7 @@ class MarketplaceCheckoutIntegrationTest {
         assertThat(pendingOrders(variant)).isEqualTo(1);
     }
 
+    // Vérifie la réservation de deux déclinaisons pendant une modification artisan.
     @Test
     void cartWithTwoVariantsDuringAnArtisanSave_reservesBothWithoutDeadlock() throws Exception {
         Variant medium = listing("EUR", 8900, 2);
@@ -773,10 +811,13 @@ class MarketplaceCheckoutIntegrationTest {
         assertThat(stock(large)).isEqualTo(1);
     }
 
+    // Regroupe les références d'une déclinaison créée pour le test.
     private record Variant(UUID id, UUID productId, UUID sellerId) {}
 
+    // Conserve le résultat ou l'erreur d'une opération concurrente.
     private record Outcome(Object result, Throwable error) {}
 
+    // Crée une pièce vendable et sa déclinaison dans la base isolée.
     private Variant listing(String currency, int priceCents, int stock) {
         UUID seller = user("ARTISAN");
         UUID profile = UUID.randomUUID();
@@ -799,11 +840,13 @@ class MarketplaceCheckoutIntegrationTest {
         return new Variant(variant, product, seller);
     }
 
+    // Crée un acheteur distinct pour le test.
     private String buyer() {
         UUID id = user("CONSUMER");
         return jdbc.queryForObject("select email from users where id = ?", String.class, id);
     }
 
+    // Crée un utilisateur de test avec le rôle demandé.
     private UUID user(String role) {
         UUID id = UUID.randomUUID();
         jdbc.update("insert into users (id, email, password_hash, role, name) values (?, ?, '{noop}x', ?, 'IT')",
@@ -811,6 +854,7 @@ class MarketplaceCheckoutIntegrationTest {
         return id;
     }
 
+    // Prépare une modification artisan de la pièce testée.
     private UpdateProductRequest edit(Variant variant, List<ProductVariantForm> variants) {
         UUID dpp = jdbc.queryForObject("select dpp_form_id from marketplace_products where id = ?", UUID.class,
                 variant.productId());
@@ -818,6 +862,7 @@ class MarketplaceCheckoutIntegrationTest {
                 variants, List.of(), null, null, dpp, MarketplaceProductStatus.PUBLISHED);
     }
 
+    // Croise une modification artisan et l'opération testée avec des bornes.
     private List<Outcome> duringArtisanSave(Variant variant, UpdateProductRequest edit, Callable<?> concurrent)
             throws Exception {
         String artisan = jdbc.queryForObject("select email from users where id = ?", String.class, variant.sellerId());
@@ -848,6 +893,7 @@ class MarketplaceCheckoutIntegrationTest {
         }
     }
 
+    // Attend un nombre fixé de transactions bloquées, sans attente infinie.
     private void awaitLockWaiters(int count) {
         for (int i = 0; i < 200; i++) {
             Integer waiting = jdbc.queryForObject("select count(*) from pg_stat_activity "
@@ -860,28 +906,34 @@ class MarketplaceCheckoutIntegrationTest {
         throw new IllegalStateException("Aucune transaction en attente de verrou");
     }
 
+    // Demande le paiement de la déclinaison avec l'adresse testée.
     private PaymentIntentResponse checkout(String buyerEmail, Variant variant, int quantity) {
         return checkout(buyerEmail, variant, quantity, address());
     }
 
+    // Compose une ligne de panier pour la déclinaison demandée.
     private static CartIntentRequest.Line line(Variant variant, int quantity) {
         return new CartIntentRequest.Line(variant.productId(), variant.id(), quantity);
     }
 
+    // Demande le paiement de la déclinaison avec l'adresse testée.
     private PaymentIntentResponse checkout(String buyerEmail, Variant variant, int quantity,
                                            CartIntentRequest.ShippingAddress shipping) {
         return directSaleService.createCartPaymentIntent(buyerEmail,
                 new CartIntentRequest(List.of(line(variant, quantity)), shipping));
     }
 
+    // Compose une adresse de livraison pour le test.
     private static CartIntentRequest.ShippingAddress address() {
         return address("1 rue du Test");
     }
 
+    // Compose une adresse de livraison pour le test.
     private static CartIntentRequest.ShippingAddress address(String line1) {
         return new CartIntentRequest.ShippingAddress("Acheteur IT", line1, null, "75001", "Paris", "FR", null);
     }
 
+    // Évite un changement de minute pendant le test d'idempotence.
     private static void awayFromMinuteEdge() {
         int second = LocalTime.now().getSecond();
         if (second >= 55) {
@@ -889,6 +941,7 @@ class MarketplaceCheckoutIntegrationTest {
         }
     }
 
+    // Attend la durée demandée en conservant les interruptions.
     private static void pause(long millis) {
         try {
             Thread.sleep(millis);
@@ -898,15 +951,18 @@ class MarketplaceCheckoutIntegrationTest {
         }
     }
 
+    // Extrait la référence du paiement depuis la réponse.
     private static String intentId(PaymentIntentResponse response) {
         return response.clientSecret().substring(0, response.clientSecret().indexOf("_secret_"));
     }
 
+    // Transmet un événement au traitement des notifications Stripe.
     private Object deliver(String payload) {
         webhookService.handle(payload, signature(payload, WEBHOOK_SECRET));
         return payload;
     }
 
+    // Compose une notification de paiement réussi pour le test.
     private static String paymentSucceeded(String intent) {
         return """
                 {"id":"evt_%s","object":"event","api_version":"2024-06-20","type":"payment_intent.succeeded",
@@ -915,6 +971,7 @@ class MarketplaceCheckoutIntegrationTest {
                 .formatted(UUID.randomUUID(), intent);
     }
 
+    // Signe le contenu simulé avec la clé de test.
     private static String signature(String payload, String secret) {
         try {
             long timestamp = System.currentTimeMillis() / 1000;
@@ -927,6 +984,7 @@ class MarketplaceCheckoutIntegrationTest {
         }
     }
 
+    // Exécute les opérations ensemble avec des attentes bornées.
     private static List<Outcome> concurrently(Callable<?>... operations) throws InterruptedException {
         ExecutorService pool = Executors.newFixedThreadPool(operations.length);
         CountDownLatch start = new CountDownLatch(1);
@@ -955,47 +1013,56 @@ class MarketplaceCheckoutIntegrationTest {
         }
     }
 
+    // Liste les appels de création de paiement reçus.
     private List<FakeStripeApi.Request> creations() {
         return stripe.requests().stream()
                 .filter(r -> r.method().equals("POST") && r.path().equals("/v1/payment_intents"))
                 .toList();
     }
 
+    // Vieillit une tentative pour déclencher le traitement périodique.
     private void makeStale(String intent) {
         jdbc.update("update marketplace_orders set created_at = now() - interval '25 hours' "
                 + "where stripe_payment_intent_id = ?", intent);
     }
 
+    // Lit le stock de la déclinaison dans la base isolée.
     private int stock(Variant variant) {
         return jdbc.queryForObject("select stock from marketplace_product_variants where id = ?", Integer.class,
                 variant.id());
     }
 
+    // Compte les commandes en attente pour la déclinaison testée.
     private int pendingOrders(Variant variant) {
         return jdbc.queryForObject("select count(*) from marketplace_orders where variant_id = ? and status = 'PENDING'",
                 Integer.class, variant.id());
     }
 
+    // Lit les états des commandes rattachées au paiement testé.
     private List<String> orderStatuses(String intent) {
         return jdbc.queryForList("select status from marketplace_orders where stripe_payment_intent_id = ?",
                 String.class, intent);
     }
 
+    // Compte les événements du type demandé pour la commande.
     private int events(String intent, String type) {
         return jdbc.queryForObject("select count(*) from marketplace_order_events e join marketplace_orders o "
                 + "on o.id = e.order_id where o.stripe_payment_intent_id = ? and e.type = ?", Integer.class, intent, type);
     }
 
+    // Lit les adresses des commandes rattachées au paiement testé.
     private List<String> shippingLines(String intent) {
         return jdbc.queryForList("select ship_to_line1 from marketplace_orders where stripe_payment_intent_id = ?",
                 String.class, intent);
     }
 
+    // Lit les factures des commandes rattachées au paiement testé.
     private List<String> invoiceNumbers(String intent) {
         return jdbc.queryForList("select invoice_number from marketplace_orders where stripe_payment_intent_id = ?",
                 String.class, intent);
     }
 
+    // Compte les pièces acquises depuis le paiement testé.
     private int wardrobeItems(String intent) {
         return jdbc.queryForObject("select count(*) from wardrobe_items w join marketplace_orders o "
                 + "on o.id = w.order_id where o.stripe_payment_intent_id = ?", Integer.class, intent);

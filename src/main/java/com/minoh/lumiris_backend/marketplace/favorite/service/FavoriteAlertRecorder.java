@@ -12,6 +12,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+// Enregistre les alertes de prix et de stock des favoris.
 @Component
 @RequiredArgsConstructor
 public class FavoriteAlertRecorder {
@@ -19,11 +20,13 @@ public class FavoriteAlertRecorder {
     private final MarketplaceFavoriteRepository favoriteRepository;
     private final NotificationService notificationService;
 
+    // Réactive les alertes après la remontée du stock.
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void resetLowStockFlags(long threshold) {
         favoriteRepository.clearLowStockFlags(threshold);
     }
 
+    // Enregistre l'alerte de stock faible pour un favori.
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public boolean sendLowStock(MarketplaceFavorite favorite) {
         if (favoriteRepository.claimLowStock(favorite.getId(), Instant.now()) == 0) {
@@ -38,6 +41,7 @@ public class FavoriteAlertRecorder {
         return true;
     }
 
+    // Enregistre l'alerte de baisse de prix pour un favori.
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public boolean sendPriceDrop(MarketplaceFavorite favorite) {
         int previousPrice = favorite.getLastPriceCents();
@@ -54,10 +58,12 @@ public class FavoriteAlertRecorder {
         return true;
     }
 
+    // Construit le lien public de la pièce favorite.
     private static String productHref(MarketplaceProduct product) {
         return "/boutique/produit/?id=" + product.getId();
     }
 
+    // Présente un montant en centimes sous forme lisible.
     private static String formatCents(int cents) {
         return String.format(Locale.ROOT, "%.2f", cents / 100.0).replace('.', ',') + " €";
     }

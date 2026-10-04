@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+// Reçoit les demandes de gestion des annonces artisan.
 @RestController
 @RequestMapping("/api/marketplace/products")
 @RequiredArgsConstructor
@@ -27,16 +28,19 @@ public class MarketplaceProductController {
 
     private final SellerCatalogService sellerCatalogService;
 
+    // Liste les annonces de l'artisan connecté.
     @GetMapping
     ResponseEntity<List<MarketplaceItemResponse>> listMine(@CurrentUserEmail String email) {
         return ResponseEntity.ok(sellerCatalogService.listMine(email));
     }
 
+    // Retrouve une annonce appartenant à l'artisan connecté.
     @GetMapping("/{id}")
     ResponseEntity<MarketplaceItemResponse> getMine(@PathVariable UUID id, @CurrentUserEmail String email) {
         return ResponseEntity.ok(sellerCatalogService.getMine(email, id));
     }
 
+    // Met en vente une pièce depuis son passeport.
     @PostMapping("/from-dpp/{dppFormId}")
     ResponseEntity<MarketplaceItemResponse> convertFromDpp(@PathVariable UUID dppFormId,
                                                            @Valid @RequestBody ConvertDppRequest request,
@@ -45,6 +49,7 @@ public class MarketplaceProductController {
                 .body(sellerCatalogService.convertFromDpp(email, dppFormId, request));
     }
 
+    // Enregistre les modifications de l'annonce de l'artisan connecté.
     @PutMapping("/{id}")
     ResponseEntity<MarketplaceItemResponse> update(@PathVariable UUID id,
                                                    @Valid @RequestBody UpdateProductRequest request,
@@ -52,6 +57,7 @@ public class MarketplaceProductController {
         return ResponseEntity.ok(sellerCatalogService.update(email, id, request));
     }
 
+    // Supprime l'annonce désignée par l'artisan connecté.
     @DeleteMapping("/{id}")
     ResponseEntity<Void> delete(@PathVariable UUID id, @CurrentUserEmail String email) {
         sellerCatalogService.delete(email, id);

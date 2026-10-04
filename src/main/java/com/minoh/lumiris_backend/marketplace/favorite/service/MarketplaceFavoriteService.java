@@ -16,6 +16,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+// Gère les pièces favorites de l'utilisateur connecté.
 @Service
 @RequiredArgsConstructor
 public class MarketplaceFavoriteService {
@@ -25,6 +26,7 @@ public class MarketplaceFavoriteService {
     private final UserRepository userRepository;
     private final MarketplaceItemAssembler assembler;
 
+    // Enregistre la pièce favorite si elle n'est pas déjà suivie.
     @Transactional
     public void add(String email, UUID productId) {
         User user = userRepository.getByEmail(email);
@@ -42,6 +44,7 @@ public class MarketplaceFavoriteService {
         favoriteRepository.save(favorite);
     }
 
+    // Supprime le favori appartenant à l'utilisateur connecté.
     @Transactional
     public void remove(String email, UUID productId) {
         User user = userRepository.getByEmail(email);
@@ -49,6 +52,7 @@ public class MarketplaceFavoriteService {
                 .ifPresent(favoriteRepository::delete);
     }
 
+    // Présente les pièces favorites de l'utilisateur connecté.
     @Transactional(readOnly = true)
     public List<MarketplaceItemResponse> list(String email) {
         User user = userRepository.getByEmail(email);

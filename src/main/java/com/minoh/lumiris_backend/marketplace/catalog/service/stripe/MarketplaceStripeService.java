@@ -14,6 +14,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+// Crée la référence Stripe d'une pièce mise en vente.
 @Service
 @RequiredArgsConstructor
 public class MarketplaceStripeService {
@@ -23,6 +24,7 @@ public class MarketplaceStripeService {
     private final StripeProperties properties;
     private final MarketplaceProductRepository productRepository;
 
+    // Crée les références Stripe manquantes de la pièce vendue.
     @Transactional
     public void ensureStripeProduct(MarketplaceProduct product) {
         if (!properties.hasSecretKey()) {

@@ -4,6 +4,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
+// Porte l'adresse d'expédition fournie par l'atelier.
 public record ShipFromAddressRequest(
         @NotBlank @Size(max = 300) String line1,
         @Size(max = 300) String line2,

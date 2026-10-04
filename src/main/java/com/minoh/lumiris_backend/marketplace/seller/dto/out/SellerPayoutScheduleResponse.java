@@ -2,6 +2,7 @@ package com.minoh.lumiris_backend.marketplace.seller.dto.out;
 
 import java.util.List;
 
+// Présente les montants et l'échéancier des versements.
 public record SellerPayoutScheduleResponse(
         long scheduledCents,
         long releasedCents,

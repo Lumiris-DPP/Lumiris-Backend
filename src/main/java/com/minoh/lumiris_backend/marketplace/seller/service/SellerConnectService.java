@@ -19,6 +19,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+// Configure et actualise le compte de paiement vendeur.
 @Service
 @RequiredArgsConstructor
 public class SellerConnectService {
@@ -29,6 +30,7 @@ public class SellerConnectService {
     private final SellerAccountRepository sellerAccountRepository;
     private final UserRepository userRepository;
 
+    // Prépare le lien Stripe d'activation du compte vendeur.
     @Transactional
     public String startOnboarding(String userEmail) {
         properties.requireSecretKey();
@@ -45,6 +47,7 @@ public class SellerConnectService {
         });
     }
 
+    // Retrouve ou crée le compte Stripe du vendeur.
     private String ensureAccountId(User user) throws StripeException {
         SellerAccount existing = sellerAccountRepository.findByUser_Id(user.getId()).orElse(null);
         if (existing != null) {
@@ -66,6 +69,7 @@ public class SellerConnectService {
         return created.getId();
     }
 
+    // Présente l'état enregistré du compte de paiement vendeur.
     @Transactional
     public SellerStatusResponse getStatus(String userEmail) {
         User user = requireSeller(userEmail);
@@ -83,6 +87,7 @@ public class SellerConnectService {
         return toStatus(account);
     }
 
+    // Actualise le compte vendeur depuis les informations Stripe.
     @Transactional
     public void syncFromStripe(String stripeAccountId) {
         sellerAccountRepository.findByStripeAccountId(stripeAccountId).ifPresent(account -> {
@@ -97,6 +102,7 @@ public class SellerConnectService {
         });
     }
 
+    // Enregistre le compte vendeur nouvellement créé chez Stripe.
     private void persistAccount(User user, String accountId, Account stripeAccount) {
         SellerAccount account = new SellerAccount();
         account.setUser(user);
@@ -105,16 +111,19 @@ public class SellerConnectService {
         sellerAccountRepository.save(account);
     }
 
+    // Reporte les autorisations et l'activation du compte Stripe.
     private void applyStripeState(SellerAccount account, Account stripeAccount) {
         account.setChargesEnabled(Boolean.TRUE.equals(stripeAccount.getChargesEnabled()));
         account.setPayoutsEnabled(Boolean.TRUE.equals(stripeAccount.getPayoutsEnabled()));
         account.setOnboardingCompleted(Boolean.TRUE.equals(stripeAccount.getDetailsSubmitted()));
     }
 
+    // Présente les informations enregistrées du compte vendeur.
     private SellerStatusResponse toStatus(SellerAccount a) {
         return new SellerStatusResponse(true, a.isOnboardingCompleted(), a.isChargesEnabled(), a.isPayoutsEnabled());
     }
 
+    // Vérifie que le rôle de l'utilisateur permet un compte vendeur.
     private User requireSeller(String email) {
         User user = userRepository.getByEmail(email);
         if (user.getRole() != UserRole.ARTISAN && user.getRole() != UserRole.REPAIRER) {

@@ -14,6 +14,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+// Détecte les changements des pièces ajoutées aux favoris.
 @Component
 @RequiredArgsConstructor
 public class FavoriteAlertScheduler {
@@ -32,6 +33,7 @@ public class FavoriteAlertScheduler {
     private final FavoriteAlertRecorder recorder;
     private final PayableSellerResolver payableSellerResolver;
 
+    // Recherche les baisses de prix et les stocks faibles.
     @Scheduled(fixedDelay = HOURLY_MS, initialDelay = HOURLY_MS / 2)
     public void sweep() {
         recorder.resetLowStockFlags(LOW_STOCK_THRESHOLD);
@@ -45,6 +47,7 @@ public class FavoriteAlertScheduler {
         }
     }
 
+    // Traite les alertes de chaque favori sans arrêter les suivants.
     private int notifyAll(List<MarketplaceFavorite> candidates, Predicate<MarketplaceFavorite> send) {
         if (candidates.isEmpty()) {
             return 0;

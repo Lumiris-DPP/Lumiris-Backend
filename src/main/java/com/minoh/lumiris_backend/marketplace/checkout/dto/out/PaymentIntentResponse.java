@@ -2,6 +2,7 @@ package com.minoh.lumiris_backend.marketplace.checkout.dto.out;
 
 import java.util.List;
 
+// Présente le paiement préparé et les frais du panier.
 public record PaymentIntentResponse(
         String clientSecret,
         String publishableKey,
@@ -12,5 +13,6 @@ public record PaymentIntentResponse(
         List<Shipment> shipments
 ) {
 
+    // Présente les frais et le délai d'un atelier.
     public record Shipment(String sellerName, int itemCount, int shippingCents, int preparationDays) {}
 }

@@ -23,6 +23,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+// Calcule le bilan des ventes et des versements vendeur.
 @Service
 @RequiredArgsConstructor
 public class SellerStatsService {
@@ -35,6 +36,7 @@ public class SellerStatsService {
     private final UserRepository userRepository;
     private final PayoutScheduleResolver payoutScheduleResolver;
 
+    // Calcule le bilan des ventes et annonces de l'atelier.
     @Transactional(readOnly = true)
     public SellerStatsResponse getStats(String userEmail) {
         User artisan = requireArtisan(userEmail);
@@ -56,6 +58,7 @@ public class SellerStatsService {
         );
     }
 
+    // Présente les ventes sorties de l'attente de paiement.
     @Transactional(readOnly = true)
     public List<SellerSaleResponse> getSales(String userEmail) {
         User artisan = requireArtisan(userEmail);
@@ -65,6 +68,7 @@ public class SellerStatsService {
                 .toList();
     }
 
+    // Présente les montants retenus et déjà versés à l'atelier.
     @Transactional(readOnly = true)
     public SellerEarningsResponse getEarnings(String userEmail) {
         User artisan = requireArtisan(userEmail);
@@ -75,6 +79,7 @@ public class SellerStatsService {
         );
     }
 
+    // Classe les versements attendus et additionne leurs montants.
     @Transactional(readOnly = true)
     public SellerPayoutScheduleResponse getPayoutSchedule(String userEmail) {
         User artisan = requireArtisan(userEmail);
@@ -104,6 +109,7 @@ public class SellerStatsService {
         );
     }
 
+    // Présente le montant et l'attente du versement d'une commande.
     private SellerPayoutEntryResponse toPayoutEntry(MarketplaceOrder order) {
         PayoutScheduleResolver.PayoutForecast forecast = payoutScheduleResolver.forecast(order);
         return new SellerPayoutEntryResponse(
@@ -119,6 +125,7 @@ public class SellerStatsService {
         );
     }
 
+    // Vérifie que l'utilisateur connecté possède le rôle artisan.
     private User requireArtisan(String userEmail) {
         User user = userRepository.getByEmail(userEmail);
         if (user.getRole() != UserRole.ARTISAN) {

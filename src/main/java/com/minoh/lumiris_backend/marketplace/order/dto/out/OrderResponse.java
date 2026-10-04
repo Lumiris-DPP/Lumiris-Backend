@@ -6,6 +6,7 @@ import com.minoh.lumiris_backend.entity.OrderStatus;
 import java.time.Instant;
 import java.util.UUID;
 
+// Présente une commande à son acheteur.
 public record OrderResponse(
         UUID id,
         String productName,
@@ -39,6 +40,7 @@ public record OrderResponse(
         boolean canCancel
 ) {
 
+    // Prépare la réponse avec les informations de la commande acheteur.
     public static OrderResponse from(MarketplaceOrder o) {
         OrderStatus status = o.getStatus();
         boolean returnWindowOpen = o.getReturnDeadline() == null || Instant.now().isBefore(o.getReturnDeadline());

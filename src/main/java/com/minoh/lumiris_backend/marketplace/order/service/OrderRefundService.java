@@ -17,6 +17,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+// Rembourse un paiement et reprend le versement correspondant.
 @Service
 @RequiredArgsConstructor
 public class OrderRefundService {
@@ -25,13 +26,16 @@ public class OrderRefundService {
 
     private final StripeProperties properties;
 
+    // Regroupe le montant et les références d'un remboursement.
     public record RefundOutcome(String refundId, String transferReversalId, int amountCents) {}
 
+    // Rembourse le montant demandé avec une référence d'opération stable.
     @Transactional(propagation = Propagation.MANDATORY)
     public RefundOutcome refund(MarketplaceOrder order, int amountCents, String reason) {
         return refund(order, amountCents, reason, order.getRefundedCents() + ":" + amountCents);
     }
 
+    // Rembourse le montant demandé avec une référence d'opération stable.
     @Transactional(propagation = Propagation.MANDATORY)
     public RefundOutcome refund(MarketplaceOrder order, int amountCents, String reason, String operationKey) {
         properties.requireSecretKey();
@@ -64,10 +68,12 @@ public class OrderRefundService {
         return new RefundOutcome(refund.getId(), reversalId, amountCents);
     }
 
+    // Calcule le montant encore remboursable de la commande.
     public int refundableCents(MarketplaceOrder order) {
         return Math.max(0, order.getAmountTotalCents() + order.getShippingCents() - order.getRefundedCents());
     }
 
+    // Calcule la part du versement vendeur à reprendre.
     private long reversalAmount(MarketplaceOrder order, int refundCents) {
         int charged = order.getAmountTotalCents() + order.getShippingCents();
         if (charged <= 0) {
@@ -77,6 +83,7 @@ public class OrderRefundService {
         return Math.min(amount, order.getNetCents());
     }
 
+    // Reprend le versement vendeur correspondant au remboursement demandé.
     private String reverseTransfer(MarketplaceOrder order, long amount, String operationKey) {
         if (amount <= 0) {
             return null;

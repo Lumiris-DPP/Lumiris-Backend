@@ -12,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+// Consulte et enregistre l'adresse d'expédition de l'atelier.
 @Service
 @RequiredArgsConstructor
 public class ShipFromAddressService {
@@ -21,11 +22,13 @@ public class ShipFromAddressService {
     private final ArtisanProfileRepository artisanProfileRepository;
     private final UserRepository userRepository;
 
+    // Consulte l'adresse d'expédition de l'atelier connecté.
     @Transactional(readOnly = true)
     public ShipFromAddressResponse get(String userEmail) {
         return ShipFromAddressResponse.from(requireProfile(userEmail));
     }
 
+    // Enregistre les coordonnées d'expédition de l'atelier connecté.
     @Transactional
     public ShipFromAddressResponse update(String userEmail, ShipFromAddressRequest request) {
         ArtisanProfile profile = requireProfile(userEmail);
@@ -39,6 +42,7 @@ public class ShipFromAddressService {
         return ShipFromAddressResponse.from(artisanProfileRepository.save(profile));
     }
 
+    // Vérifie l'accès au profil de l'atelier connecté.
     private ArtisanProfile requireProfile(String userEmail) {
         User user = userRepository.getByEmail(userEmail);
         return artisanProfileRepository.findByUser(user)

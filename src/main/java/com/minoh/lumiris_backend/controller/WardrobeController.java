@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
+// Expose les pièces acquises et la synchronisation des passeports.
 @RestController
 @RequiredArgsConstructor
 public class WardrobeController {
@@ -22,11 +23,13 @@ public class WardrobeController {
     private final BuyerOrderService buyerOrderService;
     private final WardrobeSyncService wardrobeSyncService;
 
+    // Liste les pièces de la garde-robe de l'utilisateur.
     @GetMapping("/api/wardrobe")
     ResponseEntity<List<WardrobeItemResponse>> wardrobe(@CurrentUserEmail String email) {
         return ResponseEntity.ok(buyerOrderService.getWardrobe(email));
     }
 
+    // Actualise les passeports des pièces de la garde-robe.
     @PostMapping("/api/wardrobe/sync")
     ResponseEntity<List<WardrobeItemResponse>> syncWardrobe(@Valid @RequestBody WardrobeSyncRequest request,
                                                             @CurrentUserEmail String email) {

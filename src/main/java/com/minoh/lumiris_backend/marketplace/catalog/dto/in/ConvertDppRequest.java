@@ -9,6 +9,7 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.util.List;
 
+// Porte les informations nécessaires à la mise en vente.
 public record ConvertDppRequest(
         @Min(0) int priceCents,
         @Size(max = 3) String currency,

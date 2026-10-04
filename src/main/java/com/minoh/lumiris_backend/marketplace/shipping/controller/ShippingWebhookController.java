@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+// Reçoit les changements de suivi du transporteur.
 @RestController
 @RequestMapping("/api/shipping")
 @RequiredArgsConstructor
@@ -16,6 +17,7 @@ public class ShippingWebhookController {
 
     private final CarrierTrackingService trackingService;
 
+    // Transmet l'événement de suivi reçu au traitement transporteur.
     @PostMapping("/webhook")
     ResponseEntity<String> webhook(
             @RequestBody String payload,

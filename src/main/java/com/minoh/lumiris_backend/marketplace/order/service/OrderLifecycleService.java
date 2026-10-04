@@ -46,6 +46,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+// Applique les étapes et les actions d'une commande.
 @Service
 @RequiredArgsConstructor
 public class OrderLifecycleService {
@@ -66,6 +67,7 @@ public class OrderLifecycleService {
     private final PreparationDelayResolver preparationDelayResolver;
     private final MarketplaceProperties properties;
 
+    // Enregistre l'expédition de la commande par l'atelier.
     @Transactional
     public void ship(String sellerEmail, UUID orderId, ShipOrderRequest request) {
         User seller = userRepository.getByEmail(sellerEmail);
@@ -77,6 +79,7 @@ public class OrderLifecycleService {
         markShipped(order, seller);
     }
 
+    // Vérifie que la commande payée peut être expédiée.
     public void requireShippable(MarketplaceOrder order) {
         if (order.getStatus() != OrderStatus.PAID) {
             throw new InvalidOrderTransitionException(
@@ -84,6 +87,7 @@ public class OrderLifecycleService {
         }
     }
 
+    // Enregistre l'expédition et la notification de l'acheteur.
     @Transactional
     public void markShipped(MarketplaceOrder order, User seller) {
         requireShippable(order);
@@ -99,6 +103,7 @@ public class OrderLifecycleService {
                 buyerOrderHref(order), order);
     }
 
+    // Enregistre la réception du retour par l'atelier.
     @Transactional
     public void markReturnReceived(String sellerEmail, UUID orderId) {
         User seller = userRepository.getByEmail(sellerEmail);
@@ -117,6 +122,7 @@ public class OrderLifecycleService {
                 buyerOrderHref(order), order);
     }
 
+    // Enregistre l'acceptation ou le refus du retour demandé.
     @Transactional
     public void decideReturn(String sellerEmail, UUID orderId, ReturnDecisionRequest request) {
         User seller = userRepository.getByEmail(sellerEmail);
@@ -148,6 +154,7 @@ public class OrderLifecycleService {
                 buyerOrderHref(order), order);
     }
 
+    // Rembourse la commande sans répéter une opération déjà enregistrée.
     @Transactional
     public void refund(String sellerEmail, UUID orderId, RefundRequest request) {
         User seller = userRepository.getByEmail(sellerEmail);
@@ -167,6 +174,7 @@ public class OrderLifecycleService {
         }
     }
 
+    // Enregistre la livraison confirmée par l'acheteur.
     @Transactional
     public void confirmDelivery(String buyerEmail, UUID orderId) {
         User buyer = userRepository.getByEmail(buyerEmail);
@@ -177,6 +185,7 @@ public class OrderLifecycleService {
         transitionToDelivered(order, OrderActorType.BUYER, buyer);
     }
 
+    // Enregistre la demande de retour de l'acheteur.
     @Transactional
     public void requestReturn(String buyerEmail, UUID orderId, ReturnRequest request) {
         User buyer = userRepository.getByEmail(buyerEmail);
@@ -201,6 +210,7 @@ public class OrderLifecycleService {
                 sellerOrderHref(order), order);
     }
 
+    // Ouvre un litige demandé par l'acheteur.
     @Transactional
     public void openDispute(String buyerEmail, UUID orderId, OrderMessageRequest request) {
         User buyer = userRepository.getByEmail(buyerEmail);
@@ -226,6 +236,7 @@ public class OrderLifecycleService {
                 sellerOrderHref(order), order);
     }
 
+    // Ajoute un message à l'historique de la commande.
     @Transactional
     public void postMessage(String userEmail, UUID orderId, OrderMessageRequest request) {
         User user = userRepository.getByEmail(userEmail);
@@ -253,6 +264,7 @@ public class OrderLifecycleService {
                 isBuyer ? sellerOrderHref(order) : buyerOrderHref(order), order);
     }
 
+    // Rembourse et annule la commande payée avant son expédition.
     @Transactional
     public void cancel(String userEmail, UUID orderId, String reason) {
         User user = userRepository.getByEmail(userEmail);
@@ -278,6 +290,7 @@ public class OrderLifecycleService {
                 isBuyer ? sellerOrderHref(order) : buyerOrderHref(order), order);
     }
 
+    // Clôture le litige et applique le remboursement décidé.
     @Transactional
     public void resolveDispute(String adminEmail, UUID orderId, DisputeResolutionRequest request) {
         User admin = userRepository.getByEmail(adminEmail);
@@ -309,6 +322,7 @@ public class OrderLifecycleService {
                 "Le litige sur " + itemLabel(order) + " est clos — " + request.resolution());
     }
 
+    // Enregistre l'échéance d'expédition et prévient les deux parties.
     @Transactional
     public void markPaid(MarketplaceOrder order) {
         int days = applyShipDueDate(order);
@@ -325,6 +339,7 @@ public class OrderLifecycleService {
                 buyerOrderHref(order), order);
     }
 
+    // Calcule et enregistre l'échéance d'expédition de la commande.
     private int applyShipDueDate(MarketplaceOrder order) {
         Instant now = Instant.now();
         int days = order.getProduct() != null
@@ -335,6 +350,7 @@ public class OrderLifecycleService {
         return days;
     }
 
+    // Relit la commande avant d'enregistrer la livraison automatique.
     @Transactional
     public void markDelivered(MarketplaceOrder order, OrderActorType actorType) {
         order = lockOrder(order.getId());
@@ -344,12 +360,14 @@ public class OrderLifecycleService {
         transitionToDelivered(order, actorType, null);
     }
 
+    // Ajoute l'étiquette créée à l'historique de la commande.
     @Transactional
     public void recordLabelGenerated(MarketplaceOrder order, User seller) {
         record(order, OrderEventType.LABEL_GENERATED, OrderActorType.SELLER, seller,
                 trackingSummary(order));
     }
 
+    // Reporte le suivi reçu et reconnaît la livraison du colis.
     @Transactional
     public void applyTrackingUpdate(MarketplaceOrder order, TrackingStatus status, String label,
                                     String trackingNumber, String trackingUrl) {
@@ -378,6 +396,7 @@ public class OrderLifecycleService {
         notifyCarrierMilestone(order, status, label);
     }
 
+    // Prévient les parties des étapes ou incidents de livraison.
     private void notifyCarrierMilestone(MarketplaceOrder order, TrackingStatus status, String label) {
         if (status == TrackingStatus.OUT_FOR_DELIVERY) {
             notificationService.notify(order.getBuyer(), NotificationType.ORDER_SHIPPED,
@@ -394,6 +413,7 @@ public class OrderLifecycleService {
         }
     }
 
+    // Rappelle une seule fois l'expédition encore attendue.
     @Transactional
     public void remindSellerToShip(MarketplaceOrder order) {
         order = lockOrder(order.getId());
@@ -409,12 +429,14 @@ public class OrderLifecycleService {
                 sellerOrderHref(order), order);
     }
 
+    // Relit la commande avant de réessayer le versement vendeur.
     @Transactional
     public void retryRelease(MarketplaceOrder order) {
         order = lockOrder(order.getId());
         releaseFunds(order);
     }
 
+    // Annule une réservation impayée et rend le stock une fois.
     @Transactional
     public void cancelAbandoned(MarketplaceOrder order) {
         order = lockOrder(order.getId());
@@ -427,6 +449,7 @@ public class OrderLifecycleService {
         record(order, OrderEventType.CANCELLED, OrderActorType.SYSTEM, null, "Paiement non finalisé");
     }
 
+    // Rend au stock la quantité réservée pour la commande.
     private void restock(MarketplaceOrder order) {
         if (order.getVariant() == null) {
             log.warn("Remise en stock impossible pour la commande {} : déclinaison supprimée", order.getId());
@@ -435,6 +458,7 @@ public class OrderLifecycleService {
         variantRepository.incrementStock(order.getVariant().getId(), Math.max(1, order.getQuantity()));
     }
 
+    // Enregistre la livraison et ouvre la fenêtre de retour.
     private void transitionToDelivered(MarketplaceOrder order, OrderActorType actorType, User actor) {
         Instant now = Instant.now();
         order.setDeliveredAt(now);
@@ -451,6 +475,7 @@ public class OrderLifecycleService {
         releaseFunds(order);
     }
 
+    // Clôture une commande éligible après relecture de son état.
     @Transactional
     public void complete(MarketplaceOrder order) {
         order = lockOrder(order.getId());
@@ -470,6 +495,7 @@ public class OrderLifecycleService {
         releaseFunds(order);
     }
 
+    // Enregistre le versement seulement après sa création effective.
     private void releaseFunds(MarketplaceOrder order) {
         if (order.getStripeTransferId() != null) {
             return;
@@ -494,12 +520,14 @@ public class OrderLifecycleService {
                 sellerOrderHref(order), order);
     }
 
+    // Applique le remboursement avec sa référence et ses effets.
     private void applyRefund(MarketplaceOrder order, Integer requestedCents, String reason,
                              OrderActorType actorType, User actor, OrderStatus finalStatus) {
         applyRefund(order, requestedCents, reason, actorType, actor, finalStatus,
                 order.getRefundedCents() + ":" + requestedCents);
     }
 
+    // Applique le remboursement avec sa référence et ses effets.
     private void applyRefund(MarketplaceOrder order, Integer requestedCents, String reason,
                              OrderActorType actorType, User actor, OrderStatus finalStatus, String operationKey) {
         if (order.getStatus() == OrderStatus.PENDING || order.getStatus() == OrderStatus.CANCELLED) {
@@ -536,22 +564,26 @@ public class OrderLifecycleService {
                 buyerOrderHref(order), order);
     }
 
+    // Prévient l'acheteur et l'atelier de la même étape.
     private void notifyBoth(MarketplaceOrder order, NotificationType type, String title, String body) {
         notificationService.notify(order.getBuyer(), type, title, body, buyerOrderHref(order), order);
         notificationService.notify(order.getSeller(), type, title, body, sellerOrderHref(order), order);
     }
 
+    // Ajoute l'événement et ses pièces jointes à la commande.
     private void record(MarketplaceOrder order, OrderEventType type, OrderActorType actorType,
                         User actor, String message) {
         record(order, type, actorType, actor, message, List.of());
     }
 
+    // Ajoute l'événement et ses pièces jointes à la commande.
     private void record(MarketplaceOrder order, OrderEventType type, OrderActorType actorType,
                         User actor, String message, List<UUID> fileIds) {
         List<StoredFile> attachments = fileIds.isEmpty() ? List.of() : storedFileRepository.findAllById(fileIds);
         eventRepository.save(new OrderEvent(order, type, actorType, actor, message, attachments));
     }
 
+    // Verrouille la commande et vérifie son atelier propriétaire.
     @Transactional(propagation = Propagation.MANDATORY)
     public MarketplaceOrder requireSellerOrder(User seller, UUID orderId) {
         MarketplaceOrder order = lockOrder(orderId);
@@ -561,6 +593,7 @@ public class OrderLifecycleService {
         return order;
     }
 
+    // Verrouille la commande et vérifie son acheteur propriétaire.
     private MarketplaceOrder requireBuyerOrder(User buyer, UUID orderId) {
         MarketplaceOrder order = lockOrder(orderId);
         if (order.getBuyer() == null || !order.getBuyer().getId().equals(buyer.getId())) {
@@ -569,6 +602,7 @@ public class OrderLifecycleService {
         return order;
     }
 
+    // Reconnaît un remboursement rejoué et refuse les paramètres différents.
     private boolean isRefundReplay(MarketplaceOrder order, RefundRequest request) {
         if (request.operationId() == null) {
             return false;
@@ -587,6 +621,7 @@ public class OrderLifecycleService {
         return true;
     }
 
+    // Verrouille et recharge l'état courant de la commande.
     private MarketplaceOrder lockOrder(UUID id) {
         MarketplaceOrder order = entityManager.find(MarketplaceOrder.class, id, LockModeType.PESSIMISTIC_WRITE);
         if (order == null) {
@@ -596,6 +631,7 @@ public class OrderLifecycleService {
         return order;
     }
 
+    // Compose le nom de la pièce commandée avec sa déclinaison.
     private String itemLabel(MarketplaceOrder order) {
         if (order.getProduct() == null) {
             return "ta commande";
@@ -604,6 +640,7 @@ public class OrderLifecycleService {
         return order.getVariantLabel() != null ? label + " (" + order.getVariantLabel() + ")" : label;
     }
 
+    // Présente le transporteur et la référence de suivi.
     private String trackingSummary(MarketplaceOrder order) {
         if (order.getTrackingNumber() == null || order.getTrackingNumber().isBlank()) {
             return order.getCarrier() != null ? "Transporteur : " + order.getCarrier() + "." : "";
@@ -612,14 +649,17 @@ public class OrderLifecycleService {
                 + "Suivi " + order.getTrackingNumber();
     }
 
+    // Construit le lien du détail de commande acheteur.
     private String buyerOrderHref(MarketplaceOrder order) {
         return "/commande/suivi/?id=" + order.getId();
     }
 
+    // Construit le lien du détail de commande atelier.
     private String sellerOrderHref(MarketplaceOrder order) {
         return "/commandes?order=" + order.getId();
     }
 
+    // Présente un montant en centimes sous forme lisible.
     private String formatCents(int cents) {
         return String.format("%.2f €", cents / 100.0).replace('.', ',');
     }

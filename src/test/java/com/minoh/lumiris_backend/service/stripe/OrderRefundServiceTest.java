@@ -14,8 +14,10 @@ import java.util.Map;
 import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
+// Vérifie les références des remboursements successifs.
 class OrderRefundServiceTest {
 
+    // Vérifie des références distinctes pour deux remboursements égaux.
     @Test
     void equalPartialAmounts_createTwoDistinctRefunds() throws Exception {
         Map<String, String> refunds = new HashMap<>();

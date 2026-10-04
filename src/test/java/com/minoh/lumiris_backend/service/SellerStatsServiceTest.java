@@ -25,6 +25,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+// Vérifie les montants de versement et l'accès vendeur.
 class SellerStatsServiceTest {
     private final MarketplaceOrderRepository orders = mock(MarketplaceOrderRepository.class);
     private final UserRepository users = mock(UserRepository.class);
@@ -32,6 +33,7 @@ class SellerStatsServiceTest {
             mock(MarketplaceProductRepository.class), mock(WardrobeItemRepository.class), users,
             new PayoutScheduleResolver(new MarketplaceProperties()));
 
+    // Vérifie les totaux vendeur et l'ordre des versements attendus.
     @Test
     void scheduleSeparatesExpectedHeldAndImminentAmountsWithoutChangingEntries() {
         User seller = new User();
@@ -62,6 +64,7 @@ class SellerStatsServiceTest {
                 .containsExactly(500, 300, 700, 1100, 1300);
     }
 
+    // Vérifie le refus d'accès vendeur pour un compte acheteur.
     @Test
     void consumerCannotReadSellerSchedule() {
         User consumer = new User();
@@ -73,6 +76,7 @@ class SellerStatsServiceTest {
         verifyNoInteractions(orders);
     }
 
+    // Prépare une commande avec le montant vendeur attendu.
     private MarketplaceOrder order(OrderStatus status, int netCents) {
         MarketplaceOrder order = new MarketplaceOrder();
         order.setId(UUID.randomUUID());

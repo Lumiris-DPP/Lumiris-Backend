@@ -15,6 +15,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+// Fait avancer les commandes et les paiements en attente.
 @Component
 @RequiredArgsConstructor
 public class OrderScheduler {
@@ -30,6 +31,7 @@ public class OrderScheduler {
     private final DirectSaleService directSaleService;
     private final MarketplaceProperties properties;
 
+    // Traite les paiements abandonnés puis les échéances de commande.
     @Scheduled(fixedDelay = HOURLY_MS, initialDelay = HOURLY_MS)
     public void advanceStaleOrders() {
         Instant now = Instant.now();
@@ -37,6 +39,7 @@ public class OrderScheduler {
         advanceLifecycle(now);
     }
 
+    // Relit chaque ancien paiement sans arrêter les suivants en échec.
     private void settleAbandonedPayments(Instant abandonedBefore) {
         for (String paymentIntentId : orderRepository.findAbandonedPendingPaymentIntents(abandonedBefore)) {
             try {
@@ -48,6 +51,7 @@ public class OrderScheduler {
         }
     }
 
+    // Traite les réservations abandonnées et les livraisons arrivées à échéance.
     private void advanceLifecycle(Instant now) {
         for (MarketplaceOrder order : orderRepository.findAbandonedPendingWithoutPaymentIntent(
                 now.minus(ABANDONED_AFTER))) {
@@ -76,6 +80,7 @@ public class OrderScheduler {
         }
     }
 
+    // Rappelle les expéditions attendues et réessaie les versements manquants.
     @Scheduled(fixedDelay = 24 * HOURLY_MS, initialDelay = 2 * HOURLY_MS)
     public void remindAndRetry() {
         Instant threshold = Instant.now().minus(UNSHIPPED_REMINDER_AFTER);

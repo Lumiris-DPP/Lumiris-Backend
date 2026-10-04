@@ -30,6 +30,7 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
+// Crée les étiquettes et lit les événements Sendcloud.
 @Component
 public class SendcloudShippingProvider implements ShippingProvider {
 
@@ -42,6 +43,7 @@ public class SendcloudShippingProvider implements ShippingProvider {
     private final ShippingProperties properties;
     private final RestClient restClient;
 
+    // Prépare le client du service de transport Sendcloud.
     public SendcloudShippingProvider(ShippingProperties properties, RestClient.Builder builder) {
         this.properties = properties;
         this.restClient = builder
@@ -51,16 +53,19 @@ public class SendcloudShippingProvider implements ShippingProvider {
                 .build();
     }
 
+    // Indique le nom du service de transport utilisé.
     @Override
     public String name() {
         return "sendcloud";
     }
 
+    // Vérifie la présence des clés du service de transport.
     @Override
     public boolean configured() {
         return properties.enabled();
     }
 
+    // Crée le colis et télécharge son étiquette d'expédition.
     @Override
     public ShippingLabel createLabel(ParcelRequest request) {
         int shippingMethodId = cheapestMethodFor(request);
@@ -79,6 +84,7 @@ public class SendcloudShippingProvider implements ShippingProvider {
                 downloadLabel(labelUrl));
     }
 
+    // Vérifie la notification avant d'en lire le suivi.
     @Override
     public Optional<CarrierEvent> readWebhook(String payload, String signature) {
         requireValidSignature(payload, signature);
@@ -107,6 +113,7 @@ public class SendcloudShippingProvider implements ShippingProvider {
         }
     }
 
+    // Choisit le transport compatible au tarif le plus bas.
     private int cheapestMethodFor(ParcelRequest request) {
         JsonNode methods = call("Interrogation des méthodes d'envoi impossible", () -> restClient.get()
                 .uri(uriBuilder -> uriBuilder.path("/shipping_methods")
@@ -126,6 +133,7 @@ public class SendcloudShippingProvider implements ShippingProvider {
                                 + " pour un colis de " + request.weightGrams() + " g."));
     }
 
+    // Transmet les coordonnées et le colis au transporteur.
     private JsonNode announceParcel(ParcelRequest request, int shippingMethodId) {
         Map<String, Object> parcel = new LinkedHashMap<>();
         parcel.put("name", request.to().fullName());
@@ -151,6 +159,7 @@ public class SendcloudShippingProvider implements ShippingProvider {
         return response.path("parcel");
     }
 
+    // Télécharge le document de l'étiquette créée.
     private byte[] downloadLabel(String labelUrl) {
         byte[] pdf = call("Téléchargement de l'étiquette impossible", () -> restClient.get()
                 .uri(labelUrl)
@@ -163,6 +172,7 @@ public class SendcloudShippingProvider implements ShippingProvider {
         return pdf;
     }
 
+    // Exécute l'appel transporteur et traduit les réponses en erreur.
     private <T> T call(String failureMessage, Supplier<T> exchange) {
         try {
             T body = exchange.get();
@@ -178,12 +188,14 @@ public class SendcloudShippingProvider implements ShippingProvider {
         }
     }
 
+    // Vérifie que le transport accepte le poids du colis.
     private static boolean acceptsWeight(JsonNode method, double weightKilos) {
         double min = method.path("min_weight").asDouble(0);
         double max = method.path("max_weight").asDouble(Double.MAX_VALUE);
         return weightKilos >= min && weightKilos <= max;
     }
 
+    // Lit le prix du transport ou une valeur de repli.
     private static double price(JsonNode method) {
         return streamOf(method.path("countries"))
                 .map(country -> country.path("price"))
@@ -193,11 +205,13 @@ public class SendcloudShippingProvider implements ShippingProvider {
                 .orElse(Double.MAX_VALUE);
     }
 
+    // Lit le nom du transporteur ou celui du service.
     private static String carrierName(JsonNode parcel) {
         String code = text(parcel.path("carrier"), "code");
         return code == null ? "Sendcloud" : code.toUpperCase(Locale.ROOT);
     }
 
+    // Retrouve le premier lien d'étiquette fourni par le transporteur.
     private static String firstLabelUrl(JsonNode parcel) {
         return streamOf(parcel.path("label").path("normal_printer"))
                 .map(JsonNode::asText)
@@ -206,6 +220,7 @@ public class SendcloudShippingProvider implements ShippingProvider {
                 .orElse(null);
     }
 
+    // Associe le code transporteur à une étape de suivi.
     private static TrackingStatus toTrackingStatus(String message) {
         if (message == null || message.isBlank()) {
             return TrackingStatus.IN_TRANSIT;
@@ -232,11 +247,13 @@ public class SendcloudShippingProvider implements ShippingProvider {
         return TrackingStatus.IN_TRANSIT;
     }
 
+    // Lit la date de l'événement ou utilise la date courante.
     private static Instant eventInstant(JsonNode root) {
         long epochMillis = root.path("timestamp").asLong(0);
         return epochMillis > 0 ? Instant.ofEpochMilli(epochMillis) : Instant.now();
     }
 
+    // Refuse une notification dont la signature ne correspond pas.
     private void requireValidSignature(String payload, String signature) {
         if (!properties.hasWebhookSecret()) {
             throw new WebhookSignatureException(
@@ -252,6 +269,7 @@ public class SendcloudShippingProvider implements ShippingProvider {
         }
     }
 
+    // Calcule la signature attendue du contenu reçu.
     private String expectedSignature(String payload) {
         try {
             Mac mac = Mac.getInstance(SIGNATURE_HEADER_ALGORITHM);
@@ -263,6 +281,7 @@ public class SendcloudShippingProvider implements ShippingProvider {
         }
     }
 
+    // Encode les clés nécessaires à l'authentification du transporteur.
     private static String basicAuth(ShippingProperties properties) {
         ShippingProperties.Sendcloud sendcloud = properties.sendcloud();
         String credentials = (sendcloud == null ? "" : sendcloud.publicKey() + ":" + sendcloud.secretKey());
@@ -270,17 +289,20 @@ public class SendcloudShippingProvider implements ShippingProvider {
                 .encodeToString(credentials.getBytes(StandardCharsets.UTF_8));
     }
 
+    // Parcourt les éléments du tableau reçu du transporteur.
     private static Stream<JsonNode> streamOf(JsonNode array) {
         return array.isArray()
                 ? StreamSupport.stream(array.spliterator(), false)
                 : Stream.empty();
     }
 
+    // Lit un champ textuel ou indique son absence.
     private static String text(JsonNode node, String field) {
         JsonNode value = node.path(field);
         return value.isMissingNode() || value.isNull() || value.asText().isBlank() ? null : value.asText();
     }
 
+    // Remplace une valeur absente par une chaîne vide.
     private static String nullToEmpty(String value) {
         return value == null ? "" : value;
     }

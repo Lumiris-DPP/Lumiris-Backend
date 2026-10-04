@@ -5,6 +5,7 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.util.UUID;
 
+// Porte les caractéristiques et le stock d'une déclinaison.
 public record ProductVariantForm(
         UUID id,
         @Size(max = 40) String sizeLabel,

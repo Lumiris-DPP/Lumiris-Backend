@@ -11,12 +11,14 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
+// Reçoit les demandes de paiement du panier.
 @RestController
 @RequiredArgsConstructor
 public class MarketplaceCheckoutController {
 
     private final DirectSaleService directSaleService;
 
+    // Prépare le paiement demandé pour le panier connecté.
     @PostMapping("/api/marketplace/checkout/intent")
     ResponseEntity<PaymentIntentResponse> checkoutIntent(@Valid @RequestBody CartIntentRequest request,
                                                       @CurrentUserEmail String email) {

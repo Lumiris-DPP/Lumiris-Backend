@@ -24,6 +24,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+// Recherche et présente les pièces disponibles à l'achat.
 @Service
 @RequiredArgsConstructor
 public class PublicCatalogService {
@@ -38,16 +39,19 @@ public class PublicCatalogService {
     private final AtelierPlusResolver atelierPlusResolver;
     private final MarketplaceDecisionLogService decisionLogService;
 
+    // Compte une consultation de la pièce publiée.
     @Transactional
     public void trackView(UUID productId) {
         productRepository.incrementViews(productId);
     }
 
+    // Retrouve une pièce publiée dont l'atelier peut recevoir le paiement.
     @Transactional(readOnly = true)
     public MarketplaceItemResponse getPublished(UUID id) {
         return firstPayable(productRepository.findScoredPublishedById(id));
     }
 
+    // Présente les pièces publiées correspondant aux références demandées.
     @Transactional(readOnly = true)
     public List<MarketplaceItemResponse> getPublishedByIds(List<UUID> ids) {
         if (ids == null || ids.isEmpty()) {
@@ -57,11 +61,13 @@ public class PublicCatalogService {
                 productRepository.findScoredPublishedByIds(ids))));
     }
 
+    // Retrouve la pièce publiée depuis le passeport demandé.
     @Transactional(readOnly = true)
     public MarketplaceItemResponse getPublishedByDpp(UUID dppFormId) {
         return firstPayable(productRepository.findScoredPublishedByDpp(dppFormId));
     }
 
+    // Recherche et classe les pièces selon les critères reçus.
     @Transactional(readOnly = true)
     public SearchResponse search(String query, String category, String material, String origin,
                                  String sort, List<String> personalizeCategories) {
@@ -103,6 +109,7 @@ public class PublicCatalogService {
         return new SearchResponse(items, log);
     }
 
+    // Propose des pièces selon le score et la catégorie.
     @Transactional(readOnly = true)
     public SuggestionResponse suggest(SuggestRequest req) {
         double minTotal = req.score();
@@ -147,11 +154,13 @@ public class PublicCatalogService {
         return new SuggestionResponse(suggestions, log);
     }
 
+    // Charge les pièces publiées correspondant aux filtres du catalogue.
     private List<ScoredProduct> catalogueRows(String category, String material, String origin) {
         return retainPayable(assembler.fetch(productRepository.searchPublished(
                 blankToNull(category), blankToNull(material), blankToNull(origin))));
     }
 
+    // Charge les scores de recherche pour le texte demandé.
     private Map<UUID, Double> textRanks(String q, String category, String material, String origin) {
         Map<UUID, Double> ranks = new LinkedHashMap<>();
         for (Object[] row : productRepository.searchPublishedTextRanked(
@@ -161,6 +170,7 @@ public class PublicCatalogService {
         return ranks;
     }
 
+    // Charge les pièces correspondant aux résultats de recherche textuelle.
     private List<ScoredProduct> textRows(Map<UUID, Double> rankById) {
         if (rankById.isEmpty()) {
             return new ArrayList<>();
@@ -169,12 +179,14 @@ public class PublicCatalogService {
                 productRepository.findScoredPublishedByIds(List.copyOf(rankById.keySet()))));
     }
 
+    // Présente la première pièce dont l'atelier peut recevoir le paiement.
     private MarketplaceItemResponse firstPayable(List<Object[]> rawRows) {
         ScoredProduct sp = retainPayable(assembler.fetch(rawRows)).stream().findFirst()
                 .orElseThrow(() -> new ResourceNotFoundException("Produit introuvable"));
         return assembler.toResponse(sp);
     }
 
+    // Garde les pièces dont l'atelier peut recevoir le paiement.
     private List<ScoredProduct> retainPayable(List<ScoredProduct> rows) {
         if (rows.isEmpty()) {
             return rows;
@@ -184,11 +196,13 @@ public class PublicCatalogService {
         return rows;
     }
 
+    // Compose la justification enregistrée pour une pièce classée.
     private static DecisionLogResponse.Entry entry(int rank, ScoredProduct sp, boolean plus, String reason) {
         return new DecisionLogResponse.Entry(rank, sp.product().getId(), sp.product().getName(),
                 sp.score() != null ? sp.score().getTotal() : null, plus, reason);
     }
 
+    // Choisit l'ordre des pièces selon le classement demandé.
     private static Comparator<ScoredProduct> comparatorForKey(String sortKey, Map<UUID, Double> rankById) {
         Comparator<ScoredProduct> newest = Comparator.comparing(
                 (ScoredProduct sp) -> sp.product().getCreatedAt(),
@@ -205,6 +219,7 @@ public class PublicCatalogService {
         };
     }
 
+    // Choisit le classement reconnu ou le classement par défaut.
     private static String baseSortKey(String sort, boolean hasQuery) {
         return switch (sort == null ? "" : sort.toLowerCase(Locale.ROOT)) {
             case "iris" -> "IRIS_DESC";
@@ -214,6 +229,7 @@ public class PublicCatalogService {
         };
     }
 
+    // Décrit les critères ayant placé la pièce dans les résultats.
     private static String searchReason(String q, String baseKey, Double rank, boolean boosted) {
         String perso = boosted ? " · reco perso (catégorie affinité)" : "";
         if (q == null) {
@@ -226,6 +242,7 @@ public class PublicCatalogService {
         return text + " · tri " + sortLabel(baseKey) + perso;
     }
 
+    // Présente le libellé du classement demandé.
     private static String sortLabel(String baseKey) {
         return switch (baseKey) {
             case "IRIS_DESC" -> "score Iris";
@@ -235,6 +252,7 @@ public class PublicCatalogService {
         };
     }
 
+    // Prépare les catégories préférées sans doublons ni valeurs vides.
     private static Set<String> normalizeCategories(List<String> categories) {
         if (categories == null) {
             return Set.of();
@@ -246,22 +264,27 @@ public class PublicCatalogService {
                 .collect(Collectors.toSet());
     }
 
+    // Convertit une référence chargée en identifiant de pièce.
     private static UUID toUuid(Object value) {
         return value instanceof UUID uuid ? uuid : UUID.fromString(String.valueOf(value));
     }
 
+    // Limite la longueur du texte reçu pour la recherche.
     private static String truncate(String value, int max) {
         return value != null && value.length() > max ? value.substring(0, max) : value;
     }
 
+    // Traite une valeur vide comme un critère absent.
     private static String blankToNull(String s) {
         return s != null && !s.isBlank() ? s : null;
     }
 
+    // Normalise une valeur en minuscules pour la comparaison.
     private static String lower(String s) {
         return s != null ? s.toLowerCase(Locale.ROOT) : "";
     }
 
+    // Remplace une valeur absente par une chaîne vide.
     private static String nullToEmpty(String s) {
         return s != null ? s : "";
     }

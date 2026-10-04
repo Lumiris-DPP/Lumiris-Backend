@@ -16,6 +16,7 @@ import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+// Vérifie les dates et les attentes de versement.
 class PayoutScheduleResolverTest {
 
     private static final Instant SHIP_DUE_AT = Instant.parse("2026-08-05T10:00:00Z");
@@ -24,6 +25,7 @@ class PayoutScheduleResolverTest {
     private PayoutScheduleResolver resolver;
     private Duration autoDeliverDelay;
 
+    // Prépare le calcul des versements avec les délais configurés.
     @BeforeEach
     void setUp() {
         MarketplaceProperties properties = new MarketplaceProperties();
@@ -31,6 +33,7 @@ class PayoutScheduleResolverTest {
         autoDeliverDelay = properties.autoDeliverDelay();
     }
 
+    // Vérifie le versement attendu depuis la date d'expédition promise.
     @Test
     @DisplayName("Une commande payée non expédiée est attendue au délai de livraison suivant la date promise")
     void paidOrderIsScheduledFromShipDueDate() {
@@ -43,6 +46,7 @@ class PayoutScheduleResolverTest {
         assertThat(forecast.expectedAt()).isEqualTo(SHIP_DUE_AT.plus(autoDeliverDelay));
     }
 
+    // Vérifie le versement attendu depuis l'expédition réelle.
     @Test
     @DisplayName("Une commande expédiée est attendue au délai de livraison suivant l'expédition réelle")
     void shippedOrderIsScheduledFromShippedAt() {
@@ -56,6 +60,7 @@ class PayoutScheduleResolverTest {
         assertThat(forecast.expectedAt()).isEqualTo(SHIPPED_AT.plus(autoDeliverDelay));
     }
 
+    // Vérifie qu'une livraison attend son versement sans date promise.
     @Test
     @DisplayName("Une commande livrée sans transfert est imminente, sans date promise")
     void deliveredOrderIsImminentWithoutDate() {
@@ -65,6 +70,7 @@ class PayoutScheduleResolverTest {
                 .isEqualTo(new PayoutScheduleResolver.PayoutForecast(PayoutExpectation.IMMINENT, null));
     }
 
+    // Vérifie qu'un litige ouvert suspend chaque état de commande.
     @Test
     @DisplayName("Un litige ouvert suspend le versement, quel que soit l'avancement de la commande")
     void openDisputeSuspendsEveryStatus() {
@@ -80,6 +86,7 @@ class PayoutScheduleResolverTest {
         }
     }
 
+    // Vérifie que les étapes de retour suspendent le versement.
     @Test
     @DisplayName("Toute branche retour suspend le versement sans date")
     void returnBranchIsOnHold() {
@@ -91,6 +98,7 @@ class PayoutScheduleResolverTest {
         }
     }
 
+    // Vérifie l'utilisation de la création quand les autres dates manquent.
     @Test
     @DisplayName("Une commande d'avant la migration, sans date promise, retombe sur sa date d'achat")
     void legacyOrderFallsBackToCreatedAt() {
@@ -102,6 +110,7 @@ class PayoutScheduleResolverTest {
         assertThat(forecast.expectedAt()).isNotNull();
     }
 
+    // Prépare une commande avec l'état demandé par le test.
     private static MarketplaceOrder order(OrderStatus status) {
         MarketplaceOrder order = new MarketplaceOrder() {
             @Override

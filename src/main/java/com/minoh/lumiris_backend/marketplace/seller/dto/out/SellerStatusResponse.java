@@ -1,5 +1,6 @@
 package com.minoh.lumiris_backend.marketplace.seller.dto.out;
 
+// Présente l'activation du compte de paiement vendeur.
 public record SellerStatusResponse(
         boolean hasAccount,
         boolean onboardingCompleted,
@@ -7,6 +8,7 @@ public record SellerStatusResponse(
         boolean payoutsEnabled
 ) {
 
+    // Présente un compte vendeur qui n'est pas encore créé.
     public static SellerStatusResponse none() {
         return new SellerStatusResponse(false, false, false, false);
     }

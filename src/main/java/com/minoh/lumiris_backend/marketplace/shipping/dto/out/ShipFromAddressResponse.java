@@ -2,6 +2,7 @@ package com.minoh.lumiris_backend.marketplace.shipping.dto.out;
 
 import com.minoh.lumiris_backend.entity.ArtisanProfile;
 
+// Présente l'adresse d'expédition enregistrée par l'atelier.
 public record ShipFromAddressResponse(
         String line1,
         String line2,
@@ -12,6 +13,7 @@ public record ShipFromAddressResponse(
         boolean complete
 ) {
 
+    // Prépare la réponse avec les informations de l'adresse atelier enregistrée.
     public static ShipFromAddressResponse from(ArtisanProfile profile) {
         return new ShipFromAddressResponse(
                 profile.getShipFromLine1(),

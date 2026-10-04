@@ -53,6 +53,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
+// Prépare le paiement et réserve les pièces du panier.
 @Service
 @RequiredArgsConstructor
 public class DirectSaleService {
@@ -76,6 +77,7 @@ public class DirectSaleService {
     private final MarketplaceVariantMapper variantMapper;
     private final PlatformTransactionManager transactionManager;
 
+    // Prépare le paiement du panier en transactions successives.
     @Transactional(propagation = Propagation.NEVER)
     public PaymentIntentResponse createCartPaymentIntent(String buyerEmail, CartIntentRequest request) {
         properties.requireSecretKey();
@@ -92,6 +94,7 @@ public class DirectSaleService {
         }
     }
 
+    // Vérifie les pièces, les ateliers et les montants du panier.
     private Checkout prepareCheckout(String buyerEmail, CartIntentRequest request) {
         User buyer = userRepository.getByEmail(buyerEmail);
 
@@ -106,6 +109,7 @@ public class DirectSaleService {
                 idempotencyKey(buyer, lines, totals.amount(), currency));
     }
 
+    // Relit le paiement avant de réserver et adresser les commandes.
     private PaymentIntentResponse finishAttempt(Checkout checkout, Attempt attempt,
                                                  CartIntentRequest.ShippingAddress shipping) {
         String paymentIntentId = attempt.paymentIntentId();
@@ -139,6 +143,7 @@ public class DirectSaleService {
                 shipments(checkout.bySeller(), totals.shippingBySeller()));
     }
 
+    // Ouvre une tentative utilisable après les tentatives annulées.
     private Attempt openAttempt(Checkout checkout) {
         String key = checkout.idempotencyKey();
         while (true) {
@@ -166,6 +171,7 @@ public class DirectSaleService {
         }
     }
 
+    // Refuse un paiement déjà encaissé ou encore en cours.
     private void requirePaymentStillPayable(PaymentIntent intent) {
         if ("succeeded".equals(intent.getStatus())) {
             throw new BillingValidationException(PAID_CART_MESSAGE);
@@ -176,6 +182,7 @@ public class DirectSaleService {
         }
     }
 
+    // Actualise uniquement les adresses des commandes encore en attente.
     private void refreshPendingOrders(List<MarketplaceOrder> orders, CartIntentRequest.ShippingAddress shipping) {
         List<MarketplaceOrder> pending = orders.stream()
                 .filter(order -> order.getStatus() == OrderStatus.PENDING)
@@ -189,6 +196,7 @@ public class DirectSaleService {
         });
     }
 
+    // Confirme les commandes payées et ajoute les pièces acquises.
     @Transactional
     public void fulfillByPaymentIntent(String paymentIntentId) {
         List<MarketplaceOrder> orders = orderRepository.lockByStripePaymentIntentId(paymentIntentId);
@@ -219,6 +227,7 @@ public class DirectSaleService {
         }
     }
 
+    // Relit le paiement avant de confirmer ou libérer sa réservation.
     @Transactional
     public void settlePendingPayment(String paymentIntentId) {
         PaymentIntent intent;
@@ -250,6 +259,7 @@ public class DirectSaleService {
         }
     }
 
+    // Demande l'annulation du paiement avant de libérer les pièces.
     private boolean cancelAtStripe(PaymentIntent intent) {
         try {
             intent.cancel(PaymentIntentCancelParams.builder().build(),
@@ -262,6 +272,7 @@ public class DirectSaleService {
         }
     }
 
+    // Annule les commandes encore en attente et rend leur stock.
     private void releaseReservations(String paymentIntentId) {
         for (MarketplaceOrder order : orderRepository.lockByStripePaymentIntentId(paymentIntentId)) {
             if (order.getStatus() == OrderStatus.PENDING) {
@@ -270,6 +281,7 @@ public class DirectSaleService {
         }
     }
 
+    // Prépare la pièce acquise avec sa facture et sa garantie.
     private WardrobeItem wardrobeItemFor(MarketplaceOrder order, String invoiceNumber) {
         DppForm dpp = order.getDppForm();
         WardrobeItem item = new WardrobeItem();
@@ -287,6 +299,7 @@ public class DirectSaleService {
         return item;
     }
 
+    // Charge les pièces publiées et leurs déclinaisons demandées.
     private List<CartLine> loadLines(List<CartIntentRequest.Line> items) {
         return items.stream().map(line -> {
             MarketplaceProduct product = productRepository.findById(line.productId())
@@ -296,6 +309,7 @@ public class DirectSaleService {
         }).toList();
     }
 
+    // Vérifie la déclinaison choisie ou utilise l'unique déclinaison.
     private MarketplaceProductVariant resolveVariant(MarketplaceProduct product, UUID variantId) {
         if (variantId != null) {
             MarketplaceProductVariant variant = variantRepository.findById(variantId)
@@ -315,6 +329,7 @@ public class DirectSaleService {
                 "Choisis une taille pour « " + product.getName() + " » avant de payer.");
     }
 
+    // Refuse les ateliers qui ne peuvent pas recevoir le paiement.
     private void requireSellersPayable(Map<UUID, List<CartLine>> bySeller) {
         Set<UUID> payable = payableSellerResolver.payableUserIds(bySeller.keySet());
         for (Map.Entry<UUID, List<CartLine>> entry : bySeller.entrySet()) {
@@ -326,6 +341,7 @@ public class DirectSaleService {
         }
     }
 
+    // Vérifie le stock en incluant les réservations de cet acheteur.
     private void requireStockAvailable(User buyer, List<CartLine> lines) {
         Map<UUID, Integer> held = heldByBuyer(buyer, lines);
         for (CartLine line : lines) {
@@ -337,6 +353,7 @@ public class DirectSaleService {
         }
     }
 
+    // Charge les quantités déjà réservées par cet acheteur.
     private Map<UUID, Integer> heldByBuyer(User buyer, List<CartLine> lines) {
         Set<UUID> variantIds = lines.stream().map(line -> line.variant().getId()).collect(Collectors.toSet());
         Map<UUID, Integer> held = new HashMap<>();
@@ -346,6 +363,7 @@ public class DirectSaleService {
         return held;
     }
 
+    // Vérifie que toutes les pièces utilisent la même devise.
     private String requireSingleCurrency(List<CartLine> lines) {
         Set<String> currencies = lines.stream()
                 .map(line -> line.product().getCurrency().toLowerCase(Locale.ROOT))
@@ -356,6 +374,7 @@ public class DirectSaleService {
         return currencies.iterator().next();
     }
 
+    // Calcule les montants et les frais de livraison par atelier.
     private CartTotals totals(List<CartLine> lines, Map<UUID, List<CartLine>> bySeller) {
         try {
             int items = 0;
@@ -377,6 +396,7 @@ public class DirectSaleService {
         }
     }
 
+    // Réserve les quantités en suivant l'ordre des déclinaisons.
     private void reserveStock(List<CartLine> lines) {
         List<CartLine> byVariantId = lines.stream()
                 .sorted(Comparator.comparing(line -> line.variant().getId().toString()))
@@ -388,6 +408,7 @@ public class DirectSaleService {
         }
     }
 
+    // Identifie le même panier de l'acheteur pendant la minute.
     private String idempotencyKey(User buyer, List<CartLine> lines, int amount, String currency) {
         String cartSig = lines.stream()
                 .map(l -> l.variant().getId() + "x" + l.quantity())
@@ -397,6 +418,7 @@ public class DirectSaleService {
                 + ":" + (System.currentTimeMillis() / 60_000);
     }
 
+    // Crée le paiement Stripe et traduit les erreurs de montant.
     private PaymentIntent createIntent(User buyer, int amount, String currency,
                                        String transferGroup, String idempotencyKey) {
         try {
@@ -422,6 +444,7 @@ public class DirectSaleService {
         }
     }
 
+    // Traite séparément les anciennes réservations avant la nouvelle réservation.
     private void releaseSupersededReservations(User buyer, String currentPaymentIntentId) {
         TransactionTemplate ownTransaction = new TransactionTemplate(transactionManager);
         ownTransaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
@@ -431,6 +454,7 @@ public class DirectSaleService {
         }
     }
 
+    // Enregistre les commandes avec les montants et l'adresse du panier.
     private void persistOrders(User buyer, Map<UUID, List<CartLine>> bySeller,
                                Map<UUID, Integer> shippingBySeller, String paymentIntentId,
                                String transferGroup, CartIntentRequest.ShippingAddress shipping) {
@@ -464,6 +488,7 @@ public class DirectSaleService {
         }
     }
 
+    // Reporte les coordonnées de livraison sur la commande.
     private void applyShippingAddress(MarketplaceOrder order, CartIntentRequest.ShippingAddress shipping) {
         order.setShipToName(shipping.fullName());
         order.setShipToLine1(shipping.line1());
@@ -475,6 +500,7 @@ public class DirectSaleService {
         order.setShipToPhone(shipping.phone());
     }
 
+    // Présente les frais et délais de chaque atelier du panier.
     private List<PaymentIntentResponse.Shipment> shipments(Map<UUID, List<CartLine>> bySeller,
                                                            Map<UUID, Integer> shippingBySeller) {
         Instant now = Instant.now();
@@ -489,29 +515,37 @@ public class DirectSaleService {
                 .toList();
     }
 
+    // Regroupe les pièces et les montants du panier vérifié.
     private record Checkout(User buyer, List<CartLine> lines, Map<UUID, List<CartLine>> bySeller,
                             CartTotals totals, String currency, String idempotencyKey) {}
 
+    // Associe le nom de la pièce à sa déclinaison.
     private String lineLabel(CartLine line) {
         String variantLabel = variantMapper.label(line.variant());
         return line.product().getName() + (variantLabel != null ? " (" + variantLabel + ")" : "");
     }
 
+    // Conserve les références du paiement ouvert pour le panier.
     private record Attempt(String paymentIntentId, String transferGroup) {}
 
+    // Regroupe les montants du panier et les frais par atelier.
     private record CartTotals(int items, int shipping, int amount, int commission,
                               Map<UUID, Integer> shippingBySeller) {}
 
+    // Associe une pièce à sa déclinaison et sa quantité.
     private record CartLine(MarketplaceProduct product, MarketplaceProductVariant variant, int quantity) {
 
+        // Multiplie le prix par la quantité sans dépassement silencieux.
         int lineTotal() {
             return Math.multiplyExact(product.getPriceCents(), quantity);
         }
 
+        // Retrouve le compte vendeur de la pièce commandée.
         UUID sellerId() {
             return product.getArtisanProfile().getUser().getId();
         }
 
+        // Retrouve le nom de l'atelier vendant la pièce.
         String sellerName() {
             return product.getArtisanProfile().getDisplayName();
         }

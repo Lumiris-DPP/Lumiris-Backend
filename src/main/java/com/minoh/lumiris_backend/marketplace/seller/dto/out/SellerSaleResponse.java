@@ -4,6 +4,7 @@ import com.minoh.lumiris_backend.entity.MarketplaceOrder;
 import java.time.Instant;
 import java.util.UUID;
 
+// Présente une vente de l'atelier connecté.
 public record SellerSaleResponse(
         UUID id,
         String productName,
@@ -19,6 +20,7 @@ public record SellerSaleResponse(
         String invoiceNumber
 ) {
 
+    // Prépare la réponse avec les informations de la vente.
     public static SellerSaleResponse from(MarketplaceOrder o) {
         return new SellerSaleResponse(
                 o.getId(),

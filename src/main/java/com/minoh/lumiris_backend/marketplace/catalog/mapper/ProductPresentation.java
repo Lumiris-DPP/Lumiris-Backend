@@ -5,6 +5,7 @@ import com.minoh.lumiris_backend.marketplace.catalog.dto.out.SizeMeasurementResp
 import java.time.Instant;
 import java.util.List;
 
+// Regroupe les informations complémentaires d'une annonce.
 public record ProductPresentation(
         List<ProductVariantResponse> variants,
         List<SizeMeasurementResponse> sizeGuide,

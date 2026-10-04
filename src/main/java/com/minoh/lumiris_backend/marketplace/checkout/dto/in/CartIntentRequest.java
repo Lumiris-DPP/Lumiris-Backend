@@ -9,17 +9,20 @@ import jakarta.validation.constraints.Size;
 import java.util.List;
 import java.util.UUID;
 
+// Porte les pièces du panier et l'adresse de livraison.
 public record CartIntentRequest(
         @NotEmpty @Valid List<Line> items,
         @NotNull @Valid ShippingAddress shipping
 ) {
 
+    // Désigne une déclinaison et la quantité demandée.
     public record Line(
             @NotNull UUID productId,
             UUID variantId,
             @Min(1) int quantity
     ) {}
 
+    // Porte les coordonnées du destinataire de la commande.
     public record ShippingAddress(
             @NotBlank @Size(max = 200) String fullName,
             @NotBlank @Size(max = 300) String line1,

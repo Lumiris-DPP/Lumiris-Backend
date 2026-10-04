@@ -9,9 +9,11 @@ import com.minoh.lumiris_backend.marketplace.catalog.dto.out.MarketplaceItemResp
 import com.minoh.lumiris_backend.marketplace.catalog.dto.out.ProductVariantResponse;
 import org.springframework.stereotype.Component;
 
+// Convertit les données d'une annonce pour le catalogue.
 @Component
 public class MarketplaceProductMapper {
 
+    // Reporte les champs reçus sur l'annonce existante.
     public void applyUpdate(MarketplaceProduct p, UpdateProductRequest req, DppForm dppForm) {
         p.setDppForm(dppForm);
         p.setName(req.name());
@@ -32,6 +34,7 @@ public class MarketplaceProductMapper {
         }
     }
 
+    // Présente l'annonce avec son score et ses informations complémentaires.
     public MarketplaceItemResponse toResponse(MarketplaceProduct p, IrisScore score,
                                               ProductPresentation presentation) {
         ArtisanProfile artisan = p.getArtisanProfile();
@@ -71,10 +74,12 @@ public class MarketplaceProductMapper {
         );
     }
 
+    // Additionne les stocks des déclinaisons de la pièce.
     private static int totalStock(ProductPresentation presentation) {
         return presentation.variants().stream().mapToInt(ProductVariantResponse::stock).sum();
     }
 
+    // Utilise la devise reçue ou la devise par défaut.
     private static String normalizeCurrency(String currency) {
         return currency != null && !currency.isBlank() ? currency.toUpperCase() : "EUR";
     }

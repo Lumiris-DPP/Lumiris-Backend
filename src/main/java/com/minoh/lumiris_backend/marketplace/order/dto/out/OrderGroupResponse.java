@@ -7,6 +7,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 
+// Regroupe les commandes issues d'un même paiement.
 public record OrderGroupResponse(
         String paymentIntentId,
         List<OrderResponse> lines,
@@ -19,6 +20,7 @@ public record OrderGroupResponse(
         Instant createdAt
 ) {
 
+    // Prépare la réponse avec les informations de ses commandes regroupées.
     public static OrderGroupResponse from(String paymentIntentId, List<MarketplaceOrder> orders) {
         List<OrderResponse> lines = orders.stream().map(OrderResponse::from).toList();
         int items = orders.stream().mapToInt(MarketplaceOrder::getAmountTotalCents).sum();
@@ -33,6 +35,7 @@ public record OrderGroupResponse(
                 items + shipping, currency, aggregateStatus(orders), invoice, createdAt);
     }
 
+    // Détermine l'état du groupe selon ses commandes.
     private static String aggregateStatus(List<MarketplaceOrder> orders) {
         return orders.stream()
                 .map(MarketplaceOrder::getStatus)

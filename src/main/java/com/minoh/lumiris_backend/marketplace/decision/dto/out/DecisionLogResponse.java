@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
+// Présente les critères et les résultats d'un classement.
 public record DecisionLogResponse(
         UUID id,
         String context,
@@ -13,6 +14,7 @@ public record DecisionLogResponse(
         List<Entry> ranked
 ) {
 
+    // Présente la position et la justification d'une pièce.
     public record Entry(
             int rank,
             UUID productId,

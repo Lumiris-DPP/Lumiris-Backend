@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.function.Function;
 
+// Présente une commande à son atelier.
 public record SellerOrderResponse(
         UUID id,
         String productName,
@@ -49,6 +50,7 @@ public record SellerOrderResponse(
         List<OrderEventResponse> timeline
 ) {
 
+    // Prépare la réponse avec les informations de la commande vendeur.
     public static SellerOrderResponse from(MarketplaceOrder o, List<OrderEvent> events,
                                           Function<UUID, String> presign) {
         OrderStatus status = o.getStatus();

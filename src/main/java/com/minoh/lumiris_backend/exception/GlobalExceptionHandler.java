@@ -45,7 +45,10 @@ public class GlobalExceptionHandler {
         Map<String, String> errors = ex.getBindingResult()
                 .getFieldErrors()
                 .stream()
-                .collect(Collectors.toMap(FieldError::getField, FieldError::getDefaultMessage));
+                // Un champ peut violer plusieurs contraintes à la fois (ex. @Size + @Pattern) : sans
+                // fonction de fusion, toMap lève une IllegalStateException et le 400 devient un 500.
+                .collect(Collectors.toMap(FieldError::getField, FieldError::getDefaultMessage,
+                        (first, ignored) -> first));
         return new ErrorResponse(400, "Validation failed", errors);
     }
 

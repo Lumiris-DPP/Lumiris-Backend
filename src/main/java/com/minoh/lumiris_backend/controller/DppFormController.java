@@ -8,7 +8,9 @@ import com.minoh.lumiris_backend.dto.out.DppFormResponse;
 import com.minoh.lumiris_backend.dto.out.DppFormSummaryResponse;
 import com.minoh.lumiris_backend.dto.out.IrisScoreResponse;
 import com.minoh.lumiris_backend.dto.out.DppVerificationResponse;
-import com.minoh.lumiris_backend.service.DppFormService;
+import com.minoh.lumiris_backend.service.DppPublicationService;
+import com.minoh.lumiris_backend.service.DppQueryService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -28,11 +30,12 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class DppFormController {
 
-    private final DppFormService dppFormService;
+    private final DppPublicationService publicationService;
+    private final DppQueryService queryService;
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     ResponseEntity<DppFormCreatedResponse> create(
-            @RequestPart(value = "data") DppFormRequest request,
+            @Valid @RequestPart(value = "data") DppFormRequest request,
             @RequestPart(value = "productPhoto",      required = false) MultipartFile productPhoto,
             @RequestPart(value = "reachCompliance",   required = false) MultipartFile reachCompliance,
             @RequestPart(value = "euDeclaration",     required = false) MultipartFile euDeclaration,
@@ -51,14 +54,14 @@ public class DppFormController {
                 transactionCerts, originCerts, repairManual, careGuide, endOfLifeGuide, saleInvoice, creationPassport);
 
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(dppFormService.create(request, files, principal.getUsername(), draft));
+                .body(publicationService.create(request, files, principal.getUsername(), draft));
     }
 
     // Draft-only: 409 when the DPP is already published.
     @PutMapping(value = "/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     ResponseEntity<DppFormCreatedResponse> update(
             @PathVariable UUID id,
-            @RequestPart(value = "data") DppFormRequest request,
+            @Valid @RequestPart(value = "data") DppFormRequest request,
             @RequestPart(value = "productPhoto",      required = false) MultipartFile productPhoto,
             @RequestPart(value = "reachCompliance",   required = false) MultipartFile reachCompliance,
             @RequestPart(value = "euDeclaration",     required = false) MultipartFile euDeclaration,
@@ -75,7 +78,7 @@ public class DppFormController {
         Map<String, MultipartFile> files = collectFiles(productPhoto, reachCompliance, euDeclaration, testReports,
                 transactionCerts, originCerts, repairManual, careGuide, endOfLifeGuide, saleInvoice, creationPassport);
 
-        return ResponseEntity.ok(dppFormService.update(id, request, files, principal.getUsername()));
+        return ResponseEntity.ok(publicationService.update(id, request, files, principal.getUsername()));
     }
 
     // Draft-only: 409 when the DPP is already published.
@@ -84,7 +87,7 @@ public class DppFormController {
             @PathVariable UUID id,
             @AuthenticationPrincipal UserDetails principal
     ) {
-        dppFormService.delete(id, principal.getUsername());
+        publicationService.delete(id, principal.getUsername());
         return ResponseEntity.noContent().build();
     }
 
@@ -94,7 +97,7 @@ public class DppFormController {
             @AuthenticationPrincipal UserDetails principal
     ) {
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(dppFormService.duplicate(id, principal.getUsername()));
+                .body(publicationService.duplicate(id, principal.getUsername()));
     }
 
     // Finalisation of a draft: quota gate, public code (QR), data hash, Iris score, blockchain anchor.
@@ -103,7 +106,7 @@ public class DppFormController {
             @PathVariable UUID id,
             @AuthenticationPrincipal UserDetails principal
     ) {
-        return ResponseEntity.ok(dppFormService.publish(id, principal.getUsername()));
+        return ResponseEntity.ok(publicationService.publish(id, principal.getUsername()));
     }
 
     private static Map<String, MultipartFile> collectFiles(
@@ -131,7 +134,7 @@ public class DppFormController {
     ResponseEntity<List<DppFormSummaryResponse>> findAll(
             @AuthenticationPrincipal UserDetails principal
     ) {
-        return ResponseEntity.ok(dppFormService.findAllByUser(principal.getUsername()));
+        return ResponseEntity.ok(queryService.findAllByUser(principal.getUsername()));
     }
 
     @GetMapping("/{id}")
@@ -139,7 +142,7 @@ public class DppFormController {
             @PathVariable UUID id,
             @AuthenticationPrincipal UserDetails principal
     ) {
-        return ResponseEntity.ok(dppFormService.findById(id, principal.getUsername()));
+        return ResponseEntity.ok(queryService.findById(id, principal.getUsername()));
     }
 
     @GetMapping("/{id}/access-tokens")
@@ -147,12 +150,12 @@ public class DppFormController {
             @PathVariable UUID id,
             @AuthenticationPrincipal UserDetails principal
     ) {
-        return ResponseEntity.ok(dppFormService.listAccessTokens(id, principal.getUsername()));
+        return ResponseEntity.ok(queryService.listAccessTokens(id, principal.getUsername()));
     }
 
     @GetMapping("/{id}/verify")
     ResponseEntity<DppVerificationResponse> verify(@PathVariable UUID id) {
-        return ResponseEntity.ok(dppFormService.verify(id));
+        return ResponseEntity.ok(queryService.verify(id));
     }
 
     @GetMapping("/{id}/iris_score")
@@ -160,7 +163,7 @@ public class DppFormController {
             @PathVariable UUID id,
             @AuthenticationPrincipal UserDetails principal
     ) {
-        return ResponseEntity.ok(dppFormService.getIrisScore(id, principal.getUsername()));
+        return ResponseEntity.ok(queryService.getIrisScore(id, principal.getUsername()));
     }
 
     @PostMapping("/compute_iris_score")
@@ -168,6 +171,6 @@ public class DppFormController {
             @RequestBody DppScoreInput input,
             @AuthenticationPrincipal UserDetails principal
     ) {
-        return ResponseEntity.ok(dppFormService.computeIrisScore(input, principal.getUsername()));
+        return ResponseEntity.ok(queryService.computeIrisScore(input, principal.getUsername()));
     }
 }

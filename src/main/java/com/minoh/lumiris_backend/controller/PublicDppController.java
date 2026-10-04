@@ -4,7 +4,7 @@ import com.minoh.lumiris_backend.dto.out.DppEventResponse;
 import com.minoh.lumiris_backend.dto.out.DppFormPublicResponse;
 import com.minoh.lumiris_backend.dto.out.DppPublicJsonLdResponse;
 import com.minoh.lumiris_backend.service.DppEventService;
-import com.minoh.lumiris_backend.service.DppFormService;
+import com.minoh.lumiris_backend.service.DppQueryService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -27,7 +27,7 @@ public class PublicDppController {
 
     private static final String JSON_LD_MEDIA_TYPE = "application/ld+json";
 
-    private final DppFormService dppFormService;
+    private final DppQueryService dppQueryService;
     private final DppEventService dppEventService;
 
     /**
@@ -39,7 +39,7 @@ public class PublicDppController {
             @PathVariable String code,
             @RequestParam(required = false) String k
     ) {
-        return ResponseEntity.ok(dppFormService.findByPublicCode(code, k));
+        return ResponseEntity.ok(dppQueryService.findByPublicCode(code, k));
     }
 
     @GetMapping(value = "/{code}/jsonld", produces = JSON_LD_MEDIA_TYPE)
@@ -60,7 +60,7 @@ public class PublicDppController {
             @PathVariable String code,
             HttpServletRequest request
     ) {
-        return ResponseEntity.ok(dppFormService.findPublicJsonLd(code, request.getRequestURL().toString()));
+        return ResponseEntity.ok(dppQueryService.findPublicJsonLd(code, request.getRequestURL().toString()));
     }
 
     @GetMapping("/{code}/events")

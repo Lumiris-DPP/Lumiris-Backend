@@ -56,7 +56,10 @@ class DppFormUpdateIT {
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:17-alpine");
 
     @Autowired
-    private DppFormService dppFormService;
+    private DppPublicationService dppPublicationService;
+
+    @Autowired
+    private DppQueryService dppQueryService;
 
     @Autowired
     private UserRepository userRepository;
@@ -116,26 +119,26 @@ class DppFormUpdateIT {
 
     @Test
     void update_shouldAttachANewDocumentToAnExistingDraft() {
-        DppFormCreatedResponse created = dppFormService.create(
+        DppFormCreatedResponse created = dppPublicationService.create(
                 request(), Map.of("careGuide", pdf("careGuide")), EMAIL, true);
 
-        assertThatCode(() -> dppFormService.update(
+        assertThatCode(() -> dppPublicationService.update(
                 created.id(), request(), Map.of("repairManual", pdf("repairManual")), EMAIL))
                 .doesNotThrowAnyException();
 
-        assertThat(dppFormService.findById(created.id(), EMAIL).documents())
+        assertThat(dppQueryService.findById(created.id(), EMAIL).documents())
                 .extracting(d -> d.documentType())
                 .containsExactlyInAnyOrder("CARE_GUIDE", "REPAIR_MANUAL");
     }
 
     @Test
     void update_shouldReplaceADocumentOfTheSameType() {
-        DppFormCreatedResponse created = dppFormService.create(
+        DppFormCreatedResponse created = dppPublicationService.create(
                 request(), Map.of("careGuide", pdf("careGuide")), EMAIL, true);
 
-        dppFormService.update(created.id(), request(), Map.of("careGuide", pdf("careGuide-v2")), EMAIL);
+        dppPublicationService.update(created.id(), request(), Map.of("careGuide", pdf("careGuide-v2")), EMAIL);
 
-        assertThat(dppFormService.findById(created.id(), EMAIL).documents())
+        assertThat(dppQueryService.findById(created.id(), EMAIL).documents())
                 .singleElement()
                 .satisfies(d -> {
                     assertThat(d.documentType()).isEqualTo("CARE_GUIDE");

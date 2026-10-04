@@ -85,8 +85,16 @@ public class SellerStatsService {
                         Comparator.nullsLast(Comparator.naturalOrder())))
                 .toList();
 
-        long scheduled = sumWhere(entries, PayoutExpectation.SCHEDULED);
-        long onHold = sumWhere(entries, PayoutExpectation.ON_HOLD) + sumWhere(entries, PayoutExpectation.IMMINENT);
+        long scheduled = 0;
+        long onHold = 0;
+        for (SellerPayoutEntryResponse entry : entries) {
+            if (entry.expectation() == PayoutExpectation.SCHEDULED) {
+                scheduled += entry.netCents();
+            } else if (entry.expectation() == PayoutExpectation.ON_HOLD
+                    || entry.expectation() == PayoutExpectation.IMMINENT) {
+                onHold += entry.netCents();
+            }
+        }
         return new SellerPayoutScheduleResponse(
                 scheduled,
                 orderRepository.releasedNetCentsBySeller(artisan.getId()),
@@ -109,13 +117,6 @@ public class SellerStatsService {
                 forecast.expectation(),
                 order.getStatus()
         );
-    }
-
-    private static long sumWhere(List<SellerPayoutEntryResponse> entries, PayoutExpectation expectation) {
-        return entries.stream()
-                .filter(e -> e.expectation() == expectation)
-                .mapToLong(SellerPayoutEntryResponse::netCents)
-                .sum();
     }
 
     private User requireArtisan(String userEmail) {

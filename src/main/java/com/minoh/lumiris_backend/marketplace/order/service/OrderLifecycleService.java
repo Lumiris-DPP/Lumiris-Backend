@@ -126,12 +126,12 @@ public class OrderLifecycleService {
         }
         order.setReturnDecidedAt(Instant.now());
         order.setReturnDecisionNote(request.note());
+        order.setStatus(request.accepted() ? OrderStatus.RETURN_APPROVED : OrderStatus.RETURN_REFUSED);
+        orderRepository.save(order);
+        record(order, request.accepted() ? OrderEventType.RETURN_APPROVED : OrderEventType.RETURN_REFUSED,
+                OrderActorType.SELLER, seller, request.note(), request.attachments());
 
         if (request.accepted()) {
-            order.setStatus(OrderStatus.RETURN_APPROVED);
-            orderRepository.save(order);
-            record(order, OrderEventType.RETURN_APPROVED, OrderActorType.SELLER, seller, request.note(),
-                    request.attachments());
             notificationService.notify(order.getBuyer(), NotificationType.RETURN_APPROVED,
                     "Ton retour est accepté",
                     "L'atelier accepte le retour de " + itemLabel(order)
@@ -140,10 +140,6 @@ public class OrderLifecycleService {
             return;
         }
 
-        order.setStatus(OrderStatus.RETURN_REFUSED);
-        orderRepository.save(order);
-        record(order, OrderEventType.RETURN_REFUSED, OrderActorType.SELLER, seller, request.note(),
-                request.attachments());
         notificationService.notify(order.getBuyer(), NotificationType.RETURN_REFUSED,
                 "Ton retour a été refusé",
                 "L'atelier refuse le retour de " + itemLabel(order)
@@ -299,7 +295,8 @@ public class OrderLifecycleService {
             order.setDisputeStatus(DisputeStatus.RESOLVED);
             orderRepository.save(order);
             record(order, OrderEventType.DISPUTE_RESOLVED, OrderActorType.PLATFORM, admin, request.resolution());
-            applyRefund(order, request.refundCents(), request.resolution(), OrderActorType.PLATFORM, admin);
+            applyRefund(order, request.refundCents(), request.resolution(), OrderActorType.PLATFORM, admin,
+                    OrderStatus.REFUNDED);
             notifyBoth(order, NotificationType.DISPUTE_RESOLVED, "Litige tranché",
                     "Le litige sur " + itemLabel(order) + " est clos — " + request.resolution());
             return;
@@ -495,11 +492,6 @@ public class OrderLifecycleService {
                 "Fonds versés",
                 "Le paiement de " + itemLabel(order) + " a été viré sur ton compte.",
                 sellerOrderHref(order), order);
-    }
-
-    private void applyRefund(MarketplaceOrder order, Integer requestedCents, String reason,
-                             OrderActorType actorType, User actor) {
-        applyRefund(order, requestedCents, reason, actorType, actor, OrderStatus.REFUNDED);
     }
 
     private void applyRefund(MarketplaceOrder order, Integer requestedCents, String reason,

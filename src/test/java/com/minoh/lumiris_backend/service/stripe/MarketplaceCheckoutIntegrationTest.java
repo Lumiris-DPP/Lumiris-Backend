@@ -23,6 +23,8 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
@@ -222,6 +224,37 @@ class MarketplaceCheckoutIntegrationTest {
         assertThat(orderStatuses(firstIntent)).containsOnly("CANCELLED");
         assertThat(orderStatuses(secondIntent)).containsOnly("PENDING");
         assertThat(stock(variant)).isZero();
+    }
+
+    @Test
+    void stockErrorKeepsProductNameWithoutVariantLabel() {
+        Variant variant = listing("EUR", 8900, 0);
+        jdbc.update("update marketplace_product_variants set size_label = null, color_label = ' ' where id = ?",
+                variant.id());
+        String name = jdbc.queryForObject("select name from marketplace_products where id = ?",
+                String.class, variant.productId());
+
+        assertThatThrownBy(() -> checkout(buyer(), variant, 1))
+                .isInstanceOf(BillingValidationException.class)
+                .hasMessage("Stock insuffisant pour « " + name + " » (reste 0).");
+        assertThat(creations()).isEmpty();
+        assertThat(pendingOrders(variant)).isZero();
+    }
+
+    @ParameterizedTest
+    @CsvSource({"M, bleu, M · bleu", "M, '', M", "'', bleu, bleu"})
+    void stockErrorKeepsSizeAndColorLabels(String size, String color, String expectedLabel) {
+        Variant variant = listing("EUR", 8900, 0);
+        jdbc.update("update marketplace_product_variants set size_label = ?, color_label = ? where id = ?",
+                size, color, variant.id());
+        String name = jdbc.queryForObject("select name from marketplace_products where id = ?",
+                String.class, variant.productId());
+
+        assertThatThrownBy(() -> checkout(buyer(), variant, 1))
+                .isInstanceOf(BillingValidationException.class)
+                .hasMessage("Stock insuffisant pour « " + name + " (" + expectedLabel + ") » (reste 0).");
+        assertThat(creations()).isEmpty();
+        assertThat(pendingOrders(variant)).isZero();
     }
 
     @Test

@@ -31,4 +31,4 @@ public record UpdateProductRequest(
         @Size(max = 2048) @Pattern(regexp = HttpUrl.REGEX, message = HttpUrl.MESSAGE) String photoUrl,
         UUID dppFormId,
         MarketplaceProductStatus status
-) implements ProductForm {}
+) {}

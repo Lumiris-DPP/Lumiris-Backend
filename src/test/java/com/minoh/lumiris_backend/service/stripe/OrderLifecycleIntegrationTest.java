@@ -3,6 +3,7 @@ package com.minoh.lumiris_backend.service.stripe;
 import com.minoh.lumiris_backend.service.EmailOutboxDispatcher;
 
 import com.minoh.lumiris_backend.marketplace.order.dto.in.RefundRequest;
+import com.minoh.lumiris_backend.marketplace.order.dto.in.DisputeResolutionRequest;
 import com.minoh.lumiris_backend.marketplace.order.dto.in.ReturnRequest;
 import com.minoh.lumiris_backend.marketplace.order.dto.in.ReturnDecisionRequest;
 import com.minoh.lumiris_backend.marketplace.order.dto.in.ShipOrderRequest;
@@ -155,6 +156,53 @@ class OrderLifecycleIntegrationTest {
         for (String type : List.of("RETURN_REQUESTED", "RETURN_APPROVED", "RETURN_RECEIVED", "REFUNDED")) {
             assertThat(events(f, type)).isEqualTo(1);
         }
+    }
+
+    @Test
+    void refusedReturn_recordsDecisionWithoutRefundOrRestock() {
+        Fixture f = fixture("SHIPPED");
+        lifecycle.requestReturn(f.buyer(), f.order(), new ReturnRequest("Taille", null));
+        lifecycle.decideReturn(f.seller(), f.order(), new ReturnDecisionRequest(false, "Motif du refus", null));
+
+        assertThat(status(f)).isEqualTo("RETURN_REFUSED");
+        assertThat(events(f, "RETURN_REFUSED")).isEqualTo(1);
+        assertThat(events(f, "RETURN_APPROVED")).isZero();
+        assertThat(jdbc.queryForObject("select return_decision_note from marketplace_orders where id = ?",
+                String.class, f.order())).isEqualTo("Motif du refus");
+        assertThat(jdbc.queryForObject("select return_decided_at is not null from marketplace_orders where id = ?",
+                Boolean.class, f.order())).isTrue();
+        assertThat(refunded(f)).isZero();
+        assertThat(stock(f)).isZero();
+        assertThat(wardrobe(f)).isEqualTo(1);
+        assertThat(stripe.refunds()).isZero();
+        assertThatThrownBy(() -> lifecycle.decideReturn(f.seller(), f.order(),
+                new ReturnDecisionRequest(true, "Autre décision", null))).isInstanceOf(BillingValidationException.class);
+        assertThat(status(f)).isEqualTo("RETURN_REFUSED");
+        assertThat(events(f, "RETURN_REFUSED")).isEqualTo(1);
+    }
+
+    @Test
+    void disputeResolution_refundsOnceWithPlatformStatusAndRestock() {
+        Fixture f = fixture("DELIVERED");
+        jdbc.update("update marketplace_orders set dispute_status = 'OPEN' where id = ?", f.order());
+        String admin = email(user("ADMIN"));
+        DisputeResolutionRequest request = new DisputeResolutionRequest("Accord plateforme", 300);
+
+        lifecycle.resolveDispute(admin, f.order(), request);
+
+        assertThat(status(f)).isEqualTo("REFUNDED");
+        assertThat(jdbc.queryForObject("select dispute_status from marketplace_orders where id = ?",
+                String.class, f.order())).isEqualTo("RESOLVED");
+        assertThat(events(f, "DISPUTE_RESOLVED")).isEqualTo(1);
+        assertThat(events(f, "REFUNDED")).isEqualTo(1);
+        assertThat(refunded(f)).isEqualTo(300);
+        assertThat(stock(f)).isEqualTo(1);
+        assertThat(wardrobe(f)).isEqualTo(1);
+        assertThat(stripe.refunds()).isEqualTo(1);
+        assertThatThrownBy(() -> lifecycle.resolveDispute(admin, f.order(), request))
+                .isInstanceOf(BillingValidationException.class);
+        assertThat(stripe.refunds()).isEqualTo(1);
+        assertThat(stock(f)).isEqualTo(1);
     }
 
     @Test

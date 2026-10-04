@@ -1,6 +1,5 @@
 package com.minoh.lumiris_backend.marketplace.catalog.mapper;
 
-import com.minoh.lumiris_backend.marketplace.catalog.dto.in.ProductForm;
 import com.minoh.lumiris_backend.entity.ArtisanProfile;
 import com.minoh.lumiris_backend.entity.DppForm;
 import com.minoh.lumiris_backend.entity.IrisScore;
@@ -14,7 +13,20 @@ import org.springframework.stereotype.Component;
 public class MarketplaceProductMapper {
 
     public void applyUpdate(MarketplaceProduct p, UpdateProductRequest req, DppForm dppForm) {
-        applyForm(p, req, dppForm);
+        p.setDppForm(dppForm);
+        p.setName(req.name());
+        p.setDescription(req.description());
+        p.setCategory(req.category());
+        p.setMaterial(req.material());
+        p.setOriginCountry(req.originCountry());
+        p.setPriceCents(req.priceCents());
+        p.setCurrency(normalizeCurrency(req.currency()));
+        p.setShippingCents(req.shippingCents() != null ? Math.max(0, req.shippingCents()) : 0);
+        p.setReturnPolicy(req.returnPolicy());
+        p.setPreparationDays(req.preparationDays() != null ? req.preparationDays() : 0);
+        p.setWeightGrams(req.weightGrams() != null ? Math.max(0, req.weightGrams()) : 0);
+        p.setExternalOrderUrl(req.externalOrderUrl());
+        p.setPhotoUrl(req.photoUrl());
         if (req.status() != null) {
             p.setStatus(req.status());
         }
@@ -61,23 +73,6 @@ public class MarketplaceProductMapper {
 
     private static int totalStock(ProductPresentation presentation) {
         return presentation.variants().stream().mapToInt(ProductVariantResponse::stock).sum();
-    }
-
-    private void applyForm(MarketplaceProduct p, ProductForm req, DppForm dppForm) {
-        p.setDppForm(dppForm);
-        p.setName(req.name());
-        p.setDescription(req.description());
-        p.setCategory(req.category());
-        p.setMaterial(req.material());
-        p.setOriginCountry(req.originCountry());
-        p.setPriceCents(req.priceCents());
-        p.setCurrency(normalizeCurrency(req.currency()));
-        p.setShippingCents(req.shippingCents() != null ? Math.max(0, req.shippingCents()) : 0);
-        p.setReturnPolicy(req.returnPolicy());
-        p.setPreparationDays(req.preparationDays() != null ? req.preparationDays() : 0);
-        p.setWeightGrams(req.weightGrams() != null ? Math.max(0, req.weightGrams()) : 0);
-        p.setExternalOrderUrl(req.externalOrderUrl());
-        p.setPhotoUrl(req.photoUrl());
     }
 
     private static String normalizeCurrency(String currency) {

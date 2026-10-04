@@ -34,7 +34,6 @@ import com.stripe.param.PaymentIntentCreateParams;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.ZoneOffset;
-import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -61,6 +60,8 @@ public class DirectSaleService {
     private static final Logger log = LoggerFactory.getLogger(DirectSaleService.class);
 
     private static final Set<String> STILL_SETTLING_STATUSES = Set.of("processing", "requires_capture");
+    private static final String PAID_CART_MESSAGE =
+            "Ce panier vient d'être payé : retrouve ta commande dans « Mes commandes ».";
 
     private final StripeProperties properties;
     private final MarketplaceProperties marketplaceProperties;
@@ -81,10 +82,9 @@ public class DirectSaleService {
         TransactionTemplate transaction = new TransactionTemplate(transactionManager);
         Checkout checkout = transaction.execute(status -> prepareCheckout(buyerEmail, request));
         while (true) {
-            Attempt attempt = transaction.execute(status -> openAttempt(checkout.buyer(), checkout.totals().amount(),
-                    checkout.currency(), checkout.idempotencyKey()));
+            Attempt attempt = transaction.execute(status -> openAttempt(checkout));
 
-            releaseSupersededReservations(checkout.buyer(), attempt.intent().getId());
+            releaseSupersededReservations(checkout.buyer(), attempt.paymentIntentId());
             PaymentIntentResponse response = transaction.execute(status -> finishAttempt(checkout, attempt, request.shipping()));
             if (response != null) {
                 return response;
@@ -96,7 +96,8 @@ public class DirectSaleService {
         User buyer = userRepository.getByEmail(buyerEmail);
 
         List<CartLine> lines = loadLines(request.items());
-        Map<UUID, List<CartLine>> bySeller = groupBySeller(lines);
+        Map<UUID, List<CartLine>> bySeller = lines.stream()
+                .collect(Collectors.groupingBy(CartLine::sellerId, LinkedHashMap::new, Collectors.toList()));
         requireSellersPayable(bySeller);
         requireStockAvailable(buyer, lines);
         String currency = requireSingleCurrency(lines);
@@ -107,7 +108,7 @@ public class DirectSaleService {
 
     private PaymentIntentResponse finishAttempt(Checkout checkout, Attempt attempt,
                                                  CartIntentRequest.ShippingAddress shipping) {
-        String paymentIntentId = attempt.intent().getId();
+        String paymentIntentId = attempt.paymentIntentId();
         orderRepository.lockPaymentIntent(paymentIntentId);
         List<MarketplaceOrder> orders = orderRepository.lockByStripePaymentIntentId(paymentIntentId);
         PaymentIntent intent = StripeCalls.billed("Lecture du paiement impossible", () -> PaymentIntent.retrieve(paymentIntentId));
@@ -115,7 +116,7 @@ public class DirectSaleService {
 
         if (!orders.isEmpty() && orders.stream().noneMatch(order -> order.getStatus() == OrderStatus.PENDING)
                 && orders.stream().anyMatch(order -> order.getStatus() != OrderStatus.CANCELLED)) {
-            refreshPendingOrders(orders, shipping);
+            throw new BillingValidationException(PAID_CART_MESSAGE);
         }
 
         if ("canceled".equals(intent.getStatus()) || (!orders.isEmpty()
@@ -138,12 +139,13 @@ public class DirectSaleService {
                 shipments(checkout.bySeller(), totals.shippingBySeller()));
     }
 
-    private Attempt openAttempt(User buyer, int amount, String currency, String idempotencyKey) {
-        String key = idempotencyKey;
+    private Attempt openAttempt(Checkout checkout) {
+        String key = checkout.idempotencyKey();
         while (true) {
 
             String transferGroup = "og_" + UUID.nameUUIDFromBytes(key.getBytes(StandardCharsets.UTF_8));
-            PaymentIntent intent = createIntent(buyer, amount, currency, transferGroup, key);
+            PaymentIntent intent = createIntent(checkout.buyer(), checkout.totals().amount(), checkout.currency(),
+                    transferGroup, key);
             orderRepository.lockPaymentIntent(intent.getId());
             List<MarketplaceOrder> orders = orderRepository.lockByStripePaymentIntentId(intent.getId());
 
@@ -157,7 +159,7 @@ public class DirectSaleService {
             boolean cancelled = !orders.isEmpty()
                     && orders.stream().allMatch(order -> order.getStatus() == OrderStatus.CANCELLED);
             if (!cancelled && !(orders.isEmpty() && "canceled".equals(intent.getStatus()))) {
-                return new Attempt(intent, transferGroup);
+                return new Attempt(intent.getId(), transferGroup);
             }
             key = "checkout:after:" + UUID.nameUUIDFromBytes(
                     (key + ":after:" + intent.getId()).getBytes(StandardCharsets.UTF_8));
@@ -166,8 +168,7 @@ public class DirectSaleService {
 
     private void requirePaymentStillPayable(PaymentIntent intent) {
         if ("succeeded".equals(intent.getStatus())) {
-            throw new BillingValidationException(
-                    "Ce panier vient d'être payé : retrouve ta commande dans « Mes commandes ».");
+            throw new BillingValidationException(PAID_CART_MESSAGE);
         }
         if (STILL_SETTLING_STATUSES.contains(intent.getStatus())) {
             throw new BillingValidationException(
@@ -180,8 +181,7 @@ public class DirectSaleService {
                 .filter(order -> order.getStatus() == OrderStatus.PENDING)
                 .toList();
         if (pending.isEmpty()) {
-            throw new BillingValidationException(
-                    "Ce panier vient d'être payé : retrouve ta commande dans « Mes commandes ».");
+            throw new BillingValidationException(PAID_CART_MESSAGE);
         }
         pending.forEach(order -> {
             applyShippingAddress(order, shipping);
@@ -315,14 +315,6 @@ public class DirectSaleService {
                 "Choisis une taille pour « " + product.getName() + " » avant de payer.");
     }
 
-    private Map<UUID, List<CartLine>> groupBySeller(List<CartLine> lines) {
-        Map<UUID, List<CartLine>> bySeller = new LinkedHashMap<>();
-        for (CartLine line : lines) {
-            bySeller.computeIfAbsent(line.sellerId(), key -> new ArrayList<>()).add(line);
-        }
-        return bySeller;
-    }
-
     private void requireSellersPayable(Map<UUID, List<CartLine>> bySeller) {
         Set<UUID> payable = payableSellerResolver.payableUserIds(bySeller.keySet());
         for (Map.Entry<UUID, List<CartLine>> entry : bySeller.entrySet()) {
@@ -340,7 +332,7 @@ public class DirectSaleService {
             int available = line.variant().getStock() + held.getOrDefault(line.variant().getId(), 0);
             if (available < line.quantity()) {
                 throw new BillingValidationException(
-                        "Stock insuffisant pour « " + line.label() + " » (reste " + available + ").");
+                        "Stock insuffisant pour « " + lineLabel(line) + " » (reste " + available + ").");
             }
         }
     }
@@ -391,7 +383,7 @@ public class DirectSaleService {
                 .toList();
         for (CartLine line : byVariantId) {
             if (variantRepository.decrementStock(line.variant().getId(), line.quantity()) == 0) {
-                throw new BillingValidationException("Stock insuffisant pour « " + line.label() + " ».");
+                throw new BillingValidationException("Stock insuffisant pour « " + lineLabel(line) + " ».");
             }
         }
     }
@@ -408,33 +400,26 @@ public class DirectSaleService {
     private PaymentIntent createIntent(User buyer, int amount, String currency,
                                        String transferGroup, String idempotencyKey) {
         try {
-            return requestIntent(buyer, amount, currency, transferGroup, idempotencyKey);
+            RequestOptions requestOptions = RequestOptions.builder().setIdempotencyKey(idempotencyKey).build();
+            return StripeCalls.billed("Préparation du paiement impossible", () ->
+                    PaymentIntent.create(PaymentIntentCreateParams.builder()
+                            .setAmount((long) amount)
+                            .setCurrency(currency)
+                            .setReceiptEmail(buyer.getEmail())
+                            .setTransferGroup(transferGroup)
+                            .setAutomaticPaymentMethods(PaymentIntentCreateParams.AutomaticPaymentMethods.builder()
+                                    .setEnabled(true)
+                                    .build())
+                            .putMetadata("order_type", "marketplace")
+                            .putMetadata("buyer_user_id", buyer.getId().toString())
+                            .putMetadata("transfer_group", transferGroup)
+                            .build(), requestOptions));
         } catch (BillingException e) {
             if (e.getCause() instanceof InvalidRequestException invalid && "amount_too_large".equals(invalid.getCode())) {
                 throw new BillingValidationException("Le montant de ce panier dépasse le maximum accepté au paiement.");
             }
             throw e;
         }
-    }
-
-    private PaymentIntent requestIntent(User buyer, int amount, String currency,
-                                        String transferGroup, String idempotencyKey) {
-        RequestOptions requestOptions = RequestOptions.builder().setIdempotencyKey(idempotencyKey).build();
-        return StripeCalls.billed("Préparation du paiement impossible", () ->
-                PaymentIntent.create(PaymentIntentCreateParams.builder()
-                        .setAmount((long) amount)
-                        .setCurrency(currency)
-
-                        .setReceiptEmail(buyer.getEmail())
-                        .setTransferGroup(transferGroup)
-
-                        .setAutomaticPaymentMethods(PaymentIntentCreateParams.AutomaticPaymentMethods.builder()
-                                .setEnabled(true)
-                                .build())
-                        .putMetadata("order_type", "marketplace")
-                        .putMetadata("buyer_user_id", buyer.getId().toString())
-                        .putMetadata("transfer_group", transferGroup)
-                        .build(), requestOptions));
     }
 
     private void releaseSupersededReservations(User buyer, String currentPaymentIntentId) {
@@ -507,7 +492,12 @@ public class DirectSaleService {
     private record Checkout(User buyer, List<CartLine> lines, Map<UUID, List<CartLine>> bySeller,
                             CartTotals totals, String currency, String idempotencyKey) {}
 
-    private record Attempt(PaymentIntent intent, String transferGroup) {}
+    private String lineLabel(CartLine line) {
+        String variantLabel = variantMapper.label(line.variant());
+        return line.product().getName() + (variantLabel != null ? " (" + variantLabel + ")" : "");
+    }
+
+    private record Attempt(String paymentIntentId, String transferGroup) {}
 
     private record CartTotals(int items, int shipping, int amount, int commission,
                               Map<UUID, Integer> shippingBySeller) {}
@@ -526,16 +516,5 @@ public class DirectSaleService {
             return product.getArtisanProfile().getDisplayName();
         }
 
-        String label() {
-            String sizeLabel = variant.getSizeLabel();
-            String colorLabel = variant.getColorLabel();
-            boolean hasSize = sizeLabel != null && !sizeLabel.isBlank();
-            boolean hasColor = colorLabel != null && !colorLabel.isBlank();
-            if (!hasSize && !hasColor) {
-                return product.getName();
-            }
-            return product.getName() + " (" + (hasSize && hasColor ? sizeLabel + " · " + colorLabel
-                    : hasSize ? sizeLabel : colorLabel) + ")";
-        }
     }
 }

@@ -47,10 +47,28 @@ public interface RepairRequestRepository extends JpaRepository<RepairRequest, UU
             """, nativeQuery = true)
     long countRefusedQuotes(@Param("profileId") UUID profileId);
 
-    // Gate for DppEventService: a repairer may only log history on a DPP they're actually
-    // servicing (accepted the job at least once), not any DPP with a pending/refused request.
-    boolean existsByDppFormAndRepairerProfileUserAndStatusIn(
-            DppForm dppForm, User repairerUser, Collection<RepairRequestStatus> statuses);
+    // Gate for DppQueryService: a repairer may view the passport as soon as a request exists,
+    // regardless of status — they need to see the item to quote it and message the client
+    // before ever accepting anything.
+    boolean existsByDppFormAndRepairerProfileUser(DppForm dppForm, User repairerUser);
+
+    // Stricter variant of the gate above, for actually writing/reading DPP event history:
+    // COMPLETED alone isn't proof the repairer served this DPP — it's also the terminal status for
+    // a quote the client refused, a request the repairer declined before ever quoting, or one the
+    // client cancelled, so those are excluded explicitly via the three "never serviced" timestamps
+    // rather than relying on status.
+    @Query("""
+            select case when count(r) > 0 then true else false end
+            from RepairRequest r
+            where r.dppForm = :dppForm and r.repairerProfile.user = :repairerUser
+              and (r.status in :activeStatuses
+                   or (r.status = com.minoh.lumiris_backend.entity.RepairRequestStatus.COMPLETED
+                       and r.quoteRefusedAt is null and r.repairerDeclinedAt is null
+                       and r.cancelledAt is null))
+            """)
+    boolean existsServicedByDppFormAndRepairerProfileUser(
+            @Param("dppForm") DppForm dppForm, @Param("repairerUser") User repairerUser,
+            @Param("activeStatuses") Collection<RepairRequestStatus> activeStatuses);
 
     // ── Trésorerie / versements (même mécanique que MarketplaceOrderRepository côté artisan) ──
     @Query("""

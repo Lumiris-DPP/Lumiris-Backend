@@ -2,6 +2,8 @@ package com.minoh.lumiris_backend.service;
 
 import com.minoh.lumiris_backend.domain.PlanTier;
 import com.minoh.lumiris_backend.dto.in.RepairAppointmentRequest;
+import com.minoh.lumiris_backend.dto.in.RepairDeclineRequest;
+import com.minoh.lumiris_backend.dto.in.RepairDeclineRequest;
 import com.minoh.lumiris_backend.dto.in.RepairQuoteRequest;
 import com.minoh.lumiris_backend.dto.out.RepairRequestResponse;
 import com.minoh.lumiris_backend.entity.DppForm;
@@ -11,6 +13,7 @@ import com.minoh.lumiris_backend.entity.RepairerProfile;
 import com.minoh.lumiris_backend.entity.User;
 import com.minoh.lumiris_backend.entity.UserSubscription;
 import com.minoh.lumiris_backend.exception.ConflictException;
+import com.minoh.lumiris_backend.exception.ResourceNotFoundException;
 import com.minoh.lumiris_backend.repository.DppFormRepository;
 import com.minoh.lumiris_backend.repository.RepairRequestRepository;
 import com.minoh.lumiris_backend.repository.RepairerProfileRepository;
@@ -155,6 +158,90 @@ class RepairRequestServiceTest {
     }
 
     @Test
+    void decline_completesRequestAndNotifiesConsumer() {
+        RepairRequest request = newRequest(RepairRequestStatus.PENDING);
+        when(requestRepo.findById(request.getId())).thenReturn(Optional.of(request));
+
+        RepairRequestResponse response = service.decline(
+                "repairer@lumiris.com", request.getId(), new RepairDeclineRequest("Trop de retard pris"));
+
+        assertThat(response.status()).isEqualTo(RepairRequestStatus.COMPLETED);
+        assertThat(response.repairerDeclineReason()).isEqualTo("Trop de retard pris");
+        verify(mailService).sendRepairRequestDeclinedByRepairer(
+                consumer.getEmail(), consumer.getName(), dppForm.getProductName(), "Trop de retard pris");
+    }
+
+    @Test
+    void decline_toleratesNoReason() {
+        RepairRequest request = newRequest(RepairRequestStatus.PENDING);
+        when(requestRepo.findById(request.getId())).thenReturn(Optional.of(request));
+
+        RepairRequestResponse response = service.decline("repairer@lumiris.com", request.getId(), null);
+
+        assertThat(response.repairerDeclineReason()).isNull();
+        verify(mailService).sendRepairRequestDeclinedByRepairer(
+                consumer.getEmail(), consumer.getName(), dppForm.getProductName(), null);
+    }
+
+    @Test
+    void decline_rejectedWhenNotPending() {
+        RepairRequest request = newRequest(RepairRequestStatus.ACCEPTED);
+        when(requestRepo.findById(request.getId())).thenReturn(Optional.of(request));
+
+        assertThatThrownBy(() -> service.decline("repairer@lumiris.com", request.getId(), null))
+                .isInstanceOf(ConflictException.class);
+    }
+
+    @Test
+    void decline_completesPendingRequestWithReasonAndNotifiesConsumer() {
+        RepairRequest request = newRequest(RepairRequestStatus.PENDING);
+        when(requestRepo.findById(request.getId())).thenReturn(Optional.of(request));
+
+        RepairRequestResponse response = service.decline(
+                "repairer@lumiris.com", request.getId(), new RepairDeclineRequest("  Pas de cuir  "));
+
+        assertThat(response.status()).isEqualTo(RepairRequestStatus.COMPLETED);
+        assertThat(response.repairerDeclinedAt()).isNotNull();
+        assertThat(response.repairerDeclineReason()).isEqualTo("Pas de cuir");
+        verify(mailService).sendRepairRequestDeclinedByRepairer(
+                consumer.getEmail(), consumer.getName(), dppForm.getProductName(), "Pas de cuir");
+    }
+
+    @Test
+    void decline_withoutBodyOrBlankReason_storesNoReason() {
+        RepairRequest request = newRequest(RepairRequestStatus.PENDING);
+        when(requestRepo.findById(request.getId())).thenReturn(Optional.of(request));
+
+        RepairRequestResponse response = service.decline("repairer@lumiris.com", request.getId(), null);
+
+        assertThat(response.repairerDeclineReason()).isNull();
+        verify(mailService).sendRepairRequestDeclinedByRepairer(
+                consumer.getEmail(), consumer.getName(), dppForm.getProductName(), null);
+    }
+
+    @Test
+    void decline_rejectedOnceAQuoteWasSubmitted() {
+        RepairRequest request = newRequest(RepairRequestStatus.DRAFT);
+        when(requestRepo.findById(request.getId())).thenReturn(Optional.of(request));
+
+        assertThatThrownBy(() -> service.decline("repairer@lumiris.com", request.getId(), null))
+                .isInstanceOf(ConflictException.class);
+        verify(mailService, never()).sendRepairRequestDeclinedByRepairer(any(), any(), any(), any());
+    }
+
+    @Test
+    void decline_rejectedForAnotherRepairersRequest() {
+        RepairerProfile other = new RepairerProfile();
+        other.setId(UUID.randomUUID());
+        RepairRequest request = newRequest(RepairRequestStatus.PENDING);
+        request.setRepairerProfile(other);
+        when(requestRepo.findById(request.getId())).thenReturn(Optional.of(request));
+
+        assertThatThrownBy(() -> service.decline("repairer@lumiris.com", request.getId(), null))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
     void statusNeverGoesBackwards_onceInProgress() {
         RepairRequest request = newRequest(RepairRequestStatus.IN_PROGRESS);
         when(requestRepo.findById(request.getId())).thenReturn(Optional.of(request));
@@ -181,6 +268,8 @@ class RepairRequestServiceTest {
         RepairRequestResponse response = service.cancel("client@lumiris.com", request.getId());
 
         assertThat(response.status()).isEqualTo(RepairRequestStatus.COMPLETED);
+        // Distingue l'annulation d'une intervention réellement terminée (gate d'historique DPP, front).
+        assertThat(response.cancelledAt()).isNotNull();
     }
 
     @Test

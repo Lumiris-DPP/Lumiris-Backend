@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{email/_layout :: layout(title=${title}, content=~{::main})}">
+<body>
+<main>
+    <p>Bonjour <span th:text="${name}">Nom</span>,</p>
+    <p>Le retoucheur a décliné votre demande de réparation pour « <span th:text="${productName}">Produit</span> ».
+        Vous pouvez contacter un autre retoucheur depuis l'application.</p>
+    <p th:if="${reason}">Message du retoucheur : « <span th:text="${reason}">Raison</span> »</p>
+    <p>L'équipe Lumiris</p>
+</main>
+</body>
+</html>

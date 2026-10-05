@@ -16,7 +16,6 @@ import com.minoh.lumiris_backend.entity.DppAccessLevel;
 import com.minoh.lumiris_backend.entity.DppDocumentVisibility;
 import com.minoh.lumiris_backend.entity.DppForm;
 import com.minoh.lumiris_backend.entity.IrisScore;
-import com.minoh.lumiris_backend.entity.RepairRequestStatus;
 import com.minoh.lumiris_backend.entity.User;
 import com.minoh.lumiris_backend.exception.ConflictException;
 import com.minoh.lumiris_backend.exception.ResourceNotFoundException;
@@ -36,7 +35,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -47,11 +45,6 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class DppQueryService {
-
-    // Même règle que DppEventService.isServicingRepairer : un retoucheur en cours d'intervention
-    // (ou l'ayant terminée) sur ce DPP peut consulter la fiche, pas seulement y écrire un événement.
-    private static final Set<RepairRequestStatus> REPAIRER_VIEW_STATUSES =
-            Set.of(RepairRequestStatus.ACCEPTED, RepairRequestStatus.IN_PROGRESS, RepairRequestStatus.COMPLETED);
 
     private final DppFormRepository dppFormRepository;
     private final UserRepository userRepository;
@@ -79,14 +72,17 @@ public class DppQueryService {
     public DppFormResponse findById(UUID id, String userEmail) {
         User user = ownershipGuard.currentUser(userEmail);
         DppForm form = ownershipGuard.loadForm(id);
-        if (!DppOwnershipGuard.isOwner(form, user) && !isServicingRepairer(form, user)) {
+        boolean isOwner = DppOwnershipGuard.isOwner(form, user);
+        if (!isOwner && !isServicingRepairer(form, user)) {
             throw new ResourceNotFoundException("DPP not found");
         }
         initializeChildren(form);
 
-        // Le propriétaire voit ses propres documents, toutes visibilités confondues.
-        List<DppFormDocumentResponse> documents =
-                documentService.visibleDocuments(form, EnumSet.allOf(DppDocumentVisibility.class));
+        // Le propriétaire voit ses propres documents, toutes visibilités confondues. Un retoucheur
+        // (opérateur circulaire) n'a droit qu'aux documents publics + fin de vie/réparation — jamais
+        // à ceux réservés aux autorités (douanes, DGCCRF) — même règle que pour les QR d'accès.
+        List<DppFormDocumentResponse> documents = documentService.visibleDocuments(
+                form, isOwner ? EnumSet.allOf(DppDocumentVisibility.class) : DppAccessLevel.CIRCULAR_OPERATORS.visibilities());
 
         String artisanSlug = artisanProfileRepository.findByUser(form.getUser())
                 .map(ArtisanProfile::getSlug)
@@ -151,13 +147,24 @@ public class DppQueryService {
     /** Les trois QR d'un passeport publié : permanents, dérivés du code public, rien à générer. */
     @Transactional(readOnly = true)
     public List<DppAccessTokenResponse> listAccessTokens(UUID id, String userEmail) {
-        DppForm form = ownershipGuard.loadOwned(id, userEmail);
+        User user = ownershipGuard.currentUser(userEmail);
+        DppForm form = ownershipGuard.loadForm(id);
+        boolean isOwner = DppOwnershipGuard.isOwner(form, user);
+        if (!isOwner && !isServicingRepairer(form, user)) {
+            throw new ResourceNotFoundException("DPP not found");
+        }
         // Un brouillon n'a pas de code public : les QR n'auraient aucune cible.
         if (form.getPublicCode() == null) {
             throw new ConflictException("Publiez le passeport pour obtenir ses QR codes.");
         }
 
-        return Arrays.stream(DppAccessLevel.values())
+        // Le propriétaire a accès aux trois niveaux ; un retoucheur (opérateur circulaire) n'obtient
+        // jamais le jeton Autorités — pas seulement masqué côté front, il n'est pas émis du tout.
+        DppAccessLevel[] levels = isOwner
+                ? DppAccessLevel.values()
+                : new DppAccessLevel[] { DppAccessLevel.PUBLIC, DppAccessLevel.CIRCULAR_OPERATORS };
+
+        return Arrays.stream(levels)
                 .map(level -> new DppAccessTokenResponse(
                         level, accessTokenService.tokenFor(form.getPublicCode(), level)))
                 .toList();
@@ -203,9 +210,10 @@ public class DppQueryService {
         Hibernate.initialize(form.getDocuments());
     }
 
+    // Un retoucheur peut voir la fiche dès qu'une demande existe, quel que soit son statut — il
+    // doit voir la pièce pour l'évaluer et envoyer un devis / message avant même d'avoir accepté.
     private boolean isServicingRepairer(DppForm form, User user) {
-        return repairRequestRepository.existsByDppFormAndRepairerProfileUserAndStatusIn(
-                form, user, REPAIRER_VIEW_STATUSES);
+        return repairRequestRepository.existsByDppFormAndRepairerProfileUser(form, user);
     }
 
     // Un lien vers la vitrine n'est exposé que si l'artisan l'a publiée et a été vérifié.

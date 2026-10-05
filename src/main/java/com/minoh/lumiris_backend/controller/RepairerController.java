@@ -1,6 +1,7 @@
 package com.minoh.lumiris_backend.controller;
 
 import com.minoh.lumiris_backend.dto.in.KybDetailsRequest;
+import com.minoh.lumiris_backend.dto.in.RepairDeclineRequest;
 import com.minoh.lumiris_backend.dto.in.RepairMessageRequest;
 import com.minoh.lumiris_backend.dto.in.RepairQuoteRequest;
 import com.minoh.lumiris_backend.dto.in.RepairerClaimRequest;
@@ -109,6 +110,15 @@ public class RepairerController {
             @AuthenticationPrincipal UserDetails principal
     ) {
         return ResponseEntity.ok(requestService.submitQuote(principal.getUsername(), id, request));
+    }
+
+    @PostMapping("/me/requests/{id}/decline")
+    ResponseEntity<RepairRequestResponse> decline(
+            @PathVariable UUID id,
+            @RequestBody(required = false) RepairDeclineRequest request,
+            @AuthenticationPrincipal UserDetails principal
+    ) {
+        return ResponseEntity.ok(requestService.decline(principal.getUsername(), id, request));
     }
 
     @PostMapping("/me/requests/{id}/start")
